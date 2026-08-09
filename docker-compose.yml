@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: arkive
+      POSTGRES_PASSWORD: arkive
+      POSTGRES_DB: arkive
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arkive -d arkive"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: arkive
+      MINIO_ROOT_PASSWORD: arkivesecret
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 arkive arkivesecret; do sleep 1; done;
+      mc mb --ignore-existing local/arkive;
+      exit 0;
+      "
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    environment:
+      ARKIVE_DATABASE_URL: postgres://arkive:arkive@postgres:5432/arkive?sslmode=disable
+      ARKIVE_S3_ENDPOINT: minio:9000
+      ARKIVE_S3_ACCESS_KEY: arkive
+      ARKIVE_S3_SECRET_KEY: arkivesecret
+      ARKIVE_S3_BUCKET: arkive
+      ARKIVE_S3_USE_SSL: "false"
+      ARKIVE_SESSION_SECRET: ${ARKIVE_SESSION_SECRET:-change-me-in-production-use-long-random-string}
+      ARKIVE_SECRETS_KEY: ${ARKIVE_SECRETS_KEY:-change-me-in-production-use-long-random-string}
+      ARKIVE_BOOTSTRAP_ADMIN_EMAIL: ${ARKIVE_BOOTSTRAP_ADMIN_EMAIL:-admin@arkive.local}
+      ARKIVE_HTTP_ADDR: ":8080"
+      ARKIVE_COOKIE_SECURE: ${ARKIVE_COOKIE_SECURE:-false}
+      ARKIVE_MIGRATIONS_DIR: /app/migrations
+      ARKIVE_PUBLIC_URL: ${ARKIVE_PUBLIC_URL:-http://localhost:3080}
+      ARKIVE_MAX_UPLOAD_BYTES: ${ARKIVE_MAX_UPLOAD_BYTES:-10737418240}
+      # Optional OIDC — set in .env to enable SSO on the login page
+      ARKIVE_OIDC_ISSUER: ${ARKIVE_OIDC_ISSUER:-}
+      ARKIVE_OIDC_CLIENT_ID: ${ARKIVE_OIDC_CLIENT_ID:-}
+      ARKIVE_OIDC_CLIENT_SECRET: ${ARKIVE_OIDC_CLIENT_SECRET:-}
+      ARKIVE_OIDC_PROVIDER_NAME: ${ARKIVE_OIDC_PROVIDER_NAME:-SSO}
+      ARKIVE_GOOGLE_CLIENT_ID: ${ARKIVE_GOOGLE_CLIENT_ID:-}
+      ARKIVE_GOOGLE_CLIENT_SECRET: ${ARKIVE_GOOGLE_CLIENT_SECRET:-}
+      ARKIVE_GOOGLE_REDIRECT_URL: ${ARKIVE_GOOGLE_REDIRECT_URL:-http://localhost:3080/api/auth/google/drive/callback}
+
+    volumes:
+      - nfs_demo:/mnt/arkive-nfs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    ports:
+      - "3080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  minio_data:
+  nfs_demo:

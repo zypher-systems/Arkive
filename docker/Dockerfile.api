@@ -1,0 +1,16 @@
+FROM golang:1.25-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /src
+COPY api/ ./
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /out/arkive ./cmd/server
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates wget
+WORKDIR /app
+COPY --from=builder /out/arkive /app/arkive
+COPY api/migrations /app/migrations
+ENV ARKIVE_MIGRATIONS_DIR=/app/migrations
+EXPOSE 8080
+ENTRYPOINT ["/app/arkive"]

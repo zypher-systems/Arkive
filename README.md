@@ -1,93 +1,185 @@
 # Arkive
 
+Self-hosted file sharing and cloud storage. Multi-user, multi-tenant workspaces (personal + teams), segregated storage, and sharing — without the Nextcloud kitchen sink.
 
+Everything runs in Docker. Nothing needs to be installed on the host beyond Docker Compose.
 
-## Getting started
+## Quick start
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://codevault.sh/dtreadway/arkive.git
-git branch -M main
-git push -uf origin main
+```bash
+cp .env.example .env
+# Set ARKIVE_BOOTSTRAP_ADMIN_EMAIL to your email, then:
+docker compose up --build
 ```
 
-## Integrate with your tools
+Open [http://localhost:3080](http://localhost:3080).
 
-* [Set up project integrations](https://codevault.sh/dtreadway/arkive/-/settings/integrations)
+### Bootstrap admin
 
-## Collaborate with your team
+Put your email in `.env` as `ARKIVE_BOOTSTRAP_ADMIN_EMAIL` (compose default if unset: `admin@arkive.local`). Register or log in with that address — it becomes the instance admin (Storage + user approvals).
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+Password must be at least 8 characters.
 
-## Test and Deploy
+### Signup approval
 
-Use the built-in continuous integration in GitLab.
+Arkive is private by default: anyone can create an account, but new signups stay **pending** until an instance admin approves them under **Admin → Users**. Pending and rejected accounts cannot log in or use WebDAV. The bootstrap admin email is auto-approved.
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+## Stack
 
-***
+| Service   | Role                                      |
+|-----------|-------------------------------------------|
+| `web`     | Nginx + React SPA (port **3080**)         |
+| `api`     | Go API (chi), migrations on startup       |
+| `postgres`| Metadata (users, workspaces, nodes, ACLs) |
+| `minio`   | S3-compatible blob storage (dev default)  |
+| `nfs_demo`| Demo volume mounted at `/mnt/arkive-nfs`  |
 
-# Editing this README
+## Environment (API)
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+| Variable | Default / notes |
+|----------|-----------------|
+| `ARKIVE_DATABASE_URL` | Postgres DSN |
+| `ARKIVE_S3_*` | Seeded default MinIO backend |
+| `ARKIVE_SESSION_SECRET` | Cookie/session material — change for production |
+| `ARKIVE_SECRETS_KEY` | Encrypts S3 credentials at rest (falls back to session secret) |
+| `ARKIVE_BOOTSTRAP_ADMIN_EMAIL` | Instance admin on register/login (set in `.env`) |
+| `ARKIVE_COOKIE_SECURE` | `true` behind HTTPS |
+| `ARKIVE_MAX_UPLOAD_BYTES` | Max upload size (default `10737418240` = 10 GiB) |
+| `ARKIVE_GOOGLE_CLIENT_ID` / `SECRET` | Optional env override for Google Drive OAuth (else Admin UI) |
+| `ARKIVE_GOOGLE_REDIRECT_URL` | Optional redirect override |
+| `ARKIVE_MIGRATIONS_DIR` | `/app/migrations` in container |
 
-## Suggestions for a good README
+## Features
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+- Email/password auth with httpOnly session cookies (argon2id); optional OIDC/SSO
+- Personal workspace on signup + team workspaces with invite tokens
+- Browse / upload / download / mkdir / rename / move; drag-drop upload; multi-select + zip
+- Soft-delete trash with restore/purge
+- Inline previews for images, PDF, and text
+- Filename search within a workspace
+- Internal shares (user email or team, read/write)
+- Public share links with optional password + expiry (`/s/:token`)
+- File version history on overwrite (last 10) + share/link activity
+- WebDAV mount per workspace (`/dav/{workspaceID}/`)
+- Instance-admin storage backends: remote S3 + NFS/local mount; per-workspace assignment
+- Optional per-user Google Drive as a Connected Files root (OAuth vault + live browse)
+- Icedrive/Internxt via WebDAV as Connected vault mounts
+- Filename + Postgres FTS search (text file contents indexed on upload)
+- Signup approve/reject email (optional SMTP), empty trash, undo toast, background migrate jobs
+- Brand UI (graphite + industrial orange/amber)
 
-## Name
-Choose a self-explaining name for your project.
+### WebDAV (official sync/mount path)
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+Mount a workspace with Basic auth (email + password). This is the supported way to sync from desktop/mobile until a dedicated client ships (see [`desktop/README.md`](desktop/README.md)).
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+```text
+http://localhost:3080/dav/<workspace-id>/
+```
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+Copy mount URLs from **Account → WebDAV mount**, or use the workspace id from `GET /api/workspaces`.
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+**rclone example:**
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```bash
+rclone config create arkive webdav \
+  url http://localhost:3080/dav/<workspace-id>/ \
+  vendor other \
+  user admin@arkive.local \
+  pass <password>
+# obscure password for rclone: rclone obscure 'yourpassword'
+rclone ls arkive:
+rclone sync ./local-folder arkive:backup
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+**macOS:** Finder → Go → Connect to Server → `http://localhost:3080/dav/<workspace-id>/`
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+**Windows:** Map Network Drive → `http://localhost:3080/dav/<workspace-id>/` (may need WebDAV redirector / Basic auth enabled).
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+DELETE via WebDAV soft-deletes into Arkive trash (not permanent purge).
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### Optional OIDC
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+Set all of these on the `api` service to show **Continue with SSO** on the login page:
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+```yaml
+ARKIVE_PUBLIC_URL: https://arkive.example.com
+ARKIVE_OIDC_ISSUER: https://your-idp.example.com
+ARKIVE_OIDC_CLIENT_ID: arkive
+ARKIVE_OIDC_CLIENT_SECRET: secret
+ARKIVE_OIDC_REDIRECT_URL: https://arkive.example.com/api/auth/oidc/callback  # optional override
+ARKIVE_OIDC_PROVIDER_NAME: SSO
+```
 
-## License
-For open source projects, say how it is licensed.
+Redirect URI to register with your IdP: `{ARKIVE_PUBLIC_URL}/api/auth/oidc/callback`
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+## Storage backends
+
+Instance admins can add backends in the UI:
+
+- **S3**: endpoint, keys, bucket, region, SSL, path-style — credentials encrypted in Postgres
+- **NFS**: filesystem path visible to the API container
+
+Compose mounts a writable demo volume at `/mnt/arkive-nfs`. For a real NFS share, bind-mount it into the `api` service (Docker/host networking required) and point the backend at that path.
+
+Workspaces resolve their `BlobStore` from `storage_backend_id` (or the default backend).
+
+### Google Drive (per-user)
+
+Users connect Google Drive under **Account**. That adds a **Connected** root in Files (a `mount` workspace) without changing personal storage. Files sidebar roots: **My files** (personal + teams), **Shared with me**, **Connected** (Drive, etc.).
+
+Arkive remains the source of truth for folders, ACLs, shares, versions, and trash; Drive only stores opaque file bytes in an `Arkive` folder (OAuth scope `drive.file`). WebDAV works per workspace, including the Drive mount.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create an OAuth **Web** client.
+2. Authorized redirect URI: `{ARKIVE_PUBLIC_URL}/api/auth/google/drive/callback` (local default `http://localhost:3080/api/auth/google/drive/callback`).
+3. As instance admin, open **Admin → Google Drive OAuth**, paste Client ID + secret, Save.
+4. Optionally override via `.env` (`ARKIVE_GOOGLE_CLIENT_ID` / `ARKIVE_GOOGLE_CLIENT_SECRET`) — env wins over DB when set.
+
+User Drive tokens are encrypted at rest with `ARKIVE_SECRETS_KEY`. Assigning a workspace backend changes the pointer only unless migration is requested (`migrate: true` or Account → Advanced copy). Large migrations enqueue a background job (`storage_migrations`); small vaults still run inline. Deletes from the old store are best-effort.
+
+**Live Drive:** Files → Connected → Google Drive (live) lists real Drive files (requires a connected Drive account). Vault mounts remain separate opaque Arkive trees.
+
+### Other cloud vaults
+
+Under **Account**, connect Icedrive/Internxt via their WebDAV URL + credentials. That creates a Connected mount workspace using a WebDAV BlobStore.
+
+### SMTP
+
+Configure under **Admin → SMTP** or `ARKIVE_SMTP_*` env vars. When enabled, approving/rejecting a signup sends a short notification email.
+
+## Project layout
+
+```
+api/          Go module
+web/          React + Vite + Tailwind SPA
+docker/       Dockerfiles + nginx.conf
+assets/       Logo / brand source
+docker-compose.yml
+```
+
+## Development
+
+```bash
+cd api && go test ./...
+```
+
+Optional signup-approval integration test (needs a Postgres DSN):
+
+```bash
+ARKIVE_TEST_DATABASE_URL='postgres://arkive:arkive@localhost:5432/arkive?sslmode=disable' go test ./internal/handlers/ -run TestSignupApprovalFlow
+```
+
+## Backup and ops
+
+Compose named volumes hold durable state:
+
+| Volume / path | Contents |
+|---------------|----------|
+| `postgres_data` | Users, workspaces, ACLs, share links, metadata |
+| `minio_data` | File blobs (default S3 backend) |
+| NFS / local mounts | Whatever paths you assigned as NFS backends |
+
+Back up Postgres and object storage together for a consistent restore. Rotate `ARKIVE_SESSION_SECRET` and `ARKIVE_SECRETS_KEY` for production (changing the secrets key invalidates encrypted S3 credentials stored in the DB — re-enter them after rotation). Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP).
+
+## Out of scope (for now)
+
+Other consumer clouds (Internxt, Icedrive, …), live Drive browser/mirror, custom desktop sync client, full-text content search.

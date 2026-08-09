@@ -1,0 +1,7 @@
+-- +goose Up
+ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_sub TEXT UNIQUE;
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+
+-- +goose Down
+ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL;
+ALTER TABLE users DROP COLUMN IF EXISTS oidc_sub;
