@@ -52,9 +52,10 @@ export function AdminPage() {
   const [smtpPass, setSmtpPass] = useState('');
   const [smtpFrom, setSmtpFrom] = useState('');
   const [defaultQuotaGB, setDefaultQuotaGB] = useState('');
+  const [trashRetentionDays, setTrashRetentionDays] = useState('30');
 
   async function refresh() {
-    const [b, w, u, g, s, q] = await Promise.all([
+    const [b, w, u, g, s, q, t] = await Promise.all([
       api.backends(),
       api.workspaces(),
       api.adminUsers(),
@@ -69,6 +70,7 @@ export function AdminPage() {
         source: 'none',
       })),
       api.quotaSettings().catch(() => ({ default_workspace_quota_bytes: null })),
+      api.trashSettings().catch(() => ({ trash_retention_days: 30 })),
     ]);
     setBackends(b);
     setWorkspaces(w);
@@ -87,6 +89,7 @@ export function AdminPage() {
         ? String(Math.round(q.default_workspace_quota_bytes / (1024 ** 3)))
         : '',
     );
+    setTrashRetentionDays(String(t.trash_retention_days ?? 30));
   }
 
   useEffect(() => {
@@ -331,7 +334,8 @@ export function AdminPage() {
         <h2 className="mb-1 font-display text-lg font-semibold">Quotas &amp; search</h2>
         <p className="mb-3 text-xs text-arkive-muted">
           Default workspace quota (GB). Empty = unlimited. Personal workspaces also inherit the
-          owner’s user quota when set.
+          owner’s user quota when set. Auto-purge permanently deletes trash older than N days (0 =
+          disable).
         </p>
         <div className="mb-4 flex flex-wrap items-end gap-2">
           <label className="block text-sm">
@@ -359,6 +363,33 @@ export function AdminPage() {
             className="rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-2 text-sm font-semibold text-black"
           >
             Save default
+          </button>
+          <label className="block text-sm">
+            <span className="mb-1 block text-arkive-muted">Auto-purge trash after N days</span>
+            <input
+              type="number"
+              min={0}
+              value={trashRetentionDays}
+              onChange={(e) => setTrashRetentionDays(e.target.value)}
+              className="w-40 rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              const days = Number(trashRetentionDays);
+              if (!Number.isFinite(days) || days < 0 || !Number.isInteger(days)) {
+                setError('Trash retention must be a whole number ≥ 0');
+                return;
+              }
+              void api
+                .putTrashSettings(days)
+                .then(() => setMessage(`Trash retention saved (${days === 0 ? 'disabled' : `${days} days`})`))
+                .catch((e) => setError(String(e)));
+            }}
+            className="rounded-lg border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/40"
+          >
+            Save retention
           </button>
           <button
             type="button"

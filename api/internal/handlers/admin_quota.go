@@ -85,6 +85,38 @@ func (h *SettingsHandler) PutQuotaDefaults(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+func (h *SettingsHandler) GetTrashRetention(w http.ResponseWriter, r *http.Request) {
+	httpjson.Write(w, http.StatusOK, map[string]any{
+		"trash_retention_days": h.App.TrashRetentionDays(r.Context()),
+	})
+}
+
+func (h *SettingsHandler) PutTrashRetention(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		TrashRetentionDays *int `json:"trash_retention_days"`
+	}
+	if err := httpjson.Decode(r, &body); err != nil {
+		httpjson.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	days := 30
+	if body.TrashRetentionDays != nil {
+		days = *body.TrashRetentionDays
+	}
+	if days < 0 {
+		httpjson.Error(w, http.StatusBadRequest, "trash_retention_days must be >= 0")
+		return
+	}
+	if err := h.App.PutSetting(r.Context(), "trash_retention_days", strconv.Itoa(days)); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "save failed")
+		return
+	}
+	httpjson.Write(w, http.StatusOK, map[string]any{
+		"status":               "ok",
+		"trash_retention_days": days,
+	})
+}
+
 func (h *SettingsHandler) ReindexSearch(w http.ResponseWriter, r *http.Request) {
 	n, err := h.App.ReindexMissing(r.Context(), 500)
 	if err != nil {

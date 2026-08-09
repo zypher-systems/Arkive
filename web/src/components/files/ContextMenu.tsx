@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { downloadUrl, isPreviewable, type Node } from '../../lib/api';
-import type { ContextMenuState } from './types';
+import { isTextNode, type ContextMenuState } from './types';
 
 type Props = {
   menu: ContextMenuState;
   onClose: () => void;
   onOpen: (node: Node) => void;
   onPreview: (node: Node) => void;
+  onEdit?: (node: Node) => void;
   onShare: (node: Node) => void;
   onHistory: (node: Node) => void;
   onRename: (node: Node) => void;
@@ -18,6 +19,7 @@ type Props = {
   onUpload: () => void;
   canPaste?: boolean;
   onPaste?: () => void;
+  canWrite?: boolean;
 };
 
 function Item({
@@ -47,6 +49,7 @@ export function ContextMenu({
   onClose,
   onOpen,
   onPreview,
+  onEdit,
   onShare,
   onHistory,
   onRename,
@@ -58,6 +61,7 @@ export function ContextMenu({
   onUpload,
   canPaste,
   onPaste,
+  canWrite = true,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -131,6 +135,15 @@ export function ContextMenu({
               label="Preview"
               onClick={() => {
                 onPreview(menu.node);
+                onClose();
+              }}
+            />
+          )}
+          {canWrite && onEdit && isTextNode(menu.node) && (
+            <Item
+              label="Edit"
+              onClick={() => {
+                onEdit(menu.node);
                 onClose();
               }}
             />

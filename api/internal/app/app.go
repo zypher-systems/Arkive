@@ -71,6 +71,12 @@ func (a *App) CleanupExpiredSessions(ctx context.Context) {
 			if err != nil {
 				a.Logger.Warn("public link cleanup failed", "err", err)
 			}
+			n, err := a.PurgeExpiredTrash(ctx)
+			if err != nil {
+				a.Logger.Warn("trash retention purge failed", "err", err)
+			} else if n > 0 {
+				a.Logger.Info("trash retention purge", "purged", n)
+			}
 		}
 	}
 }

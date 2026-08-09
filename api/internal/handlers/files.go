@@ -588,22 +588,10 @@ func (h *FileHandler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
 		}
 		roots = append(roots, id)
 	}
-	store, err := h.App.StoreForWorkspace(r.Context(), wsID)
-	if err != nil {
-		httpjson.Error(w, http.StatusInternalServerError, "storage unavailable")
-		return
-	}
 	purged := 0
 	for _, root := range roots {
-		keys, err := h.collectFileKeys(r, root)
-		if err != nil {
+		if err := h.App.PurgeDeletedNode(r.Context(), root); err != nil {
 			continue
-		}
-		if _, err := h.App.DB.Exec(r.Context(), `DELETE FROM nodes WHERE id = $1`, root); err != nil {
-			continue
-		}
-		for _, key := range keys {
-			_ = store.Delete(r.Context(), key)
 		}
 		purged++
 	}
@@ -630,52 +618,11 @@ func (h *FileHandler) Purge(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, status, msg)
 		return
 	}
-	keys, err := h.collectFileKeys(r, nodeID)
-	if err != nil {
-		httpjson.Error(w, http.StatusInternalServerError, "could not collect files")
-		return
-	}
-	store, err := h.App.StoreForWorkspace(r.Context(), workspaceID)
-	if err != nil {
-		httpjson.Error(w, http.StatusInternalServerError, "storage unavailable")
-		return
-	}
-	_, err = h.App.DB.Exec(r.Context(), `DELETE FROM nodes WHERE id = $1`, nodeID)
-	if err != nil {
+	if err := h.App.PurgeDeletedNode(r.Context(), nodeID); err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "purge failed")
 		return
 	}
-	for _, key := range keys {
-		_ = store.Delete(r.Context(), key)
-	}
 	httpjson.Write(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-func (h *FileHandler) collectFileKeys(r *http.Request, root uuid.UUID) ([]string, error) {
-	rows, err := h.App.DB.Query(r.Context(), `
-		WITH RECURSIVE tree AS (
-			SELECT id, kind, storage_key, thumb_key FROM nodes WHERE id = $1
-			UNION ALL
-			SELECT n.id, n.kind, n.storage_key, n.thumb_key FROM nodes n
-			JOIN tree t ON n.parent_id = t.id
-		)
-		SELECT storage_key FROM tree WHERE kind = 'file' AND storage_key IS NOT NULL
-		UNION ALL
-		SELECT thumb_key FROM tree WHERE thumb_key IS NOT NULL
-	`, root)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var keys []string
-	for rows.Next() {
-		var k string
-		if err := rows.Scan(&k); err != nil {
-			return nil, err
-		}
-		keys = append(keys, k)
-	}
-	return keys, rows.Err()
 }
 
 func (h *FileHandler) Thumb(w http.ResponseWriter, r *http.Request) {

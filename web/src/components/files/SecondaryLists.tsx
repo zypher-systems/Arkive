@@ -45,7 +45,7 @@ export function RecentList({
           <li key={ev.id}>
             <button
               type="button"
-              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-arkive-panel/40"
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left text-sm hover:bg-arkive-panel/40"
               onClick={() => onOpen(ev)}
             >
               <FileThumb node={node} size="sm" allowContent={allowContent} />
@@ -150,20 +150,17 @@ export function LiveDriveList({
           onDrop={(e) => {
             if (item.kind === 'folder') folderDrop(e, item.id);
           }}
-          className={`flex items-center justify-between gap-3 px-4 py-3 text-sm ${
+          onClick={() => onOpen(item)}
+          className={`flex cursor-pointer select-none items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-arkive-panel/40 ${
             item.kind === 'folder' && dropTargetId === item.id
               ? 'ring-2 ring-inset ring-arkive-amber/70 bg-arkive-amber/10'
               : ''
           }`}
         >
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-3 text-left font-medium hover:text-arkive-amber"
-            onClick={() => onOpen(item)}
-          >
+          <div className="flex min-w-0 flex-1 items-center gap-3 text-left font-medium hover:text-arkive-amber">
             <LiveDriveThumb item={item} size="sm" />
             <span className="truncate">{item.name}</span>
-          </button>
+          </div>
           <span className="shrink-0 text-xs text-arkive-muted">
             {item.kind === 'folder' ? 'Folder' : formatBytes(item.size)}
           </span>
@@ -198,11 +195,11 @@ export function SharedBrowse({
         {nodes.map((node) => (
           <li
             key={node.id}
-            className="overflow-hidden rounded-xl border border-arkive-border bg-arkive-surface/70 transition hover:border-arkive-amber/40"
+            className="cursor-pointer overflow-hidden rounded-xl border border-arkive-border bg-arkive-surface/70 transition hover:border-arkive-amber/40"
           >
             <button
               type="button"
-              className="flex w-full flex-col text-left"
+              className="flex w-full cursor-pointer flex-col text-left"
               onClick={() => onOpen(node)}
             >
               <div className="aspect-square overflow-hidden bg-arkive-panel/40">
@@ -233,16 +230,16 @@ export function SharedBrowse({
           </thead>
           <tbody className="divide-y divide-arkive-border">
             {nodes.map((node) => (
-              <tr key={node.id} className="hover:bg-arkive-panel/40">
+              <tr
+                key={node.id}
+                className="cursor-pointer hover:bg-arkive-panel/40"
+                onClick={() => onOpen(node)}
+              >
                 <td className="px-3 py-2">
-                  <button
-                    type="button"
-                    className="flex min-w-0 items-center gap-2 text-left"
-                    onClick={() => onOpen(node)}
-                  >
+                  <div className="flex min-w-0 items-center gap-2 text-left">
                     <FileThumb node={node} size="sm" />
                     <span className="truncate font-medium">{node.name}</span>
-                  </button>
+                  </div>
                 </td>
                 <td className="hidden px-3 py-2 text-arkive-muted sm:table-cell">
                   {node.kind === 'file' ? formatBytes(node.size) : '—'}
@@ -250,11 +247,11 @@ export function SharedBrowse({
                 <td className="hidden px-3 py-2 text-arkive-muted md:table-cell">
                   {fileTypeLabel(node)}
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                   {node.kind === 'file' && (
                     <a
                       href={downloadUrl(node.id)}
-                      className="text-xs text-arkive-amber hover:underline"
+                      className="cursor-pointer text-xs text-arkive-amber hover:underline"
                     >
                       Download
                     </a>
@@ -262,7 +259,7 @@ export function SharedBrowse({
                   {node.kind === 'file' && isPreviewable(node) && (
                     <button
                       type="button"
-                      className="ml-2 text-xs text-arkive-muted hover:text-arkive-text"
+                      className="ml-2 cursor-pointer text-xs text-arkive-muted hover:text-arkive-text"
                       onClick={() => onOpen(node)}
                     >
                       Preview
@@ -282,13 +279,10 @@ export function SharedBrowse({
       {nodes.map((node) => (
         <li
           key={node.id}
-          className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-arkive-panel/40"
+          className="flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3 hover:bg-arkive-panel/40"
+          onClick={() => onOpen(node)}
         >
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-3 text-left"
-            onClick={() => onOpen(node)}
-          >
+          <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
             <FileThumb node={node} size="sm" />
             <span className="min-w-0">
               <span className="block truncate font-medium">{node.name}</span>
@@ -296,11 +290,12 @@ export function SharedBrowse({
                 {node.kind === 'file' ? formatBytes(node.size) : 'Folder'}
               </span>
             </span>
-          </button>
+          </div>
           {node.kind === 'file' && (
             <a
               href={downloadUrl(node.id)}
-              className="shrink-0 text-xs text-arkive-amber hover:underline"
+              className="shrink-0 cursor-pointer text-xs text-arkive-amber hover:underline"
+              onClick={(e) => e.stopPropagation()}
             >
               Download
             </a>

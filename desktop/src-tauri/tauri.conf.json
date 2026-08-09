@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Arkive",
-        "width": 520,
-        "height": 720,
+        "width": 540,
+        "height": 780,
         "resizable": true
       }
     ],

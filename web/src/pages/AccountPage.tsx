@@ -129,6 +129,69 @@ export function AccountPage() {
   const [webdavUser, setWebdavUser] = useState('');
   const [webdavPass, setWebdavPass] = useState('');
   const [webdavType, setWebdavType] = useState<'webdav' | 'internxt'>('webdav');
+  const [appPasswords, setAppPasswords] = useState<
+    {
+      id: string;
+      name: string;
+      prefix: string;
+      created_at: string;
+      last_used_at?: string | null;
+    }[]
+  >([]);
+  const [tokenName, setTokenName] = useState('WebDAV');
+  const [newSecret, setNewSecret] = useState('');
+  const [tokenBusy, setTokenBusy] = useState(false);
+
+  async function refreshAppPasswords() {
+    const list = await api.listAppPasswords();
+    setAppPasswords(list);
+  }
+
+  useEffect(() => {
+    void refreshAppPasswords().catch(() => setAppPasswords([]));
+  }, []);
+
+  async function createAppPassword(e: FormEvent) {
+    e.preventDefault();
+    setTokenBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const created = await api.createAppPassword(tokenName.trim() || 'WebDAV');
+      setNewSecret(created.secret);
+      setTokenName('WebDAV');
+      await refreshAppPasswords();
+      setMessage('App password created — copy it now; it won’t be shown again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create app password');
+    } finally {
+      setTokenBusy(false);
+    }
+  }
+
+  function revokeAppPassword(id: string, name: string) {
+    ask({
+      title: 'Revoke app password?',
+      message: `Revoke “${name}”? Mounts using this password will stop working.`,
+      confirmLabel: 'Revoke',
+      run: async () => {
+        setError('');
+        try {
+          await api.revokeAppPassword(id);
+          setNewSecret((prev) => {
+            const prefix = appPasswords.find((p) => p.id === id)?.prefix;
+            if (prefix && prev.includes(prefix)) return '';
+            return prev;
+          });
+          await refreshAppPasswords();
+          setMessage('App password revoked');
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Could not revoke');
+          throw err;
+        }
+      },
+    });
+  }
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
@@ -148,7 +211,7 @@ export function AccountPage() {
             className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2.5 outline-none focus:ring-2 focus:ring-arkive-amber/40"
           />
         </label>
-        <label className="mb-5 block text-sm">
+        <label className="mb-2 block text-sm">
           <span className="mb-1.5 block text-arkive-muted">New password (optional)</span>
           <input
             type="password"
@@ -158,6 +221,9 @@ export function AccountPage() {
             className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2.5 outline-none focus:ring-2 focus:ring-arkive-amber/40"
           />
         </label>
+        <p className="mb-5 text-xs text-arkive-muted">
+          Locked out? Use Forgot password on the sign-in page (requires SMTP under Admin).
+        </p>
         {message && <p className="mb-3 text-sm text-arkive-glow">{message}</p>}
         {error && <p className="mb-3 text-sm text-red-300">{error}</p>}
         {user?.is_instance_admin && (
@@ -383,8 +449,9 @@ export function AccountPage() {
       <section className="max-w-lg rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
         <h2 className="font-display text-lg font-semibold">WebDAV mount</h2>
         <p className="mt-1 mb-4 text-xs text-arkive-muted">
-          Mount a workspace as a network drive. Authenticate with your Arkive email and password (HTTP
-          Basic).
+          Mount a workspace as a network drive (HTTP Basic). Prefer an{' '}
+          <span className="text-arkive-text">app password</span> below instead of your login
+          password — username is your Arkive email.
         </p>
         <ul className="space-y-3">
           {workspaces.map((ws) => {
@@ -397,9 +464,9 @@ export function AccountPage() {
                   <button
                     type="button"
                     onClick={() => void copyDav(ws)}
-                    className="shrink-0 rounded-md border border-arkive-border px-2 py-1 text-xs hover:border-arkive-amber/40"
+                    className="shrink-0 cursor-pointer rounded-md border border-arkive-border px-2 py-1 text-xs hover:border-arkive-amber/40"
                   >
-                    {copied === ws.id ? 'Copied' : 'Copy'}
+                    {copied === ws.id ? 'Copied' : 'Copy URL'}
                   </button>
                 </div>
               </li>
@@ -409,6 +476,83 @@ export function AccountPage() {
             <li className="text-sm text-arkive-muted">No workspaces yet.</li>
           )}
         </ul>
+
+        <div className="mt-6 border-t border-arkive-border pt-5">
+          <h3 className="text-sm font-semibold">App passwords</h3>
+          <p className="mt-1 mb-3 text-xs text-arkive-muted">
+            Create a token for Finder, rclone, or other WebDAV clients. You can revoke it anytime
+            without changing your login password.
+          </p>
+
+          <form onSubmit={(e) => void createAppPassword(e)} className="mb-4 flex flex-wrap gap-2">
+            <input
+              value={tokenName}
+              onChange={(e) => setTokenName(e.target.value)}
+              placeholder="Name (e.g. MacBook)"
+              maxLength={80}
+              className="min-w-0 flex-1 rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-arkive-amber/40"
+            />
+            <button
+              type="submit"
+              disabled={tokenBusy}
+              className="cursor-pointer rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
+            >
+              {tokenBusy ? 'Creating…' : 'Create'}
+            </button>
+          </form>
+
+          {newSecret && (
+            <div className="mb-4 rounded-lg border border-arkive-amber/40 bg-arkive-amber/10 px-3 py-3">
+              <p className="mb-2 text-xs text-arkive-muted">
+                Copy this secret now — it won’t be shown again.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="min-w-0 flex-1 break-all text-xs text-arkive-text">{newSecret}</code>
+                <button
+                  type="button"
+                  className="shrink-0 cursor-pointer rounded-md border border-arkive-border px-2 py-1 text-xs hover:border-arkive-amber/40"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(newSecret).then(() => {
+                      setCopied('secret');
+                      setTimeout(() => setCopied((c) => (c === 'secret' ? '' : c)), 2000);
+                    });
+                  }}
+                >
+                  {copied === 'secret' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <ul className="space-y-2">
+            {appPasswords.map((p) => (
+              <li
+                key={p.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-arkive-border bg-arkive-panel/40 px-3 py-2 text-sm"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium">{p.name}</div>
+                  <div className="text-xs text-arkive-muted">
+                    ark_{p.prefix}_… · created {new Date(p.created_at).toLocaleString()}
+                    {p.last_used_at
+                      ? ` · last used ${new Date(p.last_used_at).toLocaleString()}`
+                      : ' · never used'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void revokeAppPassword(p.id, p.name)}
+                  className="cursor-pointer rounded-md px-2 py-1 text-xs text-red-300 hover:bg-arkive-panel"
+                >
+                  Revoke
+                </button>
+              </li>
+            ))}
+            {appPasswords.length === 0 && (
+              <li className="text-sm text-arkive-muted">No app passwords yet.</li>
+            )}
+          </ul>
+        </div>
       </section>
       {confirmDialog}
     </motion.div>

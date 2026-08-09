@@ -63,6 +63,8 @@ export type PublicLink = {
   token: string;
   has_password: boolean;
   expires_at?: string | null;
+  max_downloads?: number | null;
+  download_count: number;
   url?: string;
   created_at: string;
 };
@@ -145,6 +147,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
+  forgotPassword: (email: string) =>
+    request<{ status: string; message: string }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (token: string, password: string) =>
+    request<{ status: string }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
   register: (email: string, password: string, display_name: string) =>
     request<RegisterResult>('/api/auth/register', {
       method: 'POST',
@@ -175,6 +187,13 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ default_workspace_quota_bytes }),
     }),
+  trashSettings: () =>
+    request<{ trash_retention_days: number }>('/api/admin/settings/trash'),
+  putTrashSettings: (trash_retention_days: number) =>
+    request<{ status: string; trash_retention_days: number }>('/api/admin/settings/trash', {
+      method: 'PUT',
+      body: JSON.stringify({ trash_retention_days }),
+    }),
   reindexSearch: () =>
     request<{ status: string; indexed: number }>('/api/admin/search/reindex', { method: 'POST' }),
   logout: () => request<{ status: string }>('/api/auth/logout', { method: 'POST' }),
@@ -183,6 +202,30 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ display_name, password: password || undefined }),
     }),
+  listAppPasswords: () =>
+    request<
+      {
+        id: string;
+        name: string;
+        prefix: string;
+        created_at: string;
+        last_used_at?: string | null;
+      }[]
+    >('/api/me/app-passwords'),
+  createAppPassword: (name: string) =>
+    request<{
+      id: string;
+      name: string;
+      prefix: string;
+      secret: string;
+      created_at: string;
+      last_used_at?: string | null;
+    }>('/api/me/app-passwords', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  revokeAppPassword: (id: string) =>
+    request<{ status: string }>(`/api/me/app-passwords/${id}`, { method: 'DELETE' }),
   workspaces: () => request<Workspace[]>('/api/workspaces'),
   createTeam: (name: string) =>
     request<Workspace>('/api/workspaces', {
@@ -270,6 +313,12 @@ export const api = {
       xhr.send(file);
     });
   },
+  putNodeContent: (nodeId: string, body: string, mime?: string | null) =>
+    request<Node>(`/api/nodes/${nodeId}/content`, {
+      method: 'PUT',
+      headers: { 'Content-Type': mime || 'text/plain; charset=utf-8' },
+      body,
+    }),
   rename: (nodeId: string, name: string, parentId?: string | null) =>
     request<Node>(`/api/nodes/${nodeId}`, {
       method: 'PATCH',
@@ -407,7 +456,10 @@ export const api = {
     request<{ status: string }>(`/api/shares/${shareId}`, { method: 'DELETE' }),
   sharedWithMe: () => request<Node[]>('/api/shared'),
   links: (nodeId: string) => request<PublicLink[]>(`/api/nodes/${nodeId}/links`),
-  createLink: (nodeId: string, body: { password?: string; expires_at?: string | null }) =>
+  createLink: (
+    nodeId: string,
+    body: { password?: string; expires_at?: string | null; max_downloads?: number | null },
+  ) =>
     request<PublicLink>(`/api/nodes/${nodeId}/links`, {
       method: 'POST',
       body: JSON.stringify(body),
@@ -428,11 +480,75 @@ export const api = {
     >(`/api/nodes/${nodeId}/activity`),
   publicMeta: async (token: string, password?: string) => {
     const res = await fetch(`/api/public/${token}`, {
+      credentials: 'include',
       headers: password ? { 'X-Link-Password': password } : {},
     });
     const data = await res.json();
     if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { status: res.status, data });
     return data as { node_id: string; name: string; kind: string; mime?: string };
+  },
+  publicNodes: async (token: string, parentId?: string | null, password?: string) => {
+    const q = parentId ? `?parent_id=${encodeURIComponent(parentId)}` : '';
+    const res = await fetch(`/api/public/${token}/nodes${q}`, {
+      credentials: 'include',
+      headers: password ? { 'X-Link-Password': password } : {},
+    });
+    const data = await res.json();
+    if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { status: res.status, data });
+    return data as {
+      root: { id: string; name: string; kind: string };
+      nodes: Node[];
+      breadcrumbs: Breadcrumb[];
+    };
+  },
+  publicDownloadUrl: (token: string, nodeId?: string) => {
+    const q = nodeId ? `?node_id=${encodeURIComponent(nodeId)}` : '';
+    return `/api/public/${token}/download${q}`;
+  },
+  publicDownload: async (token: string, nodeId?: string, password?: string) => {
+    const res = await fetch(api.publicDownloadUrl(token, nodeId), {
+      credentials: 'include',
+      headers: password ? { 'X-Link-Password': password } : {},
+    });
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const data = (await res.json()) as { error?: string };
+        if (data.error) message = data.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(message);
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = /filename="([^"]+)"/.exec(cd);
+    return { blob, filename: match?.[1] || 'download' };
+  },
+  publicDownloadZip: async (token: string, nodeIds?: string[], password?: string) => {
+    const res = await fetch(`/api/public/${token}/download-zip`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(password ? { 'X-Link-Password': password } : {}),
+      },
+      body: JSON.stringify({ node_ids: nodeIds || [] }),
+    });
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const data = (await res.json()) as { error?: string };
+        if (data.error) message = data.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(message);
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = /filename="([^"]+)"/.exec(cd);
+    return { blob, filename: match?.[1] || 'arkive.zip' };
   },
   backends: () => request<StorageBackend[]>('/api/admin/backends'),
   createBackend: (body: {

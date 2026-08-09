@@ -44,3 +44,43 @@ func TestIsTextPreview(t *testing.T) {
 		t.Fatal("pdf is not text preview")
 	}
 }
+
+func TestLinkUnlockCookieName(t *testing.T) {
+	name := linkUnlockCookieName("abc123")
+	if name != "arkive_pl_abc123" {
+		t.Fatalf("got %q", name)
+	}
+}
+
+func TestParseAppPasswordPrefix(t *testing.T) {
+	pre, ok := parseAppPasswordPrefix("ark_abcd1234_deadbeef")
+	if !ok || pre != "abcd1234" {
+		t.Fatalf("got %q ok=%v", pre, ok)
+	}
+	if _, ok := parseAppPasswordPrefix("password123"); ok {
+		t.Fatal("account password should not parse as app password")
+	}
+	if _, ok := parseAppPasswordPrefix("ark_short_xx"); ok {
+		t.Fatal("short prefix should fail")
+	}
+}
+
+func TestTextEditGate(t *testing.T) {
+	cases := []struct {
+		ct, name string
+		want     bool
+	}{
+		{"text/plain", "notes.txt", true},
+		{"application/json", "data.json", true},
+		{"application/octet-stream", "script.py", true},
+		{"image/png", "pic.png", false},
+		{"application/pdf", "doc.pdf", false},
+		{"application/zip", "a.zip", false},
+	}
+	for _, tc := range cases {
+		got := isTextPreview(tc.ct, tc.name)
+		if got != tc.want {
+			t.Fatalf("isTextPreview(%q, %q)=%v want %v", tc.ct, tc.name, got, tc.want)
+		}
+	}
+}

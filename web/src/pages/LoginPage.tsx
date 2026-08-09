@@ -8,7 +8,7 @@ import { useAuth } from '../lib/auth';
 export function LoginPage() {
   const { user, setUser, loading } = useAuth();
   const [params] = useSearchParams();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -23,6 +23,10 @@ export function LoginPage() {
     if (err === 'pending') setError('Your account is pending admin approval.');
     else if (err === 'rejected') setError('Your account was rejected by an admin.');
     else if (err) setError(`SSO sign-in failed (${err})`);
+    if (params.get('reset') === 'ok') {
+      setInfo('Password updated. Sign in with your new password.');
+      setMode('login');
+    }
   }, [params]);
 
   if (!loading && user) return <Navigate to="/" replace />;
@@ -33,6 +37,11 @@ export function LoginPage() {
     setInfo('');
     setBusy(true);
     try {
+      if (mode === 'forgot') {
+        const res = await api.forgotPassword(email);
+        setInfo(res.message || 'If an account exists, a reset link will be sent when mail is configured.');
+        return;
+      }
       if (mode === 'login') {
         setUser(await api.login(email, password));
         return;
@@ -95,22 +104,37 @@ export function LoginPage() {
           onSubmit={onSubmit}
           className="rounded-2xl border border-arkive-border bg-arkive-surface/90 p-6 shadow-[0_0_0_1px_rgba(255,85,0,0.04)] backdrop-blur"
         >
-          <div className="mb-5 flex gap-2 rounded-lg bg-arkive-panel p-1">
-            {(['login', 'register'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium capitalize transition ${
-                  mode === m
-                    ? 'bg-gradient-to-r from-arkive-orange to-arkive-amber text-black'
-                    : 'text-arkive-muted hover:text-arkive-text'
-                }`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
+          {mode !== 'forgot' && (
+            <div className="mb-5 flex gap-2 rounded-lg bg-arkive-panel p-1">
+              {(['login', 'register'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setMode(m);
+                    setError('');
+                    setInfo('');
+                  }}
+                  className={`flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium capitalize transition ${
+                    mode === m
+                      ? 'bg-gradient-to-r from-arkive-orange to-arkive-amber text-black'
+                      : 'text-arkive-muted hover:text-arkive-text'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {mode === 'forgot' && (
+            <div className="mb-5">
+              <h2 className="font-display text-lg font-semibold">Forgot password</h2>
+              <p className="mt-1 text-sm text-arkive-muted">
+                Enter your email and we’ll send a reset link if SMTP is configured on this instance.
+              </p>
+            </div>
+          )}
 
           {mode === 'register' && (
             <label className="mb-3 block text-sm">
@@ -133,17 +157,20 @@ export function LoginPage() {
               className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2.5 outline-none ring-arkive-amber/40 focus:ring-2"
             />
           </label>
-          <label className="mb-5 block text-sm">
-            <span className="mb-1.5 block text-arkive-muted">Password</span>
-            <input
-              required
-              type="password"
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2.5 outline-none ring-arkive-amber/40 focus:ring-2"
-            />
-          </label>
+          {mode !== 'forgot' && (
+            <label className="mb-5 block text-sm">
+              <span className="mb-1.5 block text-arkive-muted">Password</span>
+              <input
+                required
+                type="password"
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2.5 outline-none ring-arkive-amber/40 focus:ring-2"
+              />
+            </label>
+          )}
+          {mode === 'forgot' && <div className="mb-5" />}
 
           {error && (
             <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
@@ -159,12 +186,45 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-lg bg-gradient-to-r from-arkive-orange via-arkive-amber to-arkive-glow px-4 py-2.5 font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+            className="w-full cursor-pointer rounded-lg bg-gradient-to-r from-arkive-orange via-arkive-amber to-arkive-glow px-4 py-2.5 font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
           >
-            {busy ? 'Working…' : mode === 'login' ? 'Enter vault' : 'Create account'}
+            {busy
+              ? 'Working…'
+              : mode === 'login'
+                ? 'Enter vault'
+                : mode === 'forgot'
+                  ? 'Send reset link'
+                  : 'Create account'}
           </button>
 
-          {oidc?.enabled && (
+          {mode === 'login' && (
+            <button
+              type="button"
+              onClick={() => {
+                setMode('forgot');
+                setError('');
+                setInfo('');
+              }}
+              className="mt-3 w-full cursor-pointer text-center text-sm text-arkive-muted hover:text-arkive-amber"
+            >
+              Forgot password?
+            </button>
+          )}
+          {mode === 'forgot' && (
+            <button
+              type="button"
+              onClick={() => {
+                setMode('login');
+                setError('');
+                setInfo('');
+              }}
+              className="mt-3 w-full cursor-pointer text-center text-sm text-arkive-muted hover:text-arkive-amber"
+            >
+              Back to sign in
+            </button>
+          )}
+
+          {oidc?.enabled && mode !== 'forgot' && (
             <>
               <div className="my-4 flex items-center gap-3 text-xs text-arkive-muted">
                 <div className="h-px flex-1 bg-arkive-border" />

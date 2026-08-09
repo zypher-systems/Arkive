@@ -183,7 +183,7 @@ Compose named volumes hold durable state:
 | `minio_data` | File blobs (default S3 backend) |
 | NFS / local mounts | Whatever paths you assigned as NFS backends |
 
-Back up Postgres and object storage together for a consistent restore. Rotate `ARKIVE_SESSION_SECRET` and `ARKIVE_SECRETS_KEY` for production (changing the secrets key invalidates encrypted S3 credentials stored in the DB — re-enter them after rotation). Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP).
+Back up Postgres and object storage together for a consistent restore. Rotate `ARKIVE_SESSION_SECRET` and `ARKIVE_SECRETS_KEY` for production (changing the secrets key invalidates encrypted S3 credentials stored in the DB — re-enter them after rotation). Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP). Soft-deleted trash is auto-purged after the Admin **trash retention** window (default 30 days; `0` disables).
 
 ## Out of scope (for now)
 

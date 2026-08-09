@@ -31,12 +31,32 @@ func (h *WebDAVHandler) BasicLookup() middleware.BasicAuthLookup {
 			SELECT id, email, display_name, is_instance_admin, status, created_at, password_hash
 			FROM users WHERE email = $1
 		`, email).Scan(&user.ID, &user.Email, &user.DisplayName, &user.IsInstanceAdmin, &user.Status, &user.CreatedAt, &hash)
-		if err != nil || hash == nil || !auth.CheckPassword(password, *hash) {
+		if err != nil {
 			return nil, err
 		}
 		if user.Status != "active" {
 			return nil, pgx.ErrNoRows
 		}
+		// Prefer account password, then app password (ark_<prefix>_<secret>).
+		if hash != nil && auth.CheckPassword(password, *hash) {
+			return &user, nil
+		}
+		prefix, ok := parseAppPasswordPrefix(password)
+		if !ok {
+			return nil, pgx.ErrNoRows
+		}
+		var appID uuid.UUID
+		var secretHash string
+		err = h.App.DB.QueryRow(r.Context(), `
+			SELECT id, secret_hash FROM app_passwords
+			WHERE user_id = $1 AND prefix = $2 AND revoked_at IS NULL
+		`, user.ID, prefix).Scan(&appID, &secretHash)
+		if err != nil || !auth.CheckPassword(password, secretHash) {
+			return nil, pgx.ErrNoRows
+		}
+		_, _ = h.App.DB.Exec(r.Context(), `
+			UPDATE app_passwords SET last_used_at = now() WHERE id = $1
+		`, appID)
 		return &user, nil
 	}
 }

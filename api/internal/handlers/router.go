@@ -38,7 +38,9 @@ func NewRouter(a *app.App) http.Handler {
 	})
 
 	r.Get("/api/public/{token}", publicH.Meta)
+	r.Get("/api/public/{token}/nodes", publicH.ListNodes)
 	r.Get("/api/public/{token}/download", publicH.Download)
+	r.Post("/api/public/{token}/download-zip", publicH.DownloadZip)
 	r.Get("/api/storage/google/enabled", gdriveH.Enabled)
 	r.Get("/api/auth/google/drive/callback", gdriveH.Callback)
 
@@ -47,6 +49,8 @@ func NewRouter(a *app.App) http.Handler {
 	r.Route("/api/auth", func(r chi.Router) {
 		r.With(middleware.RateLimit(authLimit)).Post("/register", authH.Register)
 		r.With(middleware.RateLimit(authLimit)).Post("/login", authH.Login)
+		r.With(middleware.RateLimit(authLimit)).Post("/forgot-password", authH.ForgotPassword)
+		r.With(middleware.RateLimit(authLimit)).Post("/reset-password", authH.ResetPassword)
 		r.Get("/oidc/enabled", oidcH.Enabled)
 		r.Get("/oidc/start", oidcH.Start)
 		r.Get("/oidc/callback", oidcH.Callback)
@@ -60,6 +64,10 @@ func NewRouter(a *app.App) http.Handler {
 
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(authH.SessionLookup()))
+
+		r.Get("/api/me/app-passwords", authH.ListAppPasswords)
+		r.Post("/api/me/app-passwords", authH.CreateAppPassword)
+		r.Delete("/api/me/app-passwords/{id}", authH.RevokeAppPassword)
 
 		r.Get("/api/workspaces", wsH.List)
 		r.Post("/api/workspaces", wsH.CreateTeam)
@@ -92,6 +100,7 @@ func NewRouter(a *app.App) http.Handler {
 		r.Post("/api/workspaces/{workspaceID}/download-zip", fileH.DownloadZip)
 		r.Get("/api/nodes/{nodeID}/download", fileH.Download)
 		r.Get("/api/nodes/{nodeID}/content", fileH.Content)
+		r.Put("/api/nodes/{nodeID}/content", fileH.PutContent)
 		r.Get("/api/nodes/{nodeID}/thumb", fileH.Thumb)
 		r.Patch("/api/nodes/{nodeID}", fileH.RenameOrMove)
 		r.Delete("/api/nodes/{nodeID}", fileH.Delete)
@@ -134,6 +143,8 @@ func NewRouter(a *app.App) http.Handler {
 			r.Put("/api/admin/settings/smtp", settingsH.PutSMTP)
 			r.Get("/api/admin/settings/quota", settingsH.GetQuotaDefaults)
 			r.Put("/api/admin/settings/quota", settingsH.PutQuotaDefaults)
+			r.Get("/api/admin/settings/trash", settingsH.GetTrashRetention)
+			r.Put("/api/admin/settings/trash", settingsH.PutTrashRetention)
 			r.Post("/api/admin/search/reindex", settingsH.ReindexSearch)
 		})
 	})

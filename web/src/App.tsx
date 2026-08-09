@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './lib/auth';
 import { LoginPage } from './pages/LoginPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AppShell } from './pages/AppShell';
 import { BrowserPage } from './pages/BrowserPage';
 import { TeamsPage } from './pages/TeamsPage';
@@ -25,6 +26,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/reset" element={<ResetPasswordPage />} />
       <Route path="/s/:token" element={<PublicSharePage />} />
       <Route
         path="/"

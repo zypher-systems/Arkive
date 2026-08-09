@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent, DragEvent } from 'react';
+import type { MouseEvent as ReactMouseEvent, DragEvent, KeyboardEvent } from 'react';
 import { formatBytes, isPreviewable, type Node } from '../../lib/api';
 import { fileTypeLabel } from './types';
 import { FileThumb } from './FileThumb';
@@ -27,14 +27,21 @@ function dropClass(node: Node, dropTargetId: string | null) {
     : '';
 }
 
+function rowOpenKey(e: KeyboardEvent, node: Node, open: (n: Node) => void) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    open(node);
+  }
+}
+
 function RowActions({ node, h }: { node: Node; h: FileViewHandlers }) {
   return (
-    <div className="flex gap-1 text-xs">
+    <div data-no-row-open className="flex gap-1 text-xs" onMouseDown={(e) => e.stopPropagation()}>
       {node.kind === 'file' && isPreviewable(node) && (
         <button
           type="button"
           onClick={() => h.onPreview(node)}
-          className="rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
+          className="cursor-pointer rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
         >
           Preview
         </button>
@@ -43,7 +50,7 @@ function RowActions({ node, h }: { node: Node; h: FileViewHandlers }) {
         <button
           type="button"
           onClick={() => h.onHistory(node)}
-          className="rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
+          className="cursor-pointer rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
         >
           History
         </button>
@@ -51,14 +58,14 @@ function RowActions({ node, h }: { node: Node; h: FileViewHandlers }) {
       <button
         type="button"
         onClick={() => h.onShare(node)}
-        className="rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
+        className="cursor-pointer rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
       >
         Share
       </button>
       <button
         type="button"
         onClick={() => h.onRename(node)}
-        className="rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
+        className="cursor-pointer rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
       >
         Rename
       </button>
@@ -69,12 +76,16 @@ function RowActions({ node, h }: { node: Node; h: FileViewHandlers }) {
           e.stopPropagation();
           h.onDelete(node);
         }}
-        className="rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-red-300"
+        className="cursor-pointer rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-red-300"
       >
         Delete
       </button>
     </div>
   );
+}
+
+function isRowOpenTarget(target: EventTarget | null) {
+  return !(target instanceof Element && target.closest('[data-no-row-open]'));
 }
 
 export function FileListView({
@@ -99,32 +110,37 @@ export function FileListView({
           onDragLeave={() => h.onDragLeaveFolder(node)}
           onDrop={(e) => h.onDropOnFolder(e, node)}
           onContextMenu={(e) => h.onContextMenu(e, node)}
-          className={`flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-arkive-panel/40 ${
+          onClick={(e) => {
+            if (isRowOpenTarget(e.target)) h.onOpen(node);
+          }}
+          onKeyDown={(e) => rowOpenKey(e, node, h.onOpen)}
+          tabIndex={0}
+          className={`flex cursor-pointer select-none flex-wrap items-center gap-3 px-4 py-3 hover:bg-arkive-panel/40 ${
             h.selected.has(node.id) ? 'bg-arkive-amber/5' : ''
           } ${dropClass(node, h.dropTargetId)}`}
         >
           {!results && (
             <input
+              data-no-row-open
               type="checkbox"
               checked={h.selected.has(node.id)}
               onChange={() => undefined}
               onClick={(e) => h.onToggleSelect(node.id, e)}
-              className="h-4 w-4 accent-arkive-amber"
+              onMouseDown={(e) => e.stopPropagation()}
+              className="h-4 w-4 cursor-pointer accent-arkive-amber"
             />
           )}
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-3 text-left"
-            onClick={() => h.onOpen(node)}
-          >
-            <FileThumb node={node} size="sm" />
+          <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
+            <span data-drag-thumb className="shrink-0">
+              <FileThumb node={node} size="sm" />
+            </span>
             <span className="min-w-0">
               <span className="block truncate font-medium">{node.name}</span>
               <span className="text-xs text-arkive-muted">
                 {node.kind === 'file' ? formatBytes(node.size) : 'Folder'}
               </span>
             </span>
-          </button>
+          </div>
           <RowActions node={node} h={h} />
         </li>
       ))}
@@ -171,30 +187,31 @@ export function FileDetailsView({
               onDragLeave={() => h.onDragLeaveFolder(node)}
               onDrop={(e) => h.onDropOnFolder(e, node)}
               onContextMenu={(e) => h.onContextMenu(e, node)}
-              className={`hover:bg-arkive-panel/40 ${
+              onClick={(e) => {
+                if (isRowOpenTarget(e.target)) h.onOpen(node);
+              }}
+              className={`cursor-pointer select-none hover:bg-arkive-panel/40 ${
                 h.selected.has(node.id) ? 'bg-arkive-amber/5' : ''
               } ${dropClass(node, h.dropTargetId)}`}
             >
               {!results && (
-                <td className="px-3 py-2">
+                <td className="px-3 py-2" data-no-row-open onMouseDown={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     checked={h.selected.has(node.id)}
                     onChange={() => undefined}
                     onClick={(e) => h.onToggleSelect(node.id, e)}
-                    className="h-4 w-4 accent-arkive-amber"
+                    className="h-4 w-4 cursor-pointer accent-arkive-amber"
                   />
                 </td>
               )}
               <td className="px-3 py-2">
-                <button
-                  type="button"
-                  className="flex min-w-0 items-center gap-2 text-left"
-                  onClick={() => h.onOpen(node)}
-                >
-                  <FileThumb node={node} size="sm" />
+                <div className="flex min-w-0 items-center gap-2 text-left">
+                  <span data-drag-thumb className="shrink-0">
+                    <FileThumb node={node} size="sm" />
+                  </span>
                   <span className="truncate font-medium">{node.name}</span>
-                </button>
+                </div>
               </td>
               <td className="hidden px-3 py-2 text-arkive-muted sm:table-cell">
                 {node.kind === 'file' ? formatBytes(node.size) : '—'}
@@ -249,32 +266,38 @@ export function FileTilesView({
             onDragLeave={() => h.onDragLeaveFolder(node)}
             onDrop={(e) => h.onDropOnFolder(e, node)}
             onContextMenu={(e) => h.onContextMenu(e, node)}
-            className={`group relative overflow-hidden rounded-xl border border-arkive-border bg-arkive-surface/70 transition hover:border-arkive-amber/40 ${
+            onClick={(e) => {
+              if (isRowOpenTarget(e.target)) h.onOpen(node);
+            }}
+            onKeyDown={(e) => rowOpenKey(e, node, h.onOpen)}
+            tabIndex={0}
+            className={`group relative cursor-pointer select-none overflow-hidden rounded-xl border border-arkive-border bg-arkive-surface/70 transition hover:border-arkive-amber/40 ${
               h.selected.has(node.id) ? 'border-arkive-amber/50 bg-arkive-amber/5' : ''
             } ${dropClass(node, h.dropTargetId)}`}
           >
             {!results && (
               <input
+                data-no-row-open
                 type="checkbox"
                 checked={h.selected.has(node.id)}
                 onChange={() => undefined}
                 onClick={(e) => h.onToggleSelect(node.id, e)}
-                className="absolute left-2 top-2 z-10 h-4 w-4 accent-arkive-amber"
+                onMouseDown={(e) => e.stopPropagation()}
+                className="absolute left-2 top-2 z-10 h-4 w-4 cursor-pointer accent-arkive-amber"
               />
             )}
-            <button
-              type="button"
-              className="flex w-full flex-col text-left"
-              onClick={() => h.onOpen(node)}
-            >
-              <div className="aspect-square overflow-hidden bg-arkive-panel/40">
+            <div className="flex w-full flex-col text-left">
+              <div
+                data-drag-thumb
+                className="aspect-square overflow-hidden bg-arkive-panel/40"
+              >
                 <FileThumb node={node} size="lg" />
               </div>
               <div className="truncate px-2 py-2 text-sm font-medium">{node.name}</div>
               <div className="px-2 pb-2 text-xs text-arkive-muted">
                 {node.kind === 'file' ? formatBytes(node.size) : 'Folder'}
               </div>
-            </button>
+            </div>
           </li>
         ))}
       </ul>

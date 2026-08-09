@@ -50,13 +50,15 @@ type Node struct {
 }
 
 type PublicLink struct {
-	ID        uuid.UUID  `json:"id"`
-	NodeID    uuid.UUID  `json:"node_id"`
-	Token     string     `json:"token"`
-	HasPass   bool       `json:"has_password"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	URL       string     `json:"url,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID            uuid.UUID  `json:"id"`
+	NodeID        uuid.UUID  `json:"node_id"`
+	Token         string     `json:"token"`
+	HasPass       bool       `json:"has_password"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+	MaxDownloads  *int       `json:"max_downloads,omitempty"`
+	DownloadCount int        `json:"download_count"`
+	URL           string     `json:"url,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 type Share struct {

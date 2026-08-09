@@ -166,6 +166,143 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	httpjson.Write(w, http.StatusOK, user)
 }
 
+type forgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+type resetPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req forgotPasswordRequest
+	if err := httpjson.Decode(r, &req); err != nil {
+		httpjson.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	// Always the same response — no user enumeration.
+	resp := map[string]string{
+		"status":  "ok",
+		"message": "If an account exists for that email, a reset link will be sent when mail is configured.",
+	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if email == "" {
+		httpjson.Write(w, http.StatusOK, resp)
+		return
+	}
+
+	var userID uuid.UUID
+	var display string
+	var status string
+	err := h.App.DB.QueryRow(r.Context(), `
+		SELECT id, display_name, status FROM users WHERE email = $1
+	`, email).Scan(&userID, &display, &status)
+	if err != nil || status != "active" {
+		httpjson.Write(w, http.StatusOK, resp)
+		return
+	}
+
+	cfg := h.App.ResolveSMTP(r.Context())
+	if !cfg.Enabled() {
+		httpjson.Write(w, http.StatusOK, resp)
+		return
+	}
+
+	plain := randomToken(32)
+	hash := auth.HashToken(plain)
+	expires := time.Now().Add(time.Hour)
+	// Invalidate prior unused tokens for this user.
+	_, _ = h.App.DB.Exec(r.Context(), `
+		UPDATE password_reset_tokens SET used_at = now()
+		WHERE user_id = $1 AND used_at IS NULL
+	`, userID)
+	_, err = h.App.DB.Exec(r.Context(), `
+		INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)
+	`, userID, hash, expires)
+	if err != nil {
+		if h.App.Logger != nil {
+			h.App.Logger.Warn("password reset token insert failed", "err", err)
+		}
+		httpjson.Write(w, http.StatusOK, resp)
+		return
+	}
+
+	resetURL := strings.TrimRight(h.App.Cfg.PublicURL, "/") + "/reset?token=" + plain
+	if err := h.App.SendPasswordResetEmail(r.Context(), email, display, resetURL); err != nil {
+		if h.App.Logger != nil {
+			h.App.Logger.Warn("password reset email failed", "email", email, "err", err)
+		}
+	}
+	httpjson.Write(w, http.StatusOK, resp)
+}
+
+func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req resetPasswordRequest
+	if err := httpjson.Decode(r, &req); err != nil {
+		httpjson.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	token := strings.TrimSpace(req.Token)
+	if token == "" || len(req.Password) < 8 {
+		httpjson.Error(w, http.StatusBadRequest, "token and password (min 8) required")
+		return
+	}
+	hash := auth.HashToken(token)
+	var tokenID, userID uuid.UUID
+	var expires time.Time
+	var usedAt *time.Time
+	err := h.App.DB.QueryRow(r.Context(), `
+		SELECT id, user_id, expires_at, used_at
+		FROM password_reset_tokens
+		WHERE token_hash = $1
+	`, hash).Scan(&tokenID, &userID, &expires, &usedAt)
+	if err != nil || usedAt != nil || !expires.After(time.Now()) {
+		httpjson.Error(w, http.StatusBadRequest, "invalid or expired reset token")
+		return
+	}
+
+	var status string
+	err = h.App.DB.QueryRow(r.Context(), `SELECT status FROM users WHERE id = $1`, userID).Scan(&status)
+	if err != nil || status != "active" {
+		httpjson.Error(w, http.StatusBadRequest, "invalid or expired reset token")
+		return
+	}
+
+	passHash, err := auth.HashPassword(req.Password)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "could not hash password")
+		return
+	}
+	tx, err := h.App.DB.Begin(r.Context())
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	tag, err := tx.Exec(r.Context(), `
+		UPDATE password_reset_tokens SET used_at = now()
+		WHERE id = $1 AND used_at IS NULL AND expires_at > now()
+	`, tokenID)
+	if err != nil || tag.RowsAffected() == 0 {
+		httpjson.Error(w, http.StatusBadRequest, "invalid or expired reset token")
+		return
+	}
+	_, err = tx.Exec(r.Context(), `UPDATE users SET password_hash = $1 WHERE id = $2`, passHash, userID)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "could not update password")
+		return
+	}
+	_, _ = tx.Exec(r.Context(), `DELETE FROM sessions WHERE user_id = $1`, userID)
+	if err := tx.Commit(r.Context()); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "could not complete reset")
+		return
+	}
+	httpjson.Write(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie("arkive_session"); err == nil && c.Value != "" {
 		_, _ = h.App.DB.Exec(r.Context(), `DELETE FROM sessions WHERE token_hash = $1`, auth.HashToken(c.Value))

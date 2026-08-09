@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -155,4 +156,17 @@ func (a *App) SendSignupStatusEmail(ctx context.Context, email, displayName, sta
 	if err := mail.Send(cfg, email, subject, body); err != nil && a.Logger != nil {
 		a.Logger.Warn("signup email failed", "email", email, "status", status, "err", err)
 	}
+}
+
+func (a *App) SendPasswordResetEmail(ctx context.Context, email, displayName, resetURL string) error {
+	cfg := a.ResolveSMTP(ctx)
+	if !cfg.Enabled() {
+		return fmt.Errorf("smtp not configured")
+	}
+	subject := "Reset your Arkive password"
+	body := "Hi " + displayName + ",\n\n" +
+		"We received a request to reset your Arkive password. Open this link within one hour:\n\n" +
+		resetURL + "\n\n" +
+		"If you did not request this, you can ignore this email.\n\n— Arkive\n"
+	return mail.Send(cfg, email, subject, body)
 }

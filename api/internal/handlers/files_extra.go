@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"archive/zip"
+	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +18,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
+
+const maxTextEditBytes = 2 * 1024 * 1024
 
 type zipRequest struct {
 	NodeIDs []uuid.UUID `json:"node_ids"`
@@ -240,6 +244,114 @@ func (h *FileHandler) Content(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", strconv.FormatInt(total, 10))
 	}
 	_, _ = io.Copy(w, rc)
+}
+
+func (h *FileHandler) PutContent(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	nodeID, err := uuid.Parse(chi.URLParam(r, "nodeID"))
+	if err != nil {
+		httpjson.Error(w, http.StatusBadRequest, "invalid node id")
+		return
+	}
+	if _, err := h.App.RequireNodeAccess(r.Context(), nodeID, user.ID, true); err != nil {
+		status, msg := app.WriteHTTPError(err)
+		httpjson.Error(w, status, msg)
+		return
+	}
+
+	var name, kind string
+	var workspaceID uuid.UUID
+	var storageKey *string
+	var mime *string
+	var existingSize int64
+	err = h.App.DB.QueryRow(r.Context(), `
+		SELECT workspace_id, name, kind, storage_key, mime, size FROM nodes WHERE id = $1 AND deleted_at IS NULL
+	`, nodeID).Scan(&workspaceID, &name, &kind, &storageKey, &mime, &existingSize)
+	if err != nil {
+		httpjson.Error(w, http.StatusNotFound, "not found")
+		return
+	}
+	if kind != "file" || storageKey == nil {
+		httpjson.Error(w, http.StatusBadRequest, "not a file")
+		return
+	}
+
+	ct := ""
+	if mime != nil && *mime != "" {
+		ct = *mime
+	}
+	if !isTextPreview(ct, name) {
+		httpjson.Error(w, http.StatusUnsupportedMediaType, "only text files can be edited")
+		return
+	}
+
+	max := int64(maxTextEditBytes)
+	if h.App.Cfg.MaxUploadBytes > 0 && h.App.Cfg.MaxUploadBytes < max {
+		max = h.App.Cfg.MaxUploadBytes
+	}
+	if r.ContentLength > max {
+		httpjson.Error(w, http.StatusRequestEntityTooLarge, "payload too large")
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, max+1))
+	if err != nil {
+		if isUploadTooLarge(err) {
+			httpjson.Error(w, http.StatusRequestEntityTooLarge, "payload too large")
+			return
+		}
+		httpjson.Error(w, http.StatusBadRequest, "could not read body")
+		return
+	}
+	if int64(len(body)) > max {
+		httpjson.Error(w, http.StatusRequestEntityTooLarge, "payload too large")
+		return
+	}
+	incoming := int64(len(body))
+
+	contentType := r.Header.Get("Content-Type")
+	if contentType == "" || contentType == "application/octet-stream" {
+		if mime != nil && *mime != "" {
+			contentType = *mime
+		} else {
+			contentType = "text/plain; charset=utf-8"
+		}
+	}
+
+	store, err := h.App.StoreForWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "storage unavailable")
+		return
+	}
+	if err := h.App.EnsureQuota(r.Context(), workspaceID, incoming, existingSize); err != nil {
+		httpjson.Error(w, http.StatusRequestEntityTooLarge, "storage quota exceeded")
+		return
+	}
+	_ = h.App.ArchiveCurrentVersion(r.Context(), nodeID, user.ID)
+	newKey := app.StorageKey(workspaceID, uuid.New())
+	if err := store.Put(r.Context(), newKey, bytes.NewReader(body), incoming, contentType); err != nil {
+		if isUploadTooLarge(err) {
+			httpjson.Error(w, http.StatusRequestEntityTooLarge, "payload too large")
+			return
+		}
+		httpjson.Error(w, http.StatusInternalServerError, "upload failed")
+		return
+	}
+
+	var n models.Node
+	err = h.App.DB.QueryRow(r.Context(), `
+		UPDATE nodes SET storage_key = $1, size = $2, mime = $3, updated_at = now()
+		WHERE id = $4
+		RETURNING id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
+	`, newKey, incoming, contentType, nodeID).Scan(
+		&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt,
+	)
+	if err != nil {
+		_ = store.Delete(r.Context(), newKey)
+		httpjson.Error(w, http.StatusInternalServerError, "could not update file")
+		return
+	}
+	go h.App.IndexNodeText(context.Background(), workspaceID, n.ID, contentType, newKey)
+	httpjson.Write(w, http.StatusOK, n)
 }
 
 func (h *FileHandler) Search(w http.ResponseWriter, r *http.Request) {

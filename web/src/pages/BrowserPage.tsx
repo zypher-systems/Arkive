@@ -42,6 +42,88 @@ import type { ContextMenuState, FileViewMode } from '../components/files/types';
 const VIEW_KEY = 'arkive.files.viewMode';
 const DRAG_MIME = 'application/x-arkive-nodes';
 
+/** Compact translucent icon+name chip for HTML5 drag ghosts. */
+function setCompactDragGhost(e: DragEvent, node: Node, count: number) {
+  const row = e.currentTarget as HTMLElement | null;
+  if (!row) return;
+
+  document.querySelectorAll('[data-arkive-drag-ghost]').forEach((n) => n.remove());
+
+  const ghost = document.createElement('div');
+  ghost.setAttribute('data-arkive-drag-ghost', '1');
+  Object.assign(ghost.style, {
+    position: 'fixed',
+    top: '-9999px',
+    left: '0',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '8px 14px 8px 8px',
+    maxWidth: '260px',
+    borderRadius: '12px',
+    border: '1px solid rgba(245, 158, 11, 0.4)',
+    background: 'rgba(22, 27, 34, 0.55)',
+    boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
+    color: 'rgba(232, 234, 237, 0.95)',
+    fontSize: '13px',
+    fontWeight: '600',
+    lineHeight: '1.2',
+    opacity: '0.7',
+    pointerEvents: 'none',
+    zIndex: '99999',
+    backdropFilter: 'blur(6px)',
+  } as Partial<CSSStyleDeclaration>);
+
+  const thumbHost = row.querySelector('[data-drag-thumb]') as HTMLElement | null;
+  if (thumbHost) {
+    const clone = thumbHost.cloneNode(true) as HTMLElement;
+    Object.assign(clone.style, {
+      flex: '0 0 36px',
+      width: '36px',
+      height: '36px',
+      overflow: 'hidden',
+      borderRadius: '8px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      opacity: '0.9',
+    });
+    clone.querySelectorAll('img, video').forEach((media) => {
+      const el = media as HTMLElement;
+      el.style.width = '36px';
+      el.style.height = '36px';
+      el.style.objectFit = 'cover';
+    });
+    clone.querySelectorAll('svg').forEach((svg) => {
+      svg.setAttribute('width', '28');
+      svg.setAttribute('height', '28');
+      (svg as SVGElement).style.width = '28px';
+      (svg as SVGElement).style.height = '28px';
+    });
+    ghost.appendChild(clone);
+  }
+
+  const label = document.createElement('span');
+  Object.assign(label.style, {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    minWidth: '0',
+  });
+  label.textContent = count > 1 ? `${node.name} (+${count - 1})` : node.name;
+  ghost.appendChild(label);
+
+  document.body.appendChild(ghost);
+  const offsetX = 22;
+  const offsetY = Math.max(12, Math.round(ghost.offsetHeight / 2));
+  try {
+    e.dataTransfer.setDragImage(ghost, offsetX, offsetY);
+  } catch {
+    /* some browsers reject custom drag images */
+  }
+  requestAnimationFrame(() => ghost.remove());
+}
+
 type NavView =
   | { kind: 'workspace'; id: string }
   | { kind: 'shared' }
@@ -71,6 +153,7 @@ export function BrowserPage() {
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [shareNode, setShareNode] = useState<Node | null>(null);
   const [previewNode, setPreviewNode] = useState<Node | null>(null);
+  const [previewStartEditing, setPreviewStartEditing] = useState(false);
   const [historyNode, setHistoryNode] = useState<Node | null>(null);
   const [shared, setShared] = useState<Node[]>([]);
   const [trash, setTrash] = useState<Node[]>([]);
@@ -105,6 +188,7 @@ export function BrowserPage() {
   const [liveItems, setLiveItems] = useState<LiveDriveItem[]>([]);
   const toastTimer = useRef<number | null>(null);
   const dragDepth = useRef(0);
+  const suppressOpenAfterDrag = useRef(false);
 
   const workspaceId =
     view?.kind === 'workspace'
@@ -117,6 +201,14 @@ export function BrowserPage() {
   const personal = workspaces.find((w) => w.type === 'personal');
   const teams = workspaces.filter((w) => w.type === 'team');
   const mounts = workspaces.filter((w) => w.type === 'mount');
+  const activeWorkspace = workspaces.find((w) => w.id === workspaceId);
+  const canWriteFiles =
+    view?.kind === 'shared-folder'
+      ? true
+      : !activeWorkspace?.role ||
+        activeWorkspace.role === 'owner' ||
+        activeWorkspace.role === 'admin' ||
+        activeWorkspace.role === 'member';
 
   const selectWorkspace = useCallback((id: string) => {
     setView({ kind: 'workspace', id });
@@ -405,6 +497,7 @@ export function BrowserPage() {
       if (e.key === 'Escape') {
         setSelected(new Set());
         setPreviewNode(null);
+        setPreviewStartEditing(false);
         setShowMove(false);
         setContextMenu(null);
       }
@@ -476,12 +569,19 @@ export function BrowserPage() {
     });
   }
 
+  function openPreview(node: Node, edit = false) {
+    setPreviewStartEditing(edit);
+    setPreviewNode(node);
+  }
+
   function openNode(node: Node) {
+    // A dragend often synthesizes a click; ignore it so we don't open mid-move.
+    if (suppressOpenAfterDrag.current) return;
     if (results) {
       setParentId(node.parent_id || null);
       setQuery('');
       setResults(null);
-      if (node.kind === 'file' && isPreviewable(node)) setPreviewNode(node);
+      if (node.kind === 'file' && isPreviewable(node)) openPreview(node);
       return;
     }
     if (node.kind === 'folder') {
@@ -490,7 +590,7 @@ export function BrowserPage() {
       setResults(null);
       return;
     }
-    if (isPreviewable(node)) setPreviewNode(node);
+    if (isPreviewable(node)) openPreview(node);
     else window.open(downloadUrl(node.id), '_blank');
   }
 
@@ -524,14 +624,21 @@ export function BrowserPage() {
   }
 
   function onDragStartNode(e: DragEvent, node: Node) {
+    // Avoid setState here — selecting mid-dragstart re-renders and cancels the drag,
+    // which forced a select-then-drag-again workflow.
     const ids = selected.has(node.id) && selected.size > 0 ? [...selected] : [node.id];
     e.dataTransfer.setData(DRAG_MIME, JSON.stringify(ids));
     e.dataTransfer.effectAllowed = 'move';
-    if (!selected.has(node.id)) setSelected(new Set(ids));
+    suppressOpenAfterDrag.current = true;
+    setCompactDragGhost(e, node, ids.length);
   }
 
   function onDragEndNode() {
     setDropTargetId(null);
+    document.querySelectorAll('[data-arkive-drag-ghost]').forEach((n) => n.remove());
+    window.setTimeout(() => {
+      suppressOpenAfterDrag.current = false;
+    }, 0);
   }
 
   function onDragOverFolder(e: DragEvent, folder: Node) {
@@ -619,7 +726,7 @@ export function BrowserPage() {
     dropTargetId,
     onToggleSelect: toggleSelect,
     onOpen: openNode,
-    onPreview: (n) => setPreviewNode(n),
+    onPreview: (n) => openPreview(n),
     onHistory: (n) => setHistoryNode(n),
     onShare: (n) => setShareNode(n),
     onRename: renameNode,
@@ -752,7 +859,7 @@ export function BrowserPage() {
                   parentId: node.id,
                 });
                 setParentId(node.id);
-              } else if (isPreviewable(node)) setPreviewNode(node);
+              } else if (isPreviewable(node)) openPreview(node);
               else window.open(downloadUrl(node.id), '_blank');
             }}
           />
@@ -1030,7 +1137,8 @@ export function BrowserPage() {
         menu={contextMenu}
         onClose={() => setContextMenu(null)}
         onOpen={openNode}
-        onPreview={(n) => setPreviewNode(n)}
+        onPreview={(n) => openPreview(n)}
+        onEdit={(n) => openPreview(n, true)}
         onShare={(n) => setShareNode(n)}
         onHistory={(n) => setHistoryNode(n)}
         onRename={renameNode}
@@ -1051,6 +1159,7 @@ export function BrowserPage() {
         onUpload={() => fileRef.current?.click()}
         canPaste={!!clipboard?.length}
         onPaste={() => void pasteClipboard()}
+        canWrite={canWriteFiles}
       />
 
       {namePrompt && (
@@ -1075,7 +1184,26 @@ export function BrowserPage() {
           onClose={() => setShareNode(null)}
         />
       )}
-      {previewNode && <PreviewModal node={previewNode} onClose={() => setPreviewNode(null)} />}
+      {previewNode && (
+        <PreviewModal
+          node={previewNode}
+          startEditing={previewStartEditing}
+          canWrite={canWriteFiles}
+          onClose={() => {
+            setPreviewNode(null);
+            setPreviewStartEditing(false);
+          }}
+          onSaved={(updated) => {
+            setPreviewNode(updated);
+            setPreviewStartEditing(false);
+            setNodes((prev) =>
+              prev.map((n) => (n.id === updated.id ? { ...n, ...updated } : n)),
+            );
+            void refreshUsage();
+            showToast('File saved');
+          }}
+        />
+      )}
       {historyNode && <VersionsPanel node={historyNode} onClose={() => setHistoryNode(null)} />}
       {showMove && selectedNodes.length > 0 && workspaceId && (
         <MoveDialog

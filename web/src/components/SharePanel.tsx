@@ -17,6 +17,7 @@ export function SharePanel({ nodeId, nodeName, workspaces, onClose }: Props) {
   const [permission, setPermission] = useState<'read' | 'write'>('read');
   const [linkPassword, setLinkPassword] = useState('');
   const [linkExpiry, setLinkExpiry] = useState('');
+  const [linkMaxDownloads, setLinkMaxDownloads] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState('');
@@ -57,12 +58,26 @@ export function SharePanel({ nodeId, nodeName, workspaces, onClose }: Props) {
     setBusy(true);
     setError('');
     try {
-      const body: { password?: string; expires_at?: string | null } = {};
+      const body: {
+        password?: string;
+        expires_at?: string | null;
+        max_downloads?: number | null;
+      } = {};
       if (linkPassword) body.password = linkPassword;
       if (linkExpiry) body.expires_at = new Date(linkExpiry).toISOString();
+      if (linkMaxDownloads.trim()) {
+        const n = Number(linkMaxDownloads);
+        if (!Number.isInteger(n) || n <= 0) {
+          setError('Max downloads must be a positive whole number');
+          setBusy(false);
+          return;
+        }
+        body.max_downloads = n;
+      }
       const link = await api.createLink(nodeId, body);
       setLinkPassword('');
       setLinkExpiry('');
+      setLinkMaxDownloads('');
       await load();
       const url = `${window.location.origin}${link.url}`;
       await navigator.clipboard.writeText(url);
@@ -203,6 +218,17 @@ export function SharePanel({ nodeId, nodeName, workspaces, onClose }: Props) {
               className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2"
             />
           </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-arkive-muted">Max downloads (optional)</span>
+            <input
+              type="number"
+              min={1}
+              value={linkMaxDownloads}
+              onChange={(e) => setLinkMaxDownloads(e.target.value)}
+              placeholder="unlimited"
+              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2"
+            />
+          </label>
           <button
             type="submit"
             disabled={busy}
@@ -226,6 +252,11 @@ export function SharePanel({ nodeId, nodeName, workspaces, onClose }: Props) {
                 <div className="text-arkive-muted">
                   {l.has_password ? 'password' : 'open'}
                   {l.expires_at ? ` · expires ${new Date(l.expires_at).toLocaleString()}` : ''}
+                  {l.max_downloads != null
+                    ? ` · ${l.download_count ?? 0}/${l.max_downloads} downloads`
+                    : l.download_count
+                      ? ` · ${l.download_count} downloads`
+                      : ''}
                   {copied === l.id ? ' · copied' : ''}
                 </div>
               </div>
