@@ -51,9 +51,10 @@ export function AdminPage() {
   const [smtpUser, setSmtpUser] = useState('');
   const [smtpPass, setSmtpPass] = useState('');
   const [smtpFrom, setSmtpFrom] = useState('');
+  const [defaultQuotaGB, setDefaultQuotaGB] = useState('');
 
   async function refresh() {
-    const [b, w, u, g, s] = await Promise.all([
+    const [b, w, u, g, s, q] = await Promise.all([
       api.backends(),
       api.workspaces(),
       api.adminUsers(),
@@ -67,6 +68,7 @@ export function AdminPage() {
         has_password: false,
         source: 'none',
       })),
+      api.quotaSettings().catch(() => ({ default_workspace_quota_bytes: null })),
     ]);
     setBackends(b);
     setWorkspaces(w);
@@ -80,6 +82,11 @@ export function AdminPage() {
     setSmtpPort(s.port || '587');
     setSmtpUser(s.user || '');
     setSmtpFrom(s.from || '');
+    setDefaultQuotaGB(
+      q.default_workspace_quota_bytes
+        ? String(Math.round(q.default_workspace_quota_bytes / (1024 ** 3)))
+        : '',
+    );
   }
 
   useEffect(() => {
@@ -318,6 +325,90 @@ export function AdminPage() {
             Clear
           </button>
         </div>
+      </section>
+
+      <section className="mb-8 rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
+        <h2 className="mb-1 font-display text-lg font-semibold">Quotas &amp; search</h2>
+        <p className="mb-3 text-xs text-arkive-muted">
+          Default workspace quota (GB). Empty = unlimited. Personal workspaces also inherit the
+          owner’s user quota when set.
+        </p>
+        <div className="mb-4 flex flex-wrap items-end gap-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-arkive-muted">Default quota (GB)</span>
+            <input
+              value={defaultQuotaGB}
+              onChange={(e) => setDefaultQuotaGB(e.target.value)}
+              placeholder="unlimited"
+              className="w-40 rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              const gb = Number(defaultQuotaGB);
+              const bytes =
+                defaultQuotaGB.trim() === '' || !Number.isFinite(gb) || gb <= 0
+                  ? null
+                  : Math.round(gb * 1024 ** 3);
+              void api
+                .putQuotaSettings(bytes)
+                .then(() => setMessage('Default quota saved'))
+                .catch((e) => setError(String(e)));
+            }}
+            className="rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-2 text-sm font-semibold text-black"
+          >
+            Save default
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              void api
+                .reindexSearch()
+                .then((r) => setMessage(`Reindexed ${r.indexed} file(s)`))
+                .catch((e) => setError(String(e)))
+            }
+            className="rounded-md border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/40"
+          >
+            Reindex search
+          </button>
+        </div>
+        <ul className="space-y-2 text-sm">
+          {others.slice(0, 12).map((u) => (
+            <li
+              key={u.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-arkive-border/60 px-3 py-2"
+            >
+              <span className="truncate">
+                {u.display_name}{' '}
+                <span className="text-arkive-muted">({u.email})</span>
+              </span>
+              <button
+                type="button"
+                className="text-xs text-arkive-amber hover:underline"
+                onClick={() => {
+                  const raw = window.prompt(
+                    'User quota in GB (empty = unlimited)',
+                    u.quota_bytes ? String(Math.round(u.quota_bytes / 1024 ** 3)) : '',
+                  );
+                  if (raw === null) return;
+                  const gb = Number(raw);
+                  const bytes =
+                    raw.trim() === '' || !Number.isFinite(gb) || gb <= 0
+                      ? null
+                      : Math.round(gb * 1024 ** 3);
+                  void api
+                    .setUserQuota(u.id, bytes)
+                    .then(() => refresh())
+                    .then(() => setMessage('User quota updated'))
+                    .catch((e) => setError(String(e)));
+                }}
+              >
+                Quota{u.quota_bytes ? `: ${Math.round(u.quota_bytes / 1024 ** 3)} GB` : ''}
+              </button>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="mb-8 rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">

@@ -115,6 +115,10 @@ func (a *App) getSetting(ctx context.Context, key string) (string, error) {
 	return value, nil
 }
 
+func (a *App) GetSettingPublic(ctx context.Context, key string) (string, error) {
+	return a.getSetting(ctx, key)
+}
+
 func (a *App) setSetting(ctx context.Context, key, value string) error {
 	_, err := a.DB.Exec(ctx, `
 		INSERT INTO instance_settings (key, value, updated_at)
@@ -122,6 +126,10 @@ func (a *App) setSetting(ctx context.Context, key, value string) error {
 		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
 	`, key, value)
 	return err
+}
+
+func (a *App) PutSetting(ctx context.Context, key, value string) error {
+	return a.setSetting(ctx, key, value)
 }
 
 func (a *App) deleteSetting(ctx context.Context, key string) error {

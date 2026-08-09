@@ -4,6 +4,7 @@ export type User = {
   display_name: string;
   is_instance_admin: boolean;
   status: 'pending' | 'active' | 'rejected';
+  quota_bytes?: number | null;
   created_at: string;
 };
 
@@ -157,6 +158,25 @@ export const api = {
     request<User>(`/api/admin/users/${userId}/approve`, { method: 'POST' }),
   rejectUser: (userId: string) =>
     request<User>(`/api/admin/users/${userId}/reject`, { method: 'POST' }),
+  setUserQuota: (userId: string, quota_bytes: number | null) =>
+    request<{ status: string }>(`/api/admin/users/${userId}/quota`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quota_bytes }),
+    }),
+  setWorkspaceQuota: (workspaceId: string, quota_bytes: number | null) =>
+    request<{ status: string }>(`/api/admin/workspaces/${workspaceId}/quota`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quota_bytes }),
+    }),
+  quotaSettings: () =>
+    request<{ default_workspace_quota_bytes: number | null }>('/api/admin/settings/quota'),
+  putQuotaSettings: (default_workspace_quota_bytes: number | null) =>
+    request<{ status: string }>('/api/admin/settings/quota', {
+      method: 'PUT',
+      body: JSON.stringify({ default_workspace_quota_bytes }),
+    }),
+  reindexSearch: () =>
+    request<{ status: string; indexed: number }>('/api/admin/search/reindex', { method: 'POST' }),
   logout: () => request<{ status: string }>('/api/auth/logout', { method: 'POST' }),
   updateProfile: (display_name: string, password?: string) =>
     request<User>('/api/auth/me', {
@@ -189,6 +209,24 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ role }),
     }),
+  workspaceUsage: (workspaceId: string) =>
+    request<{ bytes: number; files: number; quota_bytes?: number | null }>(
+      `/api/workspaces/${workspaceId}/usage`,
+    ),
+  storageUsage: () =>
+    request<{
+      bytes: number;
+      files: number;
+      quota_bytes?: number | null;
+      by_workspace: {
+        id: string;
+        name: string;
+        type: string;
+        bytes: number;
+        files: number;
+        quota_bytes?: number | null;
+      }[];
+    }>('/api/storage/usage'),
   listNodes: (workspaceId: string, parentId?: string | null) => {
     const q = parentId ? `?parent_id=${parentId}` : '';
     return request<{ nodes: Node[]; breadcrumbs: Breadcrumb[] }>(
@@ -298,6 +336,25 @@ export const api = {
   },
   liveDriveDownloadUrl: (id: string) =>
     `/api/storage/google/live/download?id=${encodeURIComponent(id)}`,
+  liveDriveUpload: async (file: File, parent: string) => {
+    const q = new URLSearchParams({ name: file.name, parent: parent || 'root' });
+    const res = await fetch(`/api/storage/google/live/upload?${q}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(err.error || 'Upload failed');
+    }
+    return res.json() as Promise<LiveDriveItem>;
+  },
+  liveDriveMove: (file_id: string, new_parent_id: string, old_parent_id?: string) =>
+    request<LiveDriveItem>('/api/storage/google/live/move', {
+      method: 'POST',
+      body: JSON.stringify({ file_id, new_parent_id, old_parent_id: old_parent_id || '' }),
+    }),
   connectWebDAV: (body: {
     type: 'webdav' | 'internxt';
     name?: string;
@@ -483,12 +540,29 @@ export function contentUrl(nodeId: string) {
   return `/api/nodes/${nodeId}/content`;
 }
 
+export function thumbUrl(nodeId: string) {
+  return `/api/nodes/${nodeId}/thumb`;
+}
+
 export function isPreviewable(node: Node) {
   if (node.kind !== 'file') return false;
   const mime = (node.mime || '').toLowerCase();
   const name = node.name.toLowerCase();
-  if (mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('text/')) return true;
-  return /\.(png|jpe?g|gif|webp|svg|bmp|pdf|txt|md|json|ya?ml|toml|csv|log|go|tsx?|jsx?|py|rs|css|html|xml|sh)$/i.test(
+  if (
+    mime.startsWith('image/') ||
+    mime.startsWith('video/') ||
+    mime.startsWith('audio/') ||
+    mime === 'application/pdf' ||
+    mime.startsWith('text/') ||
+    mime === 'application/json' ||
+    mime === 'application/xml' ||
+    mime === 'application/javascript' ||
+    mime === 'application/x-sh' ||
+    mime === 'application/x-yaml'
+  ) {
+    return true;
+  }
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif|ico|jfif|pdf|mp4|webm|ogg|ogv|mov|m4v|mkv|mp3|wav|oga|m4a|flac|aac|opus|txt|md|markdown|json|ya?ml|toml|csv|tsv|log|go|tsx?|jsx?|mjs|cjs|py|rs|css|scss|less|html?|xml|sh|bash|zsh|ini|conf|cfg|env|sql|rb|java|kt|c|cc|cpp|h|hpp|php|vue|svelte|swift|dart|lua|r|pl|ps1)$/i.test(
     name,
   );
 }

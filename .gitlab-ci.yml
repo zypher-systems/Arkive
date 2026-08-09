@@ -1,5 +1,5 @@
 # GitLab CI for self-hosted Codevault (https://codevault.sh)
-# Runner: Docker executor — tag: docker-build
+# Runner: Docker executor — required tag: docker-build
 
 workflow:
   rules:
@@ -26,6 +26,15 @@ test:api:
   script:
     - cd api
     - go test ./...
+  timeout: 15m
+
+test:web:
+  stage: test
+  image: node:22-alpine
+  script:
+    - cd web
+    - npm install
+    - npm run build
   timeout: 15m
 
 # Build production images to prove Dockerfiles stay green.

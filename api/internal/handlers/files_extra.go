@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"archive/zip"
+	"fmt"
 	"io"
 	"net/http"
 	"path"
@@ -175,12 +176,13 @@ func (h *FileHandler) Content(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusUnsupportedMediaType, "preview not supported for this type")
 		return
 	}
-	// Cap text previews at 2MB
-	if strings.HasPrefix(ct, "text/") || isTextExt(name) {
-		if size > 2*1024*1024 {
-			httpjson.Error(w, http.StatusRequestEntityTooLarge, "file too large to preview")
-			return
-		}
+
+	rangeHdr := r.Header.Get("Range")
+	textLike := isTextPreview(ct, name)
+	// Full text body capped at 2MB; Range peeks on text are allowed for larger files.
+	if textLike && rangeHdr == "" && size > 2*1024*1024 {
+		httpjson.Error(w, http.StatusRequestEntityTooLarge, "file too large to preview")
+		return
 	}
 
 	store, err := h.App.StoreForWorkspace(r.Context(), workspaceID)
@@ -197,10 +199,45 @@ func (h *FileHandler) Content(w http.ResponseWriter, r *http.Request) {
 	if meta.ContentType != "" && ct == "application/octet-stream" {
 		ct = meta.ContentType
 	}
+	total := size
+	if meta.Size > 0 {
+		total = meta.Size
+	}
+
 	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Content-Disposition", `inline; filename="`+strings.ReplaceAll(name, `"`, ``)+`"`)
-	if meta.Size > 0 {
-		w.Header().Set("Content-Length", strconv.FormatInt(meta.Size, 10))
+	w.Header().Set("Accept-Ranges", "bytes")
+
+	if textLike && rangeHdr != "" {
+		start, end, ok := parseBytesRange(rangeHdr, total)
+		if !ok {
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", total))
+			httpjson.Error(w, http.StatusRequestedRangeNotSatisfiable, "invalid range")
+			return
+		}
+		// Cap a single text range response
+		if end-start+1 > 64*1024 {
+			end = start + 64*1024 - 1
+			if end >= total {
+				end = total - 1
+			}
+		}
+		if start > 0 {
+			if _, err := io.CopyN(io.Discard, rc, start); err != nil {
+				httpjson.Error(w, http.StatusInternalServerError, "storage error")
+				return
+			}
+		}
+		length := end - start + 1
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, total))
+		w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = io.CopyN(w, rc, length)
+		return
+	}
+
+	if total > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(total, 10))
 	}
 	_, _ = io.Copy(w, rc)
 }
@@ -260,17 +297,95 @@ func escapeLike(s string) string {
 	return s
 }
 
-func isPreviewable(ct, name string) bool {
+func isTextPreview(ct, name string) bool {
 	ct = strings.ToLower(ct)
-	if strings.HasPrefix(ct, "image/") || ct == "application/pdf" || strings.HasPrefix(ct, "text/") {
+	if strings.HasPrefix(ct, "text/") ||
+		ct == "application/json" ||
+		ct == "application/xml" ||
+		ct == "application/javascript" ||
+		ct == "application/x-sh" ||
+		ct == "application/x-yaml" {
 		return true
 	}
-	return isTextExt(name) || isImageExt(name) || strings.HasSuffix(strings.ToLower(name), ".pdf")
+	return isTextExt(name)
+}
+
+// parseBytesRange handles a single "bytes=start-end" range.
+func parseBytesRange(h string, size int64) (start, end int64, ok bool) {
+	if size <= 0 {
+		return 0, 0, false
+	}
+	h = strings.TrimSpace(h)
+	if !strings.HasPrefix(h, "bytes=") {
+		return 0, 0, false
+	}
+	spec := strings.TrimPrefix(h, "bytes=")
+	if strings.Contains(spec, ",") {
+		return 0, 0, false
+	}
+	parts := strings.SplitN(spec, "-", 2)
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	if parts[0] == "" {
+		// suffix form bytes=-N
+		n, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || n <= 0 {
+			return 0, 0, false
+		}
+		if n > size {
+			n = size
+		}
+		return size - n, size - 1, true
+	}
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || start < 0 || start >= size {
+		return 0, 0, false
+	}
+	if parts[1] == "" {
+		return start, size - 1, true
+	}
+	end, err = strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || end < start {
+		return 0, 0, false
+	}
+	if end >= size {
+		end = size - 1
+	}
+	return start, end, true
+}
+
+func isPreviewable(ct, name string) bool {
+	ct = strings.ToLower(ct)
+	if strings.HasPrefix(ct, "image/") ||
+		strings.HasPrefix(ct, "video/") ||
+		strings.HasPrefix(ct, "audio/") ||
+		ct == "application/pdf" ||
+		strings.HasPrefix(ct, "text/") ||
+		ct == "application/json" ||
+		ct == "application/xml" ||
+		ct == "application/javascript" ||
+		ct == "application/x-sh" ||
+		ct == "application/x-yaml" {
+		return true
+	}
+	n := strings.ToLower(name)
+	return isTextExt(name) ||
+		isImageExt(name) ||
+		isVideoExt(name) ||
+		isAudioExt(name) ||
+		strings.HasSuffix(n, ".pdf")
 }
 
 func isTextExt(name string) bool {
 	n := strings.ToLower(name)
-	for _, ext := range []string{".txt", ".md", ".json", ".yaml", ".yml", ".toml", ".csv", ".log", ".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".css", ".html", ".xml", ".sh", ".env"} {
+	for _, ext := range []string{
+		".txt", ".md", ".markdown", ".json", ".yaml", ".yml", ".toml", ".csv", ".tsv", ".log",
+		".go", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".css", ".scss", ".less",
+		".html", ".htm", ".xml", ".sh", ".bash", ".zsh", ".env", ".ini", ".conf", ".cfg", ".sql",
+		".rb", ".java", ".kt", ".c", ".cc", ".cpp", ".h", ".hpp", ".php", ".vue", ".svelte",
+		".swift", ".dart", ".lua", ".r", ".pl", ".ps1",
+	} {
 		if strings.HasSuffix(n, ext) {
 			return true
 		}
@@ -280,7 +395,27 @@ func isTextExt(name string) bool {
 
 func isImageExt(name string) bool {
 	n := strings.ToLower(name)
-	for _, ext := range []string{".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"} {
+	for _, ext := range []string{".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif", ".ico", ".jfif"} {
+		if strings.HasSuffix(n, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+func isVideoExt(name string) bool {
+	n := strings.ToLower(name)
+	for _, ext := range []string{".mp4", ".webm", ".ogg", ".ogv", ".mov", ".m4v", ".mkv"} {
+		if strings.HasSuffix(n, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+func isAudioExt(name string) bool {
+	n := strings.ToLower(name)
+	for _, ext := range []string{".mp3", ".wav", ".ogg", ".oga", ".m4a", ".flac", ".aac", ".opus"} {
 		if strings.HasSuffix(n, ext) {
 			return true
 		}

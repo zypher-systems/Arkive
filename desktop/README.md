@@ -1,19 +1,48 @@
-# Arkive desktop (optional)
+# Arkive desktop (Tauri thin wrapper)
 
-Arkive’s supported desktop/mobile sync path is **WebDAV** against `/dav/{workspaceID}/` (see root README). Copy mount URLs from **Account → WebDAV mount**.
+Arkive’s supported sync path remains **WebDAV** (`/dav/{workspaceID}/`). This app is a thin shell that:
 
-## Thin wrapper (planned)
+1. Signs in against your Arkive instance
+2. Lists workspaces
+3. Copies WebDAV mount URLs / opens mount instructions
+4. Optionally launches `rclone mount` when `rclone` is on `PATH`
 
-A future Tauri (or similar) shell can:
+True selective sync and conflict UI are **out of scope**.
 
-1. Sign in with Arkive session / store credentials in the OS keychain
-2. List workspaces and copy WebDAV URLs
-3. Open the system WebDAV mount / launch rclone
+## Prerequisites
 
-This folder is reserved for that wrapper. Until it ships, use:
+- Node 22+
+- Rust (for Tauri): https://rustup.rs
+- System deps for Tauri 2 on your OS: https://v2.tauri.app/start/prerequisites/
 
-- **rclone** — `rclone sync` / mount
-- **macOS Finder** — Connect to Server
-- **Windows** — Map network drive to the WebDAV URL
+## Develop
 
-True selective sync with conflict UI is out of scope until WebDAV proves insufficient.
+```bash
+cd desktop
+npm install
+npm run tauri dev
+```
+
+Set the API origin when prompted (default `http://localhost:3080`).
+
+## Build (Linux first)
+
+```bash
+cd desktop
+npm install
+npm run tauri build
+```
+
+Artifacts land under `src-tauri/target/release/bundle/`.
+
+macOS / Windows: same commands on those hosts (code signing not configured here).
+
+## Layout
+
+```
+desktop/
+  package.json
+  index.html
+  src/                 # React UI
+  src-tauri/           # Tauri / Rust shell
+```

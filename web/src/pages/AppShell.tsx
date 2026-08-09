@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { ArkiveLogo } from '../components/ArkiveLogo';
 import { useAuth } from '../lib/auth';
 
@@ -11,11 +11,17 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 export function AppShell() {
   const { user, logout } = useAuth();
+  const { pathname } = useLocation();
+  const wide = pathname === '/';
 
   return (
     <div className="flex min-h-full flex-col">
       <header className="sticky top-0 z-20 border-b border-arkive-border/80 bg-arkive-bg/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
+        <div
+          className={`mx-auto flex items-center gap-4 px-4 py-3 ${
+            wide ? 'max-w-[1600px]' : 'max-w-6xl'
+          }`}
+        >
           <div className="flex items-center gap-3">
             <ArkiveLogo size={36} />
             <span className="font-display text-xl font-bold tracking-tight">Arkive</span>
@@ -48,7 +54,9 @@ export function AppShell() {
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+      <main
+        className={`mx-auto w-full flex-1 px-4 py-6 ${wide ? 'max-w-[1600px]' : 'max-w-6xl'}`}
+      >
         <Outlet />
       </main>
     </div>

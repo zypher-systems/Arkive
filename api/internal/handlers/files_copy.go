@@ -41,13 +41,27 @@ func (h *FileHandler) CopyNodes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	created := []models.Node{}
+	var need int64
 	for _, id := range req.NodeIDs {
 		if _, err := h.App.RequireNodeAccess(r.Context(), id, user.ID, false); err != nil {
 			status, msg := app.WriteHTTPError(err)
 			httpjson.Error(w, status, msg)
 			return
 		}
+		sz, err := h.App.TreeSize(r.Context(), id)
+		if err != nil {
+			httpjson.Error(w, http.StatusInternalServerError, "could not size source")
+			return
+		}
+		need += sz
+	}
+	if err := h.App.EnsureQuota(r.Context(), req.TargetWorkspaceID, need, 0); err != nil {
+		httpjson.Error(w, http.StatusRequestEntityTooLarge, "storage quota exceeded")
+		return
+	}
+
+	created := []models.Node{}
+	for _, id := range req.NodeIDs {
 		n, err := h.copyNodeTree(r, id, req.TargetWorkspaceID, req.TargetParentID, user.ID)
 		if err != nil {
 			httpjson.Error(w, http.StatusInternalServerError, err.Error())

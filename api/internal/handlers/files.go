@@ -220,19 +220,26 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	incoming := max64(size, 0)
+
 	// Overwrite existing file with same name (archives prior version).
 	var existingID uuid.UUID
+	var existingSize int64
 	var findErr error
 	if parentID == nil {
 		findErr = h.App.DB.QueryRow(r.Context(), `
-			SELECT id FROM nodes WHERE workspace_id = $1 AND parent_id IS NULL AND name = $2 AND kind = 'file' AND deleted_at IS NULL
-		`, wsID, name).Scan(&existingID)
+			SELECT id, size FROM nodes WHERE workspace_id = $1 AND parent_id IS NULL AND name = $2 AND kind = 'file' AND deleted_at IS NULL
+		`, wsID, name).Scan(&existingID, &existingSize)
 	} else {
 		findErr = h.App.DB.QueryRow(r.Context(), `
-			SELECT id FROM nodes WHERE workspace_id = $1 AND parent_id = $2 AND name = $3 AND kind = 'file' AND deleted_at IS NULL
-		`, wsID, *parentID, name).Scan(&existingID)
+			SELECT id, size FROM nodes WHERE workspace_id = $1 AND parent_id = $2 AND name = $3 AND kind = 'file' AND deleted_at IS NULL
+		`, wsID, *parentID, name).Scan(&existingID, &existingSize)
 	}
 	if findErr == nil {
+		if err := h.App.EnsureQuota(r.Context(), wsID, incoming, existingSize); err != nil {
+			httpjson.Error(w, http.StatusRequestEntityTooLarge, "storage quota exceeded")
+			return
+		}
 		_ = h.App.ArchiveCurrentVersion(r.Context(), existingID, user.ID)
 		newKey := app.StorageKey(wsID, uuid.New())
 		if err := store.Put(r.Context(), newKey, r.Body, size, contentType); err != nil {
@@ -257,7 +264,13 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		go h.App.IndexNodeText(context.Background(), wsID, n.ID, contentType, newKey)
+		go h.App.GenerateThumbnail(context.Background(), wsID, n.ID, contentType, newKey)
 		httpjson.Write(w, http.StatusOK, n)
+		return
+	}
+
+	if err := h.App.EnsureQuota(r.Context(), wsID, incoming, 0); err != nil {
+		httpjson.Error(w, http.StatusRequestEntityTooLarge, "storage quota exceeded")
 		return
 	}
 
@@ -291,6 +304,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go h.App.IndexNodeText(context.Background(), wsID, n.ID, contentType, key)
+	go h.App.GenerateThumbnail(context.Background(), wsID, n.ID, contentType, key)
 	httpjson.Write(w, http.StatusCreated, n)
 }
 
@@ -640,12 +654,14 @@ func (h *FileHandler) Purge(w http.ResponseWriter, r *http.Request) {
 func (h *FileHandler) collectFileKeys(r *http.Request, root uuid.UUID) ([]string, error) {
 	rows, err := h.App.DB.Query(r.Context(), `
 		WITH RECURSIVE tree AS (
-			SELECT id, kind, storage_key FROM nodes WHERE id = $1
+			SELECT id, kind, storage_key, thumb_key FROM nodes WHERE id = $1
 			UNION ALL
-			SELECT n.id, n.kind, n.storage_key FROM nodes n
+			SELECT n.id, n.kind, n.storage_key, n.thumb_key FROM nodes n
 			JOIN tree t ON n.parent_id = t.id
 		)
 		SELECT storage_key FROM tree WHERE kind = 'file' AND storage_key IS NOT NULL
+		UNION ALL
+		SELECT thumb_key FROM tree WHERE thumb_key IS NOT NULL
 	`, root)
 	if err != nil {
 		return nil, err
@@ -660,6 +676,68 @@ func (h *FileHandler) collectFileKeys(r *http.Request, root uuid.UUID) ([]string
 		keys = append(keys, k)
 	}
 	return keys, rows.Err()
+}
+
+func (h *FileHandler) Thumb(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	nodeID, err := uuid.Parse(chi.URLParam(r, "nodeID"))
+	if err != nil {
+		httpjson.Error(w, http.StatusBadRequest, "invalid node id")
+		return
+	}
+	if _, err := h.App.RequireNodeAccess(r.Context(), nodeID, user.ID, false); err != nil {
+		status, msg := app.WriteHTTPError(err)
+		httpjson.Error(w, status, msg)
+		return
+	}
+	var workspaceID uuid.UUID
+	var thumbKey *string
+	var storageKey *string
+	var mime *string
+	err = h.App.DB.QueryRow(r.Context(), `
+		SELECT workspace_id, thumb_key, storage_key, mime FROM nodes
+		WHERE id = $1 AND deleted_at IS NULL AND kind = 'file'
+	`, nodeID).Scan(&workspaceID, &thumbKey, &storageKey, &mime)
+	if err != nil {
+		httpjson.Error(w, http.StatusNotFound, "not found")
+		return
+	}
+	store, err := h.App.StoreForWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "storage unavailable")
+		return
+	}
+	key := ""
+	if thumbKey != nil && *thumbKey != "" {
+		key = *thumbKey
+	} else if storageKey != nil && *storageKey != "" {
+		// Lazy generate
+		ct := ""
+		if mime != nil {
+			ct = *mime
+		}
+		h.App.GenerateThumbnail(r.Context(), workspaceID, nodeID, ct, *storageKey)
+		_ = h.App.DB.QueryRow(r.Context(), `SELECT thumb_key FROM nodes WHERE id = $1`, nodeID).Scan(&thumbKey)
+		if thumbKey != nil {
+			key = *thumbKey
+		}
+	}
+	if key == "" {
+		httpjson.Error(w, http.StatusNotFound, "no thumbnail")
+		return
+	}
+	rc, meta, err := store.Get(r.Context(), key)
+	if err != nil {
+		httpjson.Error(w, http.StatusNotFound, "no thumbnail")
+		return
+	}
+	defer rc.Close()
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	if meta != nil && meta.Size > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(meta.Size, 10))
+	}
+	_, _ = io.Copy(w, rc)
 }
 
 func (h *FileHandler) GetSharedWithMe(w http.ResponseWriter, r *http.Request) {

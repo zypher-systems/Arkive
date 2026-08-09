@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arkive</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #12161c;
+        --surface: #1a212b;
+        --border: #2a3441;
+        --text: #e8eef5;
+        --muted: #8b97a8;
+        --amber: #f0a35e;
+        --orange: #e07a3d;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(1200px 600px at 10% -10%, #2a2218, transparent), var(--bg);
+        color: var(--text);
+      }
+      #root { min-height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

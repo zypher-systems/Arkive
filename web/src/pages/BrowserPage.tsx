@@ -1,12 +1,19 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+} from 'react';
 import {
   api,
   downloadUrl,
-  formatBytes,
   isPreviewable,
   type Breadcrumb,
+  type LiveDriveItem,
   type Node,
+  type RecentItem,
   type Workspace,
 } from '../lib/api';
 import { SharePanel } from '../components/SharePanel';
@@ -14,8 +21,26 @@ import { PreviewModal } from '../components/PreviewModal';
 import { MoveDialog } from '../components/MoveDialog';
 import { VersionsPanel } from '../components/VersionsPanel';
 import { Toast, type ToastState } from '../components/Toast';
+import { NamePrompt } from '../components/NamePrompt';
 import { useConfirm } from '../lib/confirm';
-import type { LiveDriveItem, RecentItem } from '../lib/api';
+import { FilesSidebar } from '../components/files/FilesSidebar';
+import { FileToolbar } from '../components/files/FileToolbar';
+import { ContextMenu } from '../components/files/ContextMenu';
+import {
+  FileDetailsView,
+  FileListView,
+  FileTilesView,
+  type FileViewHandlers,
+} from '../components/files/FileViews';
+import {
+  LiveDriveList,
+  RecentList,
+  SharedBrowse,
+} from '../components/files/SecondaryLists';
+import type { ContextMenuState, FileViewMode } from '../components/files/types';
+
+const VIEW_KEY = 'arkive.files.viewMode';
+const DRAG_MIME = 'application/x-arkive-nodes';
 
 type NavView =
   | { kind: 'workspace'; id: string }
@@ -30,12 +55,10 @@ function workspaceLabel(w: Workspace) {
   return w.name;
 }
 
-function navButtonClass(active: boolean) {
-  return `w-full rounded-lg px-2.5 py-1.5 text-left text-sm transition ${
-    active
-      ? 'bg-arkive-amber/15 text-arkive-text'
-      : 'text-arkive-muted hover:bg-arkive-panel/70 hover:text-arkive-text'
-  }`;
+function loadViewMode(): FileViewMode {
+  const v = localStorage.getItem(VIEW_KEY);
+  if (v === 'list' || v === 'details' || v === 'tiles') return v;
+  return 'list';
 }
 
 export function BrowserPage() {
@@ -54,9 +77,26 @@ export function BrowserPage() {
   const [showTrash, setShowTrash] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dragging, setDragging] = useState(false);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [showMove, setShowMove] = useState(false);
+  const [moveMode, setMoveMode] = useState<'move' | 'copy'>('move');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Node[] | null>(null);
+  const [viewMode, setViewMode] = useState<FileViewMode>(loadViewMode);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [clipboard, setClipboard] = useState<string[] | null>(null);
+  const [rootBytes, setRootBytes] = useState<number | null>(null);
+  const [rootQuota, setRootQuota] = useState<number | null>(null);
+  const [totalBytes, setTotalBytes] = useState(0);
+  const [totalFiles, setTotalFiles] = useState(0);
+  const [totalQuota, setTotalQuota] = useState<number | null>(null);
+  const warnedQuota = useRef(false);
+  const [namePrompt, setNamePrompt] = useState<
+    | { kind: 'mkdir' }
+    | { kind: 'rename'; node: Node }
+    | null
+  >(null);
+  const [nameBusy, setNameBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const searchTimer = useRef<number | null>(null);
   const { ask, dialog: confirmDialog, isOpen: confirmOpen } = useConfirm();
@@ -64,6 +104,7 @@ export function BrowserPage() {
   const [recent, setRecent] = useState<RecentItem[]>([]);
   const [liveItems, setLiveItems] = useState<LiveDriveItem[]>([]);
   const toastTimer = useRef<number | null>(null);
+  const dragDepth = useRef(0);
 
   const workspaceId =
     view?.kind === 'workspace'
@@ -86,6 +127,39 @@ export function BrowserPage() {
     setSelected(new Set());
   }, []);
 
+  const refreshUsage = useCallback(async () => {
+    try {
+      const total = await api.storageUsage();
+      setTotalBytes(total.bytes);
+      setTotalFiles(total.files);
+      setTotalQuota(total.quota_bytes ?? null);
+      if (
+        total.quota_bytes != null &&
+        total.quota_bytes > 0 &&
+        total.bytes / total.quota_bytes >= 0.9 &&
+        !warnedQuota.current
+      ) {
+        warnedQuota.current = true;
+        if (toastTimer.current) window.clearTimeout(toastTimer.current);
+        setToast({ id: Date.now(), message: 'Storage is over 90% of your quota' });
+        toastTimer.current = window.setTimeout(() => setToast(null), 6000);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const refreshRootUsage = useCallback(async (wsId: string) => {
+    try {
+      const u = await api.workspaceUsage(wsId);
+      setRootBytes(u.bytes);
+      setRootQuota(u.quota_bytes ?? null);
+    } catch {
+      setRootBytes(null);
+      setRootQuota(null);
+    }
+  }, []);
+
   const loadWorkspaces = useCallback(async () => {
     const list = await api.workspaces();
     setWorkspaces(list);
@@ -96,7 +170,8 @@ export function BrowserPage() {
       const fallback = personalId || list.find((w) => w.type !== 'mount')?.id || list[0]?.id;
       return fallback ? { kind: 'workspace', id: fallback } : null;
     });
-  }, []);
+    await refreshUsage();
+  }, [refreshUsage]);
 
   const loadNodes = useCallback(async () => {
     setShared(await api.sharedWithMe());
@@ -110,6 +185,7 @@ export function BrowserPage() {
       setNodes([]);
       setBreadcrumbs([]);
       setTrash([]);
+      setRootBytes(null);
       return;
     }
     const listParent =
@@ -119,11 +195,13 @@ export function BrowserPage() {
     setBreadcrumbs(data.breadcrumbs);
     if (view?.kind === 'workspace') {
       setTrash(await api.trash(workspaceId));
+      await refreshRootUsage(workspaceId);
     } else {
       setTrash([]);
+      setRootBytes(null);
     }
     setSelected(new Set());
-  }, [workspaceId, parentId, view]);
+  }, [workspaceId, parentId, view, refreshRootUsage]);
 
   useEffect(() => {
     void loadWorkspaces().catch((e) => setError(String(e)));
@@ -145,6 +223,12 @@ export function BrowserPage() {
     void loadNodes().catch((e) => setError(e instanceof Error ? e.message : 'Load failed'));
   }, [loadNodes, view?.kind]);
 
+  function showToast(message: string, ms = 4000) {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    setToast({ id: Date.now(), message });
+    toastTimer.current = window.setTimeout(() => setToast(null), ms);
+  }
+
   function showUndoToast(nodeIds: string[]) {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     const id = Date.now();
@@ -158,6 +242,7 @@ export function BrowserPage() {
             try {
               for (const nid of nodeIds) await api.restore(nid);
               await loadNodes();
+              await refreshUsage();
             } catch (e) {
               setError(e instanceof Error ? e.message : 'Undo failed');
             }
@@ -166,6 +251,16 @@ export function BrowserPage() {
       },
     });
     toastTimer.current = window.setTimeout(() => setToast(null), 10000);
+  }
+
+  function copyToClipboard(ids: string[]) {
+    if (!ids.length) return;
+    setClipboard(ids);
+    showToast(
+      ids.length > 1
+        ? `Copied ${ids.length} items — Paste in a folder`
+        : 'Copied — Paste in a folder',
+    );
   }
 
   useEffect(() => {
@@ -186,43 +281,67 @@ export function BrowserPage() {
     };
   }, [query, workspaceId, view?.kind]);
 
-  async function createFolder() {
+  function setViewModePersist(m: FileViewMode) {
+    setViewMode(m);
+    localStorage.setItem(VIEW_KEY, m);
+  }
+
+  function createFolder() {
     if (!workspaceId) return;
-    const name = window.prompt('Folder name');
-    if (!name) return;
+    setNamePrompt({ kind: 'mkdir' });
+  }
+
+  async function submitNamePrompt(name: string) {
+    if (!namePrompt) return;
+    setNameBusy(true);
+    setError('');
     try {
-      await api.mkdir(workspaceId, name, parentId);
+      if (namePrompt.kind === 'mkdir') {
+        if (!workspaceId) return;
+        const into =
+          view?.kind === 'shared-folder' ? (parentId ?? view.rootId) : parentId;
+        await api.mkdir(workspaceId, name, into);
+      } else {
+        await api.rename(namePrompt.node.id, name);
+      }
+      setNamePrompt(null);
       await loadNodes();
+      if (namePrompt.kind === 'mkdir') await refreshUsage();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not create folder');
+      setError(
+        e instanceof Error
+          ? e.message
+          : namePrompt.kind === 'mkdir'
+            ? 'Could not create folder'
+            : 'Rename failed',
+      );
+    } finally {
+      setNameBusy(false);
     }
   }
 
-  async function onUpload(files: FileList | File[] | null) {
+  async function onUpload(
+    files: FileList | File[] | null,
+    intoParent: string | null = parentId,
+  ) {
     if (!workspaceId || !files || (files as FileList).length === 0) return;
     setError('');
     try {
       for (const file of Array.from(files)) {
         setUploadPct(0);
-        await api.upload(workspaceId, file, parentId, setUploadPct);
+        await api.upload(workspaceId, file, intoParent, setUploadPct);
       }
       setUploadPct(null);
       await loadNodes();
+      await refreshUsage();
     } catch (e) {
       setUploadPct(null);
       setError(e instanceof Error ? e.message : 'Upload failed');
     }
   }
 
-  async function renameNode(node: Node) {
-    const name = window.prompt('Rename', node.name);
-    if (!name || name === node.name) return;
-    try {
-      await api.rename(node.id, name);
-      await loadNodes();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Rename failed');
-    }
+  function renameNode(node: Node) {
+    setNamePrompt({ kind: 'rename', node });
   }
 
   function deleteNode(node: Node) {
@@ -234,6 +353,7 @@ export function BrowserPage() {
         try {
           await api.remove(node.id);
           await loadNodes();
+          await refreshUsage();
           showUndoToast([node.id]);
         } catch (e) {
           setError(e instanceof Error ? e.message : 'Delete failed');
@@ -254,6 +374,7 @@ export function BrowserPage() {
         try {
           for (const id of ids) await api.remove(id);
           await loadNodes();
+          await refreshUsage();
           showUndoToast(ids);
         } catch (e) {
           setError(e instanceof Error ? e.message : 'Delete failed');
@@ -261,7 +382,7 @@ export function BrowserPage() {
         }
       },
     });
-  }, [selected, loadNodes, ask]);
+  }, [selected, loadNodes, ask, refreshUsage]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -273,10 +394,19 @@ export function BrowserPage() {
         e.preventDefault();
         setSelected(new Set(nodes.map((n) => n.id)));
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && selected.size > 0) {
+        e.preventDefault();
+        copyToClipboard([...selected]);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v' && clipboard?.length) {
+        e.preventDefault();
+        void pasteClipboard();
+      }
       if (e.key === 'Escape') {
         setSelected(new Set());
         setPreviewNode(null);
         setShowMove(false);
+        setContextMenu(null);
       }
       if (e.key === 'Delete' && selected.size > 0) {
         e.preventDefault();
@@ -285,7 +415,19 @@ export function BrowserPage() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [nodes, selected, bulkDelete, browsing, confirmOpen]);
+  }, [nodes, selected, bulkDelete, browsing, confirmOpen, clipboard]);
+
+  async function pasteClipboard() {
+    if (!workspaceId || !clipboard?.length) return;
+    try {
+      await api.copyNodes(clipboard, workspaceId, parentId);
+      setClipboard(null);
+      await loadNodes();
+      await refreshUsage();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Paste failed');
+    }
+  }
 
   async function bulkZip() {
     if (!workspaceId) return;
@@ -300,6 +442,7 @@ export function BrowserPage() {
     try {
       await api.restore(node.id);
       await loadNodes();
+      await refreshUsage();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Restore failed');
     }
@@ -314,6 +457,7 @@ export function BrowserPage() {
         try {
           await api.purge(node.id);
           await loadNodes();
+          await refreshUsage();
         } catch (e) {
           setError(e instanceof Error ? e.message : 'Purge failed');
           throw e;
@@ -333,6 +477,13 @@ export function BrowserPage() {
   }
 
   function openNode(node: Node) {
+    if (results) {
+      setParentId(node.parent_id || null);
+      setQuery('');
+      setResults(null);
+      if (node.kind === 'file' && isPreviewable(node)) setPreviewNode(node);
+      return;
+    }
     if (node.kind === 'folder') {
       setParentId(node.id);
       setQuery('');
@@ -341,6 +492,102 @@ export function BrowserPage() {
     }
     if (isPreviewable(node)) setPreviewNode(node);
     else window.open(downloadUrl(node.id), '_blank');
+  }
+
+  function openMoveFor(nodesToMove: Node[], mode: 'move' | 'copy' = 'move') {
+    setSelected(new Set(nodesToMove.map((n) => n.id)));
+    setMoveMode(mode);
+    setShowMove(true);
+  }
+
+  async function moveNodesInto(ids: string[], targetParent: string | null) {
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    try {
+      for (const id of ids) {
+        if (id === targetParent) continue;
+        const n = byId.get(id);
+        if (!n) continue;
+        await api.move(id, n.name, targetParent);
+      }
+      await loadNodes();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Move failed');
+    }
+  }
+
+  function hasOsFiles(e: DragEvent) {
+    return Array.from(e.dataTransfer.types).includes('Files');
+  }
+
+  function hasInternalNodes(e: DragEvent) {
+    return Array.from(e.dataTransfer.types).includes(DRAG_MIME);
+  }
+
+  function onDragStartNode(e: DragEvent, node: Node) {
+    const ids = selected.has(node.id) && selected.size > 0 ? [...selected] : [node.id];
+    e.dataTransfer.setData(DRAG_MIME, JSON.stringify(ids));
+    e.dataTransfer.effectAllowed = 'move';
+    if (!selected.has(node.id)) setSelected(new Set(ids));
+  }
+
+  function onDragEndNode() {
+    setDropTargetId(null);
+  }
+
+  function onDragOverFolder(e: DragEvent, folder: Node) {
+    if (folder.kind !== 'folder') return;
+    if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = hasOsFiles(e) ? 'copy' : 'move';
+    setDropTargetId(folder.id);
+  }
+
+  function onDragLeaveFolder(folder: Node) {
+    setDropTargetId((cur) => (cur === folder.id ? null : cur));
+  }
+
+  async function onDropOnFolder(e: DragEvent, folder: Node) {
+    if (folder.kind !== 'folder') return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTargetId(null);
+    setDragging(false);
+    dragDepth.current = 0;
+
+    if (hasOsFiles(e) && e.dataTransfer.files.length) {
+      void onUpload(e.dataTransfer.files, folder.id);
+      return;
+    }
+    const raw = e.dataTransfer.getData(DRAG_MIME);
+    if (!raw) return;
+    try {
+      const ids = JSON.parse(raw) as string[];
+      if (!Array.isArray(ids) || !ids.length) return;
+      if (ids.includes(folder.id)) return;
+      await moveNodesInto(ids, folder.id);
+    } catch {
+      /* ignore bad payload */
+    }
+  }
+
+  async function onDropOnBreadcrumb(e: DragEvent, targetParent: string | null) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTargetId(null);
+    if (hasOsFiles(e) && e.dataTransfer.files.length) {
+      void onUpload(e.dataTransfer.files, targetParent);
+      return;
+    }
+    const raw = e.dataTransfer.getData(DRAG_MIME);
+    if (!raw) return;
+    try {
+      const ids = JSON.parse(raw) as string[];
+      if (!Array.isArray(ids) || !ids.length) return;
+      await moveNodesInto(ids, targetParent);
+    } catch {
+      /* ignore */
+    }
   }
 
   const selectedNodes = nodes.filter((n) => selected.has(n.id));
@@ -356,23 +603,66 @@ export function BrowserPage() {
             ? workspaceLabel(workspaces.find((w) => w.id === workspaceId)!)
             : 'Files';
 
+  const sidebarActive =
+    view?.kind === 'shared' || view?.kind === 'shared-folder'
+      ? ({ kind: 'shared' } as const)
+      : view?.kind === 'recent'
+        ? ({ kind: 'recent' } as const)
+        : view?.kind === 'live-drive'
+          ? ({ kind: 'live-drive' } as const)
+          : view?.kind === 'workspace'
+            ? ({ kind: 'workspace', id: view.id } as const)
+            : null;
+
+  const viewHandlers: FileViewHandlers = {
+    selected,
+    dropTargetId,
+    onToggleSelect: toggleSelect,
+    onOpen: openNode,
+    onPreview: (n) => setPreviewNode(n),
+    onHistory: (n) => setHistoryNode(n),
+    onShare: (n) => setShareNode(n),
+    onRename: renameNode,
+    onDelete: deleteNode,
+    onContextMenu: (e, node) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({ kind: 'node', node, x: e.clientX, y: e.clientY });
+    },
+    onDragStart: onDragStartNode,
+    onDragEnd: onDragEndNode,
+    onDragOverFolder,
+    onDragLeaveFolder,
+    onDropOnFolder,
+  };
+
   return (
     <div
       onDragEnter={(e) => {
         if (!browsing) return;
+        if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
         e.preventDefault();
-        setDragging(true);
+        dragDepth.current += 1;
+        if (hasOsFiles(e)) setDragging(true);
       }}
       onDragOver={(e) => {
         if (!browsing) return;
+        if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
         e.preventDefault();
       }}
-      onDragLeave={() => setDragging(false)}
+      onDragLeave={() => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragging(false);
+      }}
       onDrop={(e) => {
         if (!browsing) return;
         e.preventDefault();
         setDragging(false);
-        void onUpload(e.dataTransfer.files);
+        dragDepth.current = 0;
+        setDropTargetId(null);
+        if (hasOsFiles(e) && e.dataTransfer.files.length) {
+          void onUpload(e.dataTransfer.files, parentId);
+        }
       }}
       className="relative flex flex-col gap-6 lg:flex-row lg:items-start"
     >
@@ -382,262 +672,141 @@ export function BrowserPage() {
         </div>
       )}
 
-      <aside className="w-full shrink-0 rounded-2xl border border-arkive-border bg-arkive-surface/70 p-3 lg:sticky lg:top-20 lg:w-56">
-        <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-arkive-muted">
-          My files
-        </p>
-        <ul className="mb-4 space-y-0.5">
-          {personal && (
-            <li>
-              <button
-                type="button"
-                className={navButtonClass(view?.kind === 'workspace' && view.id === personal.id)}
-                onClick={() => selectWorkspace(personal.id)}
-              >
-                {workspaceLabel(personal)}
-              </button>
-            </li>
-          )}
-          {teams.map((w) => (
-            <li key={w.id}>
-              <button
-                type="button"
-                className={navButtonClass(view?.kind === 'workspace' && view.id === w.id)}
-                onClick={() => selectWorkspace(w.id)}
-              >
-                {workspaceLabel(w)}
-              </button>
-            </li>
-          ))}
-          {!personal && teams.length === 0 && (
-            <li className="px-2.5 py-1.5 text-xs text-arkive-muted">No workspaces yet</li>
-          )}
-        </ul>
-
-        <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-arkive-muted">
-          Shared
-        </p>
-        <ul className="mb-4 space-y-0.5">
-          <li>
-            <button
-              type="button"
-              className={navButtonClass(view?.kind === 'shared' || view?.kind === 'shared-folder')}
-              onClick={() => {
-                setView({ kind: 'shared' });
-                setParentId(null);
-                setShowTrash(false);
-                setQuery('');
-                setResults(null);
-                setSelected(new Set());
-              }}
-            >
-              Shared with me{shared.length ? ` (${shared.length})` : ''}
-            </button>
-          </li>
-          <li>
-            <button
-              type="button"
-              className={navButtonClass(view?.kind === 'recent')}
-              onClick={() => {
-                setView({ kind: 'recent' });
-                setShowTrash(false);
-                setQuery('');
-                setResults(null);
-              }}
-            >
-              Recent
-            </button>
-          </li>
-        </ul>
-
-        <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-arkive-muted">
-          Connected
-        </p>
-        <ul className="space-y-0.5">
-          {mounts.map((w) => (
-            <li key={w.id}>
-              <button
-                type="button"
-                className={navButtonClass(view?.kind === 'workspace' && view.id === w.id)}
-                onClick={() => selectWorkspace(w.id)}
-              >
-                {workspaceLabel(w)}
-              </button>
-            </li>
-          ))}
-          <li>
-            <button
-              type="button"
-              className={navButtonClass(view?.kind === 'live-drive')}
-              onClick={() => {
-                setView({ kind: 'live-drive', parent: 'root' });
-                setShowTrash(false);
-                setQuery('');
-                setResults(null);
-              }}
-            >
-              Google Drive (live)
-            </button>
-          </li>
-          {mounts.length === 0 && (
-            <li className="px-2.5 py-1.5 text-xs text-arkive-muted">
-              Connect clouds in Account
-            </li>
-          )}
-        </ul>
-      </aside>
+      <FilesSidebar
+        personal={personal}
+        teams={teams}
+        mounts={mounts}
+        active={sidebarActive}
+        sharedCount={shared.length}
+        totalBytes={totalBytes}
+        totalFiles={totalFiles}
+        totalQuota={totalQuota}
+        onSelectWorkspace={selectWorkspace}
+        onSelectShared={() => {
+          setView({ kind: 'shared' });
+          setParentId(null);
+          setShowTrash(false);
+          setQuery('');
+          setResults(null);
+          setSelected(new Set());
+        }}
+        onSelectRecent={() => {
+          setView({ kind: 'recent' });
+          setShowTrash(false);
+          setQuery('');
+          setResults(null);
+        }}
+        onSelectLiveDrive={() => {
+          setView({ kind: 'live-drive', parent: 'root' });
+          setShowTrash(false);
+          setQuery('');
+          setResults(null);
+        }}
+      />
 
       <div className="min-w-0 flex-1">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="font-display text-3xl font-bold tracking-tight">{activeTitle}</h1>
-            <p className="mt-1 text-sm text-arkive-muted">
-              {view?.kind === 'shared'
-                ? 'Files and folders others shared with you.'
-                : 'Drag files anywhere, multi-select with checkboxes, Delete to trash.'}
-            </p>
-          </div>
-          {browsing && (
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search files…"
-                className="w-40 rounded-lg border border-arkive-border bg-arkive-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-arkive-amber/40 sm:w-56"
-              />
-              <button
-                type="button"
-                onClick={() => void createFolder()}
-                className="rounded-lg border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/40"
-              >
-                New folder
-              </button>
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-2 text-sm font-semibold text-black"
-              >
-                Upload
-              </button>
-              {!sharedBrowse && (
-                <button
-                  type="button"
-                  onClick={() => setShowTrash((v) => !v)}
-                  className="rounded-lg border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/40"
-                >
-                  Trash{trash.length ? ` (${trash.length})` : ''}
-                </button>
-              )}
-              <input
-                ref={fileRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => void onUpload(e.target.files)}
-              />
-            </div>
-          )}
-        </div>
+        <FileToolbar
+          title={activeTitle}
+          subtitle={
+            view?.kind === 'shared'
+              ? 'Files and folders others shared with you.'
+              : view?.kind === 'recent'
+                ? 'Recent activity across your roots.'
+                : view?.kind === 'live-drive'
+                  ? 'Browse Google Drive live (not stored in Arkive).'
+                  : 'Drag files onto folders to upload, or drag items to move.'
+          }
+          browsing={browsing}
+          showViewModes={view?.kind === 'shared'}
+          viewMode={viewMode}
+          onViewMode={setViewModePersist}
+          query={query}
+          onQuery={setQuery}
+          rootBytes={view?.kind === 'workspace' ? rootBytes : null}
+          rootQuota={view?.kind === 'workspace' ? rootQuota : null}
+          trashCount={trash.length}
+          showTrash={showTrash}
+          onToggleTrash={() => setShowTrash((v) => !v)}
+          onNewFolder={createFolder}
+          onUpload={() => fileRef.current?.click()}
+          hideTrash={sharedBrowse}
+        />
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => void onUpload(e.target.files)}
+        />
 
         {view?.kind === 'shared' ? (
-          <ul className="divide-y divide-arkive-border overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
-            {shared.length === 0 && (
-              <li className="px-4 py-10 text-center text-sm text-arkive-muted">
-                Nothing shared with you yet.
-              </li>
-            )}
-            {shared.map((node) => (
-              <li key={node.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-                <button
-                  type="button"
-                  className="min-w-0 truncate text-left font-medium hover:text-arkive-amber"
-                  onClick={() => {
-                    if (node.kind === 'folder') {
-                      setView({
-                        kind: 'shared-folder',
-                        workspaceId: node.workspace_id,
-                        rootId: node.id,
-                        parentId: node.id,
-                      });
-                      setParentId(node.id);
-                    } else if (isPreviewable(node)) setPreviewNode(node);
-                    else window.open(downloadUrl(node.id), '_blank');
-                  }}
-                >
-                  {node.name}
-                </button>
-                {node.kind === 'file' && (
-                  <a href={downloadUrl(node.id)} className="shrink-0 text-arkive-amber hover:underline">
-                    Download
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
+          <SharedBrowse
+            nodes={shared}
+            viewMode={viewMode}
+            onOpen={(node) => {
+              if (node.kind === 'folder') {
+                setView({
+                  kind: 'shared-folder',
+                  workspaceId: node.workspace_id,
+                  rootId: node.id,
+                  parentId: node.id,
+                });
+                setParentId(node.id);
+              } else if (isPreviewable(node)) setPreviewNode(node);
+              else window.open(downloadUrl(node.id), '_blank');
+            }}
+          />
         ) : view?.kind === 'recent' ? (
-          <ul className="divide-y divide-arkive-border overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
-            {recent.length === 0 && (
-              <li className="px-4 py-10 text-center text-sm text-arkive-muted">No recent activity.</li>
-            )}
-            {recent.map((ev) => (
-              <li key={ev.id}>
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-arkive-panel/40"
-                  onClick={() => {
-                    if (ev.workspace_id) {
-                      selectWorkspace(ev.workspace_id);
-                      setParentId(ev.parent_id || null);
-                    }
-                  }}
-                >
-                  <span className="min-w-0 truncate font-medium">
-                    {ev.node_name || ev.action}
-                    <span className="ml-2 text-xs font-normal text-arkive-muted">{ev.action}</span>
-                  </span>
-                  <span className="shrink-0 text-xs text-arkive-muted">
-                    {new Date(ev.created_at).toLocaleString()}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <RecentList
+            items={recent}
+            onOpen={(ev) => {
+              if (ev.workspace_id) {
+                selectWorkspace(ev.workspace_id);
+                setParentId(ev.parent_id || null);
+              }
+            }}
+          />
         ) : view?.kind === 'live-drive' ? (
-          <ul className="divide-y divide-arkive-border overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
-            {view.parent !== 'root' && (
-              <li className="px-4 py-2 text-sm">
-                <button
-                  type="button"
-                  className="text-arkive-amber hover:underline"
-                  onClick={() => setView({ kind: 'live-drive', parent: 'root' })}
-                >
-                  ← Drive root
-                </button>
-              </li>
-            )}
-            {liveItems.length === 0 && (
-              <li className="px-4 py-10 text-center text-sm text-arkive-muted">
-                Empty, or connect Google Drive in Account (live browse needs Drive access).
-              </li>
-            )}
-            {liveItems.map((item) => (
-              <li key={item.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-                <button
-                  type="button"
-                  className="min-w-0 truncate text-left font-medium hover:text-arkive-amber"
-                  onClick={() => {
-                    if (item.kind === 'folder') setView({ kind: 'live-drive', parent: item.id });
-                    else window.open(api.liveDriveDownloadUrl(item.id), '_blank');
-                  }}
-                >
-                  {item.name}
-                </button>
-                <span className="text-xs text-arkive-muted">
-                  {item.kind === 'folder' ? 'Folder' : formatBytes(item.size)}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <LiveDriveList
+            items={liveItems}
+            parent={view.parent}
+            dropTargetId={dropTargetId}
+            onUp={() => setView({ kind: 'live-drive', parent: 'root' })}
+            onOpen={(item) => {
+              if (item.kind === 'folder') setView({ kind: 'live-drive', parent: item.id });
+              else window.open(api.liveDriveDownloadUrl(item.id), '_blank');
+            }}
+            onDropFiles={(files, parentId) => {
+              void (async () => {
+                try {
+                  for (const f of Array.from(files)) {
+                    await api.liveDriveUpload(f, parentId);
+                  }
+                  const data = await api.liveDriveList(
+                    parentId === 'root' ? undefined : parentId,
+                  );
+                  setLiveItems(data.items);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Drive upload failed');
+                }
+              })();
+            }}
+            onMoveItem={(fileId, newParent) => {
+              void (async () => {
+                try {
+                  await api.liveDriveMove(fileId, newParent, view.parent);
+                  const data = await api.liveDriveList(
+                    view.parent === 'root' ? undefined : view.parent,
+                  );
+                  setLiveItems(data.items);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Drive move failed');
+                }
+              })();
+            }}
+            onDragOverFolder={(id) => setDropTargetId(id)}
+            onDragLeaveFolder={() => setDropTargetId(null)}
+          />
         ) : (
           <>
             {selected.size > 0 && (
@@ -645,10 +814,23 @@ export function BrowserPage() {
                 <span className="text-arkive-muted">{selected.size} selected</span>
                 <button
                   type="button"
-                  onClick={() => setShowMove(true)}
+                  onClick={() => {
+                    setMoveMode('move');
+                    setShowMove(true);
+                  }}
                   className="rounded-md border border-arkive-border px-2 py-1 hover:border-arkive-amber/40"
                 >
                   Move
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoveMode('copy');
+                    setShowMove(true);
+                  }}
+                  className="rounded-md border border-arkive-border px-2 py-1 hover:border-arkive-amber/40"
+                >
+                  Copy to…
                 </button>
                 <button
                   type="button"
@@ -679,7 +861,18 @@ export function BrowserPage() {
                 <button
                   type="button"
                   onClick={() => setParentId(null)}
-                  className="rounded px-1.5 py-0.5 hover:bg-arkive-panel hover:text-arkive-text"
+                  onDragOver={(e) => {
+                    if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
+                    e.preventDefault();
+                    setDropTargetId('__root__');
+                  }}
+                  onDragLeave={() =>
+                    setDropTargetId((c) => (c === '__root__' ? null : c))
+                  }
+                  onDrop={(e) => void onDropOnBreadcrumb(e, null)}
+                  className={`rounded px-1.5 py-0.5 hover:bg-arkive-panel hover:text-arkive-text ${
+                    dropTargetId === '__root__' ? 'ring-2 ring-arkive-amber/70' : ''
+                  }`}
                 >
                   Root
                 </button>
@@ -689,7 +882,18 @@ export function BrowserPage() {
                     <button
                       type="button"
                       onClick={() => setParentId(b.id)}
-                      className="rounded px-1.5 py-0.5 hover:bg-arkive-panel hover:text-arkive-text"
+                      onDragOver={(e) => {
+                        if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
+                        e.preventDefault();
+                        setDropTargetId(b.id);
+                      }}
+                      onDragLeave={() =>
+                        setDropTargetId((c) => (c === b.id ? null : c))
+                      }
+                      onDrop={(e) => void onDropOnBreadcrumb(e, b.id)}
+                      className={`rounded px-1.5 py-0.5 hover:bg-arkive-panel hover:text-arkive-text ${
+                        dropTargetId === b.id ? 'ring-2 ring-arkive-amber/70' : ''
+                      }`}
                     >
                       {b.name}
                     </button>
@@ -727,114 +931,23 @@ export function BrowserPage() {
               </p>
             )}
 
-            <ul className="divide-y divide-arkive-border overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
-              <AnimatePresence initial={false}>
-                {list.map((node, i) => (
-                  <motion.li
-                    key={node.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ delay: Math.min(i * 0.03, 0.24), duration: 0.25 }}
-                    className={`flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-arkive-panel/40 ${
-                      selected.has(node.id) ? 'bg-arkive-amber/5' : ''
-                    }`}
-                  >
-                    {!results && (
-                      <input
-                        type="checkbox"
-                        checked={selected.has(node.id)}
-                        onChange={() => undefined}
-                        onClick={(e) => toggleSelect(node.id, e)}
-                        className="h-4 w-4 accent-arkive-amber"
-                      />
-                    )}
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                      onClick={() => {
-                        if (results) {
-                          setParentId(node.parent_id || null);
-                          setQuery('');
-                          setResults(null);
-                          if (node.kind === 'file' && isPreviewable(node)) setPreviewNode(node);
-                          return;
-                        }
-                        openNode(node);
-                      }}
-                    >
-                      <span
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-xs font-bold ${
-                          node.kind === 'folder'
-                            ? 'border-arkive-amber/40 text-arkive-amber'
-                            : 'border-arkive-border text-arkive-muted'
-                        }`}
-                      >
-                        {node.kind === 'folder' ? 'DIR' : 'FILE'}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{node.name}</span>
-                        <span className="text-xs text-arkive-muted">
-                          {node.kind === 'file' ? formatBytes(node.size) : 'Folder'}
-                        </span>
-                      </span>
-                    </button>
-                    <div className="flex gap-1 text-xs">
-                      {node.kind === 'file' && isPreviewable(node) && (
-                        <button
-                          type="button"
-                          onClick={() => setPreviewNode(node)}
-                          className="rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
-                        >
-                          Preview
-                        </button>
-                      )}
-                      {node.kind === 'file' && (
-                        <button
-                          type="button"
-                          onClick={() => setHistoryNode(node)}
-                          className="rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
-                        >
-                          History
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setShareNode(node)}
-                        className="rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
-                      >
-                        Share
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void renameNode(node)}
-                        className="rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
-                      >
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          deleteNode(node);
-                        }}
-                        className="rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-red-300"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </motion.li>
-                ))}
-              </AnimatePresence>
-              {list.length === 0 && (
-                <li className="px-4 py-10 text-center text-sm text-arkive-muted">
-                  {results
-                    ? 'No matches.'
-                    : 'This folder is empty. Drop files here or create a folder.'}
-                </li>
+            <div
+              onContextMenu={(e) => {
+                if (!browsing || results) return;
+                const t = e.target as HTMLElement;
+                if (t.closest('[data-file-row], button, a, input')) return;
+                e.preventDefault();
+                setContextMenu({ kind: 'pane', x: e.clientX, y: e.clientY });
+              }}
+            >
+              {viewMode === 'details' ? (
+                <FileDetailsView nodes={list} results={!!results} handlers={viewHandlers} />
+              ) : viewMode === 'tiles' ? (
+                <FileTilesView nodes={list} results={!!results} handlers={viewHandlers} />
+              ) : (
+                <FileListView nodes={list} results={!!results} handlers={viewHandlers} />
               )}
-            </ul>
+            </div>
 
             {showTrash && (
               <section className="mt-8">
@@ -852,6 +965,7 @@ export function BrowserPage() {
                             try {
                               await api.emptyTrash(workspaceId);
                               await loadNodes();
+                              await refreshUsage();
                             } catch (e) {
                               setError(String(e));
                               throw e;
@@ -912,6 +1026,47 @@ export function BrowserPage() {
         )}
       </div>
 
+      <ContextMenu
+        menu={contextMenu}
+        onClose={() => setContextMenu(null)}
+        onOpen={openNode}
+        onPreview={(n) => setPreviewNode(n)}
+        onShare={(n) => setShareNode(n)}
+        onHistory={(n) => setHistoryNode(n)}
+        onRename={renameNode}
+        onMove={(n) => openMoveFor([n], 'move')}
+        onCopy={(n) => {
+          const ids =
+            selected.has(n.id) && selected.size > 0 ? [...selected] : [n.id];
+          copyToClipboard(ids);
+        }}
+        onCopyTo={(n) => openMoveFor(
+          selected.has(n.id) && selected.size > 0
+            ? nodes.filter((x) => selected.has(x.id))
+            : [n],
+          'copy',
+        )}
+        onTrash={deleteNode}
+        onNewFolder={createFolder}
+        onUpload={() => fileRef.current?.click()}
+        canPaste={!!clipboard?.length}
+        onPaste={() => void pasteClipboard()}
+      />
+
+      {namePrompt && (
+        <NamePrompt
+          title={namePrompt.kind === 'mkdir' ? 'New folder' : 'Rename'}
+          label={namePrompt.kind === 'mkdir' ? 'Folder name' : 'Name'}
+          initialValue={namePrompt.kind === 'rename' ? namePrompt.node.name : ''}
+          confirmLabel={namePrompt.kind === 'mkdir' ? 'Create' : 'Rename'}
+          busy={nameBusy}
+          onConfirm={(name) => void submitNamePrompt(name)}
+          onClose={() => {
+            if (!nameBusy) setNamePrompt(null);
+          }}
+        />
+      )}
+
       {shareNode && (
         <SharePanel
           nodeId={shareNode.id}
@@ -927,8 +1082,12 @@ export function BrowserPage() {
           workspaceId={workspaceId}
           workspaces={workspaces}
           nodes={selectedNodes}
+          mode={moveMode}
           onClose={() => setShowMove(false)}
-          onMoved={() => void loadNodes()}
+          onMoved={() => {
+            void loadNodes();
+            void refreshUsage();
+          }}
         />
       )}
       {confirmDialog}

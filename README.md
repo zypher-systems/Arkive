@@ -53,20 +53,22 @@ Arkive is private by default: anyone can create an account, but new signups stay
 
 - Email/password auth with httpOnly session cookies (argon2id); optional OIDC/SSO
 - Personal workspace on signup + team workspaces with invite tokens
-- Browse / upload / download / mkdir / rename / move; drag-drop upload; multi-select + zip
-- Soft-delete trash with restore/purge
-- Inline previews for images, PDF, and text
-- Filename search within a workspace
-- Internal shares (user email or team, read/write)
+- Browse / upload / download / mkdir / rename / move; OS + internal drag-and-drop; multi-select + zip
+- Files views: List / Details / Tiles (persisted), folder glyphs, image/video/audio/PDF/text previews, Office/archive badges
+- Right-click context menus; Copy (clipboard) vs Copy to…; storage used (root + total) in Files UI
+- Soft-delete trash with restore/purge, empty trash, undo toast
+- Filename + Postgres FTS search (text contents indexed on upload; Office extract where supported)
+- Internal shares (user email or team, read/write); Shared-with-me browse; Recent activity
 - Public share links with optional password + expiry (`/s/:token`)
 - File version history on overwrite (last 10) + share/link activity
-- WebDAV mount per workspace (`/dav/{workspaceID}/`)
-- Instance-admin storage backends: remote S3 + NFS/local mount; per-workspace assignment
-- Optional per-user Google Drive as a Connected Files root (OAuth vault + live browse)
-- Icedrive/Internxt via WebDAV as Connected vault mounts
-- Filename + Postgres FTS search (text file contents indexed on upload)
-- Signup approve/reject email (optional SMTP), empty trash, undo toast, background migrate jobs
+- WebDAV mount per workspace (`/dav/{workspaceID}/`) — official desktop/mobile sync path
+- Instance-admin storage backends: remote S3 + NFS/local mount; per-workspace assignment; background migrate
+- Optional Google Drive Connected vault + live Drive browse; Icedrive/Internxt via WebDAV mounts
+- Optional storage quotas (per workspace / user) with Admin controls
+- Server-generated image thumbnails for Files tiles
+- Signup approve/reject email (optional SMTP)
 - Brand UI (graphite + industrial orange/amber)
+- Optional thin desktop wrapper under [`desktop/`](desktop/) (Tauri + WebDAV)
 
 ### WebDAV (official sync/mount path)
 
@@ -160,7 +162,10 @@ docker-compose.yml
 
 ```bash
 cd api && go test ./...
+cd web && npm install && npm run build
 ```
+
+CI (GitLab, runner tag `docker-build`) runs `go test ./...`, `web` production build, and Docker image builds for api/web.
 
 Optional signup-approval integration test (needs a Postgres DSN):
 
@@ -182,4 +187,4 @@ Back up Postgres and object storage together for a consistent restore. Rotate `A
 
 ## Out of scope (for now)
 
-Other consumer clouds (Internxt, Icedrive, …), live Drive browser/mirror, custom desktop sync client, full-text content search.
+Nextcloud-style apps ecosystem, collaborative editing, AV scanning, billing, native mobile apps beyond WebDAV, full selective-sync desktop client with conflict UI.

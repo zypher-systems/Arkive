@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"strings"
@@ -52,7 +53,6 @@ func (h *GDriveHandler) liveService(r *http.Request, userID uuid.UUID) (*drive.S
 		Expiry:       expiry,
 	}
 	ocfg := storage.GoogleOAuthConfig(oauth.ClientID, oauth.ClientSecret, oauth.RedirectURL)
-	// Broader browse needs drive.readonly; fall back to drive.file for files the app created.
 	client := ocfg.Client(r.Context(), tok)
 	return drive.NewService(r.Context(), option.WithHTTPClient(client))
 }
@@ -124,4 +124,91 @@ func (h *GDriveHandler) DownloadLive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", meta.MimeType)
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+meta.Name+"\"")
 	_, _ = io.Copy(w, resp.Body)
+}
+
+// UploadLive PUT body into a Drive folder (parent query, name query).
+func (h *GDriveHandler) UploadLive(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	if err := (&FileHandler{App: h.App}).limitUpload(w, r); err != nil {
+		httpjson.Error(w, http.StatusRequestEntityTooLarge, "payload too large")
+		return
+	}
+	svc, err := h.liveService(r, user.ID)
+	if err != nil {
+		httpjson.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	parent := strings.TrimSpace(r.URL.Query().Get("parent"))
+	if parent == "" {
+		parent = "root"
+	}
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		httpjson.Error(w, http.StatusBadRequest, "name required")
+		return
+	}
+	ct := r.Header.Get("Content-Type")
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, h.App.Cfg.MaxUploadBytes+1))
+	if err != nil {
+		httpjson.Error(w, http.StatusBadRequest, "read failed")
+		return
+	}
+	if int64(len(body)) > h.App.Cfg.MaxUploadBytes {
+		httpjson.Error(w, http.StatusRequestEntityTooLarge, "payload too large")
+		return
+	}
+	f := &drive.File{
+		Name:    name,
+		Parents: []string{parent},
+	}
+	created, err := svc.Files.Create(f).Media(bytes.NewReader(body)).SupportsAllDrives(true).Do()
+	if err != nil {
+		httpjson.Error(w, http.StatusBadGateway, "upload failed: "+err.Error())
+		return
+	}
+	httpjson.Write(w, http.StatusCreated, liveItemDTO{
+		ID: created.Id, Name: created.Name, Kind: "file", Mime: created.MimeType, Size: created.Size,
+	})
+}
+
+type liveMoveRequest struct {
+	FileID      string `json:"file_id"`
+	NewParentID string `json:"new_parent_id"`
+	OldParentID string `json:"old_parent_id"`
+}
+
+// MoveLive moves a Drive file into another folder.
+func (h *GDriveHandler) MoveLive(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	var req liveMoveRequest
+	if err := httpjson.Decode(r, &req); err != nil || req.FileID == "" || req.NewParentID == "" {
+		httpjson.Error(w, http.StatusBadRequest, "file_id and new_parent_id required")
+		return
+	}
+	svc, err := h.liveService(r, user.ID)
+	if err != nil {
+		httpjson.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	call := svc.Files.Update(req.FileID, &drive.File{}).
+		AddParents(req.NewParentID).
+		SupportsAllDrives(true)
+	if req.OldParentID != "" {
+		call = call.RemoveParents(req.OldParentID)
+	}
+	meta, err := call.Fields("id,name,mimeType,size,parents").Do()
+	if err != nil {
+		httpjson.Error(w, http.StatusBadGateway, "move failed: "+err.Error())
+		return
+	}
+	kind := "file"
+	if meta.MimeType == "application/vnd.google-apps.folder" {
+		kind = "folder"
+	}
+	httpjson.Write(w, http.StatusOK, liveItemDTO{
+		ID: meta.Id, Name: meta.Name, Kind: kind, Mime: meta.MimeType, Size: meta.Size,
+	})
 }

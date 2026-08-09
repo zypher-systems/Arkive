@@ -24,6 +24,7 @@ type adminUserDTO struct {
 	DisplayName     string    `json:"display_name"`
 	IsInstanceAdmin bool      `json:"is_instance_admin"`
 	Status          string    `json:"status"`
+	QuotaBytes      *int64    `json:"quota_bytes,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 }
 
@@ -33,7 +34,7 @@ func (h *AdminUsersHandler) List(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if status == "" {
 		rows, err = h.App.DB.Query(r.Context(), `
-			SELECT id, email, display_name, is_instance_admin, status, created_at
+			SELECT id, email, display_name, is_instance_admin, status, quota_bytes, created_at
 			FROM users
 			ORDER BY
 				CASE status WHEN 'pending' THEN 0 WHEN 'active' THEN 1 ELSE 2 END,
@@ -45,7 +46,7 @@ func (h *AdminUsersHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		rows, err = h.App.DB.Query(r.Context(), `
-			SELECT id, email, display_name, is_instance_admin, status, created_at
+			SELECT id, email, display_name, is_instance_admin, status, quota_bytes, created_at
 			FROM users WHERE status = $1
 			ORDER BY created_at ASC
 		`, status)
@@ -59,7 +60,7 @@ func (h *AdminUsersHandler) List(w http.ResponseWriter, r *http.Request) {
 	out := []adminUserDTO{}
 	for rows.Next() {
 		var u adminUserDTO
-		if err := rows.Scan(&u.ID, &u.Email, &u.DisplayName, &u.IsInstanceAdmin, &u.Status, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.DisplayName, &u.IsInstanceAdmin, &u.Status, &u.QuotaBytes, &u.CreatedAt); err != nil {
 			httpjson.Error(w, http.StatusInternalServerError, "scan failed")
 			return
 		}

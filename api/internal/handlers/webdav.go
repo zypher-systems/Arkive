@@ -352,8 +352,13 @@ func (h *WebDAVHandler) put(w http.ResponseWriter, r *http.Request, wsID uuid.UU
 		ct = "application/octet-stream"
 	}
 	size := r.ContentLength
+	incoming := max64(size, 0)
 
 	if node != nil {
+		if err := h.App.EnsureQuota(r.Context(), wsID, incoming, node.Size); err != nil {
+			http.Error(w, "storage quota exceeded", http.StatusRequestEntityTooLarge)
+			return
+		}
 		_ = h.App.ArchiveCurrentVersion(r.Context(), node.ID, user.ID)
 		newKey := app.StorageKey(wsID, uuid.New())
 		if err := store.Put(r.Context(), newKey, r.Body, size, ct); err != nil {
@@ -379,6 +384,10 @@ func (h *WebDAVHandler) put(w http.ResponseWriter, r *http.Request, wsID uuid.UU
 		return
 	}
 
+	if err := h.App.EnsureQuota(r.Context(), wsID, incoming, 0); err != nil {
+		http.Error(w, "storage quota exceeded", http.StatusRequestEntityTooLarge)
+		return
+	}
 	nodeID := uuid.New()
 	key := app.StorageKey(wsID, nodeID)
 	if err := store.Put(r.Context(), key, r.Body, size, ct); err != nil {
