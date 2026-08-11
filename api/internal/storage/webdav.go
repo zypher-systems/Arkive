@@ -10,6 +10,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/arkive/arkive/internal/netutil"
 )
 
 // WebDAVStore stores opaque blobs on a remote WebDAV endpoint (e.g. Icedrive).
@@ -31,14 +33,26 @@ func NewWebDAVStore(opts WebDAVOptions) (*WebDAVStore, error) {
 	if base == "" {
 		return nil, fmt.Errorf("webdav url required")
 	}
-	if _, err := url.Parse(base); err != nil {
-		return nil, fmt.Errorf("invalid webdav url")
+	if err := netutil.ValidateOutboundHTTPSURL(base); err != nil {
+		return nil, fmt.Errorf("invalid webdav url: %w", err)
+	}
+	client := &http.Client{
+		Timeout: 120 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("too many redirects")
+			}
+			if err := netutil.ValidateOutboundHTTPSURL(req.URL.String()); err != nil {
+				return fmt.Errorf("redirect blocked: %w", err)
+			}
+			return nil
+		},
 	}
 	return &WebDAVStore{
 		base:     base,
 		user:     opts.Username,
 		password: opts.Password,
-		client:   &http.Client{Timeout: 120 * time.Second},
+		client:   client,
 	}, nil
 }
 

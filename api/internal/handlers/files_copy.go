@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/arkive/arkive/internal/app"
@@ -128,6 +129,11 @@ func (h *FileHandler) copyNodeTree(r *http.Request, srcID, destWS uuid.UUID, des
 		&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt,
 	)
 	if err != nil {
+		if newKey != nil {
+			if destStore, serr := h.App.StoreForWorkspace(r.Context(), destWS); serr == nil {
+				_ = destStore.Delete(r.Context(), *newKey)
+			}
+		}
 		return models.Node{}, err
 	}
 
@@ -136,23 +142,39 @@ func (h *FileHandler) copyNodeTree(r *http.Request, srcID, destWS uuid.UUID, des
 			SELECT id FROM nodes WHERE parent_id = $1 AND deleted_at IS NULL ORDER BY name
 		`, srcID)
 		if err != nil {
-			return n, err
+			h.compensateCreatedCopy(r.Context(), destWS, n.ID)
+			return models.Node{}, err
 		}
 		var children []uuid.UUID
 		for rows.Next() {
 			var cid uuid.UUID
 			if err := rows.Scan(&cid); err != nil {
 				rows.Close()
-				return n, err
+				h.compensateCreatedCopy(r.Context(), destWS, n.ID)
+				return models.Node{}, err
 			}
 			children = append(children, cid)
 		}
 		rows.Close()
 		for _, cid := range children {
 			if _, err := h.copyNodeTree(r, cid, destWS, &n.ID, actor); err != nil {
-				return n, err
+				h.compensateCreatedCopy(r.Context(), destWS, n.ID)
+				return models.Node{}, err
 			}
 		}
 	}
 	return n, nil
+}
+
+// compensateCreatedCopy removes a partially copied subtree and its blobs.
+func (h *FileHandler) compensateCreatedCopy(ctx context.Context, workspaceID, rootID uuid.UUID) {
+	keys, err := h.App.CollectNodeStorageKeys(ctx, rootID)
+	if err == nil {
+		if store, serr := h.App.StoreForWorkspace(ctx, workspaceID); serr == nil {
+			for _, key := range keys {
+				_ = store.Delete(ctx, key)
+			}
+		}
+	}
+	_, _ = h.App.DB.Exec(ctx, `DELETE FROM nodes WHERE id = $1`, rootID)
 }

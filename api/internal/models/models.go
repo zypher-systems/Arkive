@@ -47,6 +47,8 @@ type Node struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
+	// Permission is set on shared-with-me listings (read|write).
+	Permission *string `json:"permission,omitempty"`
 }
 
 type PublicLink struct {

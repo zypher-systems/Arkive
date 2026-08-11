@@ -82,8 +82,18 @@ func (a *App) pruneVersions(ctx context.Context, nodeID uuid.UUID) error {
 		return err
 	}
 	for _, o := range outdated {
-		_, _ = a.DB.Exec(ctx, `DELETE FROM node_versions WHERE id = $1`, o.id)
-		_ = store.Delete(ctx, o.key)
+		if err := store.Delete(ctx, o.key); err != nil {
+			if a.Logger != nil {
+				a.Logger.Warn("version blob delete failed", "node_id", nodeID, "version_id", o.id, "key", o.key, "err", err)
+			}
+			return fmt.Errorf("delete version blob: %w", err)
+		}
+		if _, err := a.DB.Exec(ctx, `DELETE FROM node_versions WHERE id = $1`, o.id); err != nil {
+			if a.Logger != nil {
+				a.Logger.Warn("version row delete failed", "node_id", nodeID, "version_id", o.id, "err", err)
+			}
+			return err
+		}
 	}
 	return nil
 }

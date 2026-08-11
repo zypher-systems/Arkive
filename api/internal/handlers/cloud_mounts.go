@@ -7,6 +7,7 @@ import (
 	"github.com/arkive/arkive/internal/crypto"
 	"github.com/arkive/arkive/internal/httpjson"
 	"github.com/arkive/arkive/internal/middleware"
+	"github.com/arkive/arkive/internal/netutil"
 	"github.com/google/uuid"
 )
 
@@ -40,6 +41,10 @@ func (h *GDriveHandler) ConnectWebDAV(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(req.URL) == "" {
 		httpjson.Error(w, http.StatusBadRequest, "url required")
+		return
+	}
+	if err := netutil.ValidateOutboundHTTPSURL(req.URL); err != nil {
+		httpjson.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	enc, err := crypto.EncryptWebDAVConfig(h.App.Cfg.SecretsKey, crypto.WebDAVConfig{

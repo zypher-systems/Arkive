@@ -34,6 +34,8 @@ export type Node = {
   created_by?: string | null;
   created_at: string;
   updated_at: string;
+  /** Present on shared-with-me roots. */
+  permission?: 'read' | 'write';
 };
 
 export type Breadcrumb = { id: string; name: string };
@@ -270,10 +272,11 @@ export const api = {
         quota_bytes?: number | null;
       }[];
     }>('/api/storage/usage'),
-  listNodes: (workspaceId: string, parentId?: string | null) => {
+  listNodes: (workspaceId: string, parentId?: string | null, init?: RequestInit) => {
     const q = parentId ? `?parent_id=${parentId}` : '';
     return request<{ nodes: Node[]; breadcrumbs: Breadcrumb[] }>(
       `/api/workspaces/${workspaceId}/nodes${q}`,
+      init,
     );
   },
   mkdir: (workspaceId: string, name: string, parentId?: string | null) =>
@@ -331,8 +334,11 @@ export const api = {
     }),
   remove: (nodeId: string) =>
     request<{ status: string }>(`/api/nodes/${nodeId}`, { method: 'DELETE' }),
-  search: (workspaceId: string, q: string) =>
-    request<Node[]>(`/api/workspaces/${workspaceId}/search?q=${encodeURIComponent(q)}`),
+  search: (workspaceId: string, q: string, init?: RequestInit) =>
+    request<Node[]>(
+      `/api/workspaces/${workspaceId}/search?q=${encodeURIComponent(q)}`,
+      init,
+    ),
   downloadZip: async (workspaceId: string, nodeIds: string[]) => {
     const res = await fetch(`/api/workspaces/${workspaceId}/download-zip`, {
       method: 'POST',
@@ -360,7 +366,8 @@ export const api = {
   },
   oidcEnabled: () =>
     request<{ enabled: boolean; provider_name: string }>('/api/auth/oidc/enabled'),
-  trash: (workspaceId: string) => request<Node[]>(`/api/workspaces/${workspaceId}/trash`),
+  trash: (workspaceId: string, init?: RequestInit) =>
+    request<Node[]>(`/api/workspaces/${workspaceId}/trash`, init),
   emptyTrash: (workspaceId: string) =>
     request<{ status: string; purged: number }>(`/api/workspaces/${workspaceId}/trash`, {
       method: 'DELETE',
@@ -378,10 +385,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ node_ids, target_workspace_id, target_parent_id: target_parent_id || null }),
     }),
-  recentActivity: () => request<RecentItem[]>('/api/activity/recent'),
-  liveDriveList: (parent?: string) => {
+  recentActivity: (init?: RequestInit) =>
+    request<RecentItem[]>('/api/activity/recent', init),
+  liveDriveList: (parent?: string, init?: RequestInit) => {
     const q = parent ? `?parent=${encodeURIComponent(parent)}` : '';
-    return request<{ items: LiveDriveItem[]; parent: string }>(`/api/storage/google/live${q}`);
+    return request<{ items: LiveDriveItem[]; parent: string }>(
+      `/api/storage/google/live${q}`,
+      init,
+    );
   },
   liveDriveDownloadUrl: (id: string) =>
     `/api/storage/google/live/download?id=${encodeURIComponent(id)}`,
@@ -454,7 +465,7 @@ export const api = {
     }),
   deleteShare: (shareId: string) =>
     request<{ status: string }>(`/api/shares/${shareId}`, { method: 'DELETE' }),
-  sharedWithMe: () => request<Node[]>('/api/shared'),
+  sharedWithMe: (init?: RequestInit) => request<Node[]>('/api/shared', init),
   links: (nodeId: string) => request<PublicLink[]>(`/api/nodes/${nodeId}/links`),
   createLink: (
     nodeId: string,
@@ -664,6 +675,14 @@ export function isPreviewable(node: Node) {
   if (node.kind !== 'file') return false;
   const mime = (node.mime || '').toLowerCase();
   const name = node.name.toLowerCase();
+  // Never inline HTML/SVG in the app origin (stored XSS).
+  if (
+    mime.includes('html') ||
+    mime.includes('svg') ||
+    /\.(html?|svgz?)$/i.test(name)
+  ) {
+    return false;
+  }
   if (
     mime.startsWith('image/') ||
     mime.startsWith('video/') ||
@@ -678,7 +697,7 @@ export function isPreviewable(node: Node) {
   ) {
     return true;
   }
-  return /\.(png|jpe?g|gif|webp|svg|bmp|avif|ico|jfif|pdf|mp4|webm|ogg|ogv|mov|m4v|mkv|mp3|wav|oga|m4a|flac|aac|opus|txt|md|markdown|json|ya?ml|toml|csv|tsv|log|go|tsx?|jsx?|mjs|cjs|py|rs|css|scss|less|html?|xml|sh|bash|zsh|ini|conf|cfg|env|sql|rb|java|kt|c|cc|cpp|h|hpp|php|vue|svelte|swift|dart|lua|r|pl|ps1)$/i.test(
+  return /\.(png|jpe?g|gif|webp|bmp|avif|ico|jfif|pdf|mp4|webm|ogg|ogv|mov|m4v|mkv|mp3|wav|oga|m4a|flac|aac|opus|txt|md|markdown|json|ya?ml|toml|csv|tsv|log|go|tsx?|jsx?|mjs|cjs|py|rs|css|scss|less|xml|sh|bash|zsh|ini|conf|cfg|env|sql|rb|java|kt|c|cc|cpp|h|hpp|php|vue|svelte|swift|dart|lua|r|pl|ps1)$/i.test(
     name,
   );
 }

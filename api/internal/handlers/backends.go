@@ -9,6 +9,7 @@ import (
 	"github.com/arkive/arkive/internal/app"
 	"github.com/arkive/arkive/internal/crypto"
 	"github.com/arkive/arkive/internal/httpjson"
+	"github.com/arkive/arkive/internal/netutil"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -347,6 +348,9 @@ func (h *BackendHandler) normalizeConfig(typ string, incoming json.RawMessage, e
 		}
 		if strings.TrimSpace(cfg.URL) == "" {
 			return nil, errString("webdav url required")
+		}
+		if err := netutil.ValidateOutboundHTTPSURL(cfg.URL); err != nil {
+			return nil, errString(err.Error())
 		}
 		return crypto.EncryptWebDAVConfig(h.App.Cfg.SecretsKey, cfg)
 	default:

@@ -1,27 +1,11 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type DragEvent,
-  type MouseEvent,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   api,
   downloadUrl,
   isPreviewable,
-  type Breadcrumb,
-  type LiveDriveItem,
   type Node,
-  type RecentItem,
-  type Workspace,
 } from '../lib/api';
-import { SharePanel } from '../components/SharePanel';
-import { PreviewModal } from '../components/PreviewModal';
-import { MoveDialog } from '../components/MoveDialog';
-import { VersionsPanel } from '../components/VersionsPanel';
 import { Toast, type ToastState } from '../components/Toast';
-import { NamePrompt } from '../components/NamePrompt';
 import { useConfirm } from '../lib/confirm';
 import { FilesSidebar } from '../components/files/FilesSidebar';
 import { FileToolbar } from '../components/files/FileToolbar';
@@ -38,104 +22,13 @@ import {
   SharedBrowse,
 } from '../components/files/SecondaryLists';
 import type { ContextMenuState, FileViewMode } from '../components/files/types';
+import { BrowserModals, type NamePromptState } from './browser/BrowserModals';
+import { workspaceLabel } from './browser/types';
+import { useBrowserData } from './browser/useBrowserData';
+import { useFileDnD } from './browser/useFileDnD';
+import { useSelection } from './browser/useSelection';
 
 const VIEW_KEY = 'arkive.files.viewMode';
-const DRAG_MIME = 'application/x-arkive-nodes';
-
-/** Compact translucent icon+name chip for HTML5 drag ghosts. */
-function setCompactDragGhost(e: DragEvent, node: Node, count: number) {
-  const row = e.currentTarget as HTMLElement | null;
-  if (!row) return;
-
-  document.querySelectorAll('[data-arkive-drag-ghost]').forEach((n) => n.remove());
-
-  const ghost = document.createElement('div');
-  ghost.setAttribute('data-arkive-drag-ghost', '1');
-  Object.assign(ghost.style, {
-    position: 'fixed',
-    top: '-9999px',
-    left: '0',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '8px 14px 8px 8px',
-    maxWidth: '260px',
-    borderRadius: '12px',
-    border: '1px solid rgba(245, 158, 11, 0.4)',
-    background: 'rgba(22, 27, 34, 0.55)',
-    boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
-    color: 'rgba(232, 234, 237, 0.95)',
-    fontSize: '13px',
-    fontWeight: '600',
-    lineHeight: '1.2',
-    opacity: '0.7',
-    pointerEvents: 'none',
-    zIndex: '99999',
-    backdropFilter: 'blur(6px)',
-  } as Partial<CSSStyleDeclaration>);
-
-  const thumbHost = row.querySelector('[data-drag-thumb]') as HTMLElement | null;
-  if (thumbHost) {
-    const clone = thumbHost.cloneNode(true) as HTMLElement;
-    Object.assign(clone.style, {
-      flex: '0 0 36px',
-      width: '36px',
-      height: '36px',
-      overflow: 'hidden',
-      borderRadius: '8px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      opacity: '0.9',
-    });
-    clone.querySelectorAll('img, video').forEach((media) => {
-      const el = media as HTMLElement;
-      el.style.width = '36px';
-      el.style.height = '36px';
-      el.style.objectFit = 'cover';
-    });
-    clone.querySelectorAll('svg').forEach((svg) => {
-      svg.setAttribute('width', '28');
-      svg.setAttribute('height', '28');
-      (svg as SVGElement).style.width = '28px';
-      (svg as SVGElement).style.height = '28px';
-    });
-    ghost.appendChild(clone);
-  }
-
-  const label = document.createElement('span');
-  Object.assign(label.style, {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    minWidth: '0',
-  });
-  label.textContent = count > 1 ? `${node.name} (+${count - 1})` : node.name;
-  ghost.appendChild(label);
-
-  document.body.appendChild(ghost);
-  const offsetX = 22;
-  const offsetY = Math.max(12, Math.round(ghost.offsetHeight / 2));
-  try {
-    e.dataTransfer.setDragImage(ghost, offsetX, offsetY);
-  } catch {
-    /* some browsers reject custom drag images */
-  }
-  requestAnimationFrame(() => ghost.remove());
-}
-
-type NavView =
-  | { kind: 'workspace'; id: string }
-  | { kind: 'shared' }
-  | { kind: 'shared-folder'; workspaceId: string; rootId: string; parentId: string | null }
-  | { kind: 'recent' }
-  | { kind: 'live-drive'; parent: string };
-
-function workspaceLabel(w: Workspace) {
-  if (w.type === 'personal') return 'My files';
-  if (w.type === 'mount') return w.name || 'Google Drive';
-  return w.name;
-}
 
 function loadViewMode(): FileViewMode {
   const v = localStorage.getItem(VIEW_KEY);
@@ -144,59 +37,72 @@ function loadViewMode(): FileViewMode {
 }
 
 export function BrowserPage() {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [view, setView] = useState<NavView | null>(null);
-  const [parentId, setParentId] = useState<string | null>(null);
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [breadcrumbs, setBreadcrumbs] = useState<Breadcrumb[]>([]);
   const [error, setError] = useState('');
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [shareNode, setShareNode] = useState<Node | null>(null);
   const [previewNode, setPreviewNode] = useState<Node | null>(null);
   const [previewStartEditing, setPreviewStartEditing] = useState(false);
   const [historyNode, setHistoryNode] = useState<Node | null>(null);
-  const [shared, setShared] = useState<Node[]>([]);
-  const [trash, setTrash] = useState<Node[]>([]);
   const [showTrash, setShowTrash] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [dragging, setDragging] = useState(false);
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [showMove, setShowMove] = useState(false);
   const [moveMode, setMoveMode] = useState<'move' | 'copy'>('move');
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Node[] | null>(null);
   const [viewMode, setViewMode] = useState<FileViewMode>(loadViewMode);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
-  const [clipboard, setClipboard] = useState<string[] | null>(null);
-  const [rootBytes, setRootBytes] = useState<number | null>(null);
-  const [rootQuota, setRootQuota] = useState<number | null>(null);
-  const [totalBytes, setTotalBytes] = useState(0);
-  const [totalFiles, setTotalFiles] = useState(0);
-  const [totalQuota, setTotalQuota] = useState<number | null>(null);
-  const warnedQuota = useRef(false);
-  const [namePrompt, setNamePrompt] = useState<
-    | { kind: 'mkdir' }
-    | { kind: 'newfile' }
-    | { kind: 'rename'; node: Node }
-    | null
-  >(null);
+  const [namePrompt, setNamePrompt] = useState<NamePromptState>(null);
   const [nameBusy, setNameBusy] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const searchTimer = useRef<number | null>(null);
-  const { ask, dialog: confirmDialog, isOpen: confirmOpen } = useConfirm();
   const [toast, setToast] = useState<ToastState>(null);
-  const [recent, setRecent] = useState<RecentItem[]>([]);
-  const [liveItems, setLiveItems] = useState<LiveDriveItem[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<number | null>(null);
-  const dragDepth = useRef(0);
-  const suppressOpenAfterDrag = useRef(false);
+  const { ask, dialog: confirmDialog, isOpen: confirmOpen } = useConfirm();
 
-  const workspaceId =
-    view?.kind === 'workspace'
-      ? view.id
-      : view?.kind === 'shared-folder'
-        ? view.workspaceId
-        : '';
+  const showToast = useCallback((message: string, ms = 4000) => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    setToast({ id: Date.now(), message });
+    toastTimer.current = window.setTimeout(() => setToast(null), ms);
+  }, []);
+
+  const {
+    selected,
+    setSelected,
+    clipboard,
+    setClipboard,
+    toggleSelect,
+    copyToClipboard,
+  } = useSelection({ showToast });
+
+  const {
+    workspaces,
+    view,
+    setView,
+    parentId,
+    setParentId,
+    nodes,
+    setNodes,
+    breadcrumbs,
+    shared,
+    trash,
+    recent,
+    liveItems,
+    setLiveItems,
+    results,
+    setResults,
+    rootBytes,
+    rootQuota,
+    totalBytes,
+    totalFiles,
+    totalQuota,
+    workspaceId,
+    loadNodes,
+    refreshUsage,
+  } = useBrowserData({
+    query,
+    setError,
+    setSelected,
+    setToast,
+    toastTimer,
+  });
+
   const browsing = view?.kind === 'workspace' || view?.kind === 'shared-folder';
   const sharedBrowse = view?.kind === 'shared-folder';
   const personal = workspaces.find((w) => w.type === 'personal');
@@ -205,7 +111,7 @@ export function BrowserPage() {
   const activeWorkspace = workspaces.find((w) => w.id === workspaceId);
   const canWriteFiles =
     view?.kind === 'shared-folder'
-      ? true
+      ? view.permission === 'write'
       : !activeWorkspace?.role ||
         activeWorkspace.role === 'owner' ||
         activeWorkspace.role === 'admin' ||
@@ -218,109 +124,7 @@ export function BrowserPage() {
     setResults(null);
     setShowTrash(false);
     setSelected(new Set());
-  }, []);
-
-  const refreshUsage = useCallback(async () => {
-    try {
-      const total = await api.storageUsage();
-      setTotalBytes(total.bytes);
-      setTotalFiles(total.files);
-      setTotalQuota(total.quota_bytes ?? null);
-      if (
-        total.quota_bytes != null &&
-        total.quota_bytes > 0 &&
-        total.bytes / total.quota_bytes >= 0.9 &&
-        !warnedQuota.current
-      ) {
-        warnedQuota.current = true;
-        if (toastTimer.current) window.clearTimeout(toastTimer.current);
-        setToast({ id: Date.now(), message: 'Storage is over 90% of your quota' });
-        toastTimer.current = window.setTimeout(() => setToast(null), 6000);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const refreshRootUsage = useCallback(async (wsId: string) => {
-    try {
-      const u = await api.workspaceUsage(wsId);
-      setRootBytes(u.bytes);
-      setRootQuota(u.quota_bytes ?? null);
-    } catch {
-      setRootBytes(null);
-      setRootQuota(null);
-    }
-  }, []);
-
-  const loadWorkspaces = useCallback(async () => {
-    const list = await api.workspaces();
-    setWorkspaces(list);
-    setView((prev) => {
-      if (prev?.kind === 'shared') return prev;
-      if (prev?.kind === 'workspace' && list.some((w) => w.id === prev.id)) return prev;
-      const personalId = list.find((w) => w.type === 'personal')?.id;
-      const fallback = personalId || list.find((w) => w.type !== 'mount')?.id || list[0]?.id;
-      return fallback ? { kind: 'workspace', id: fallback } : null;
-    });
-    await refreshUsage();
-  }, [refreshUsage]);
-
-  const loadNodes = useCallback(async () => {
-    setShared(await api.sharedWithMe());
-    setRecent(await api.recentActivity().catch(() => [] as RecentItem[]));
-    if (view?.kind === 'live-drive') {
-      const data = await api.liveDriveList(view.parent === 'root' ? undefined : view.parent);
-      setLiveItems(data.items);
-      return;
-    }
-    if (!workspaceId) {
-      setNodes([]);
-      setBreadcrumbs([]);
-      setTrash([]);
-      setRootBytes(null);
-      return;
-    }
-    const listParent =
-      view?.kind === 'shared-folder' ? (parentId ?? view.rootId) : parentId;
-    const data = await api.listNodes(workspaceId, listParent);
-    setNodes(data.nodes);
-    setBreadcrumbs(data.breadcrumbs);
-    if (view?.kind === 'workspace') {
-      setTrash(await api.trash(workspaceId));
-      await refreshRootUsage(workspaceId);
-    } else {
-      setTrash([]);
-      setRootBytes(null);
-    }
-    setSelected(new Set());
-  }, [workspaceId, parentId, view, refreshRootUsage]);
-
-  useEffect(() => {
-    void loadWorkspaces().catch((e) => setError(String(e)));
-  }, [loadWorkspaces]);
-
-  useEffect(() => {
-    if (view?.kind === 'shared' || view?.kind === 'recent') {
-      void Promise.all([
-        api.sharedWithMe(),
-        api.recentActivity().catch(() => [] as RecentItem[]),
-      ])
-        .then(([s, r]) => {
-          setShared(s);
-          setRecent(r);
-        })
-        .catch((e) => setError(e instanceof Error ? e.message : 'Load failed'));
-      return;
-    }
-    void loadNodes().catch((e) => setError(e instanceof Error ? e.message : 'Load failed'));
-  }, [loadNodes, view?.kind]);
-
-  function showToast(message: string, ms = 4000) {
-    if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    setToast({ id: Date.now(), message });
-    toastTimer.current = window.setTimeout(() => setToast(null), ms);
-  }
+  }, [setView, setParentId, setResults, setSelected]);
 
   function showUndoToast(nodeIds: string[]) {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -345,34 +149,6 @@ export function BrowserPage() {
     });
     toastTimer.current = window.setTimeout(() => setToast(null), 10000);
   }
-
-  function copyToClipboard(ids: string[]) {
-    if (!ids.length) return;
-    setClipboard(ids);
-    showToast(
-      ids.length > 1
-        ? `Copied ${ids.length} items — Paste in a folder`
-        : 'Copied — Paste in a folder',
-    );
-  }
-
-  useEffect(() => {
-    if (!workspaceId || view?.kind !== 'workspace') return;
-    if (searchTimer.current) window.clearTimeout(searchTimer.current);
-    if (!query.trim()) {
-      setResults(null);
-      return;
-    }
-    searchTimer.current = window.setTimeout(() => {
-      void api
-        .search(workspaceId, query.trim())
-        .then(setResults)
-        .catch((e) => setError(e instanceof Error ? e.message : 'Search failed'));
-    }, 250);
-    return () => {
-      if (searchTimer.current) window.clearTimeout(searchTimer.current);
-    };
-  }, [query, workspaceId, view?.kind]);
 
   function setViewModePersist(m: FileViewMode) {
     setViewMode(m);
@@ -510,6 +286,18 @@ export function BrowserPage() {
     });
   }, [selected, loadNodes, ask, refreshUsage]);
 
+  async function pasteClipboard() {
+    if (!workspaceId || !clipboard?.length) return;
+    try {
+      await api.copyNodes(clipboard, workspaceId, parentId);
+      setClipboard(null);
+      await loadNodes();
+      await refreshUsage();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Paste failed');
+    }
+  }
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (confirmOpen) return;
@@ -542,19 +330,7 @@ export function BrowserPage() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [nodes, selected, bulkDelete, browsing, confirmOpen, clipboard]);
-
-  async function pasteClipboard() {
-    if (!workspaceId || !clipboard?.length) return;
-    try {
-      await api.copyNodes(clipboard, workspaceId, parentId);
-      setClipboard(null);
-      await loadNodes();
-      await refreshUsage();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Paste failed');
-    }
-  }
+  }, [nodes, selected, bulkDelete, browsing, confirmOpen, clipboard, copyToClipboard, setSelected]);
 
   async function bulkZip() {
     if (!workspaceId) return;
@@ -593,20 +369,50 @@ export function BrowserPage() {
     });
   }
 
-  function toggleSelect(id: string, e: MouseEvent) {
-    e.stopPropagation();
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   function openPreview(node: Node, edit = false) {
     setPreviewStartEditing(edit);
     setPreviewNode(node);
   }
+
+  async function moveNodesInto(ids: string[], targetParent: string | null) {
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    try {
+      for (const id of ids) {
+        if (id === targetParent) continue;
+        const n = byId.get(id);
+        if (!n) continue;
+        await api.move(id, n.name, targetParent);
+      }
+      await loadNodes();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Move failed');
+    }
+  }
+
+  const {
+    dragging,
+    dropTargetId,
+    setDropTargetId,
+    suppressOpenAfterDrag,
+    hasOsFiles,
+    hasInternalNodes,
+    onDragStartNode,
+    onDragEndNode,
+    onDragOverFolder,
+    onDragLeaveFolder,
+    onDropOnFolder,
+    onDropOnBreadcrumb,
+    onRootDragEnter,
+    onRootDragOver,
+    onRootDragLeave,
+    onRootDrop,
+  } = useFileDnD({
+    selected,
+    browsing,
+    parentId,
+    onUpload,
+    moveNodesInto,
+  });
 
   function openNode(node: Node) {
     // A dragend often synthesizes a click; ignore it so we don't open mid-move.
@@ -632,103 +438,6 @@ export function BrowserPage() {
     setSelected(new Set(nodesToMove.map((n) => n.id)));
     setMoveMode(mode);
     setShowMove(true);
-  }
-
-  async function moveNodesInto(ids: string[], targetParent: string | null) {
-    const byId = new Map(nodes.map((n) => [n.id, n]));
-    try {
-      for (const id of ids) {
-        if (id === targetParent) continue;
-        const n = byId.get(id);
-        if (!n) continue;
-        await api.move(id, n.name, targetParent);
-      }
-      await loadNodes();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Move failed');
-    }
-  }
-
-  function hasOsFiles(e: DragEvent) {
-    return Array.from(e.dataTransfer.types).includes('Files');
-  }
-
-  function hasInternalNodes(e: DragEvent) {
-    return Array.from(e.dataTransfer.types).includes(DRAG_MIME);
-  }
-
-  function onDragStartNode(e: DragEvent, node: Node) {
-    // Avoid setState here — selecting mid-dragstart re-renders and cancels the drag,
-    // which forced a select-then-drag-again workflow.
-    const ids = selected.has(node.id) && selected.size > 0 ? [...selected] : [node.id];
-    e.dataTransfer.setData(DRAG_MIME, JSON.stringify(ids));
-    e.dataTransfer.effectAllowed = 'move';
-    suppressOpenAfterDrag.current = true;
-    setCompactDragGhost(e, node, ids.length);
-  }
-
-  function onDragEndNode() {
-    setDropTargetId(null);
-    document.querySelectorAll('[data-arkive-drag-ghost]').forEach((n) => n.remove());
-    window.setTimeout(() => {
-      suppressOpenAfterDrag.current = false;
-    }, 0);
-  }
-
-  function onDragOverFolder(e: DragEvent, folder: Node) {
-    if (folder.kind !== 'folder') return;
-    if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = hasOsFiles(e) ? 'copy' : 'move';
-    setDropTargetId(folder.id);
-  }
-
-  function onDragLeaveFolder(folder: Node) {
-    setDropTargetId((cur) => (cur === folder.id ? null : cur));
-  }
-
-  async function onDropOnFolder(e: DragEvent, folder: Node) {
-    if (folder.kind !== 'folder') return;
-    e.preventDefault();
-    e.stopPropagation();
-    setDropTargetId(null);
-    setDragging(false);
-    dragDepth.current = 0;
-
-    if (hasOsFiles(e) && e.dataTransfer.files.length) {
-      void onUpload(e.dataTransfer.files, folder.id);
-      return;
-    }
-    const raw = e.dataTransfer.getData(DRAG_MIME);
-    if (!raw) return;
-    try {
-      const ids = JSON.parse(raw) as string[];
-      if (!Array.isArray(ids) || !ids.length) return;
-      if (ids.includes(folder.id)) return;
-      await moveNodesInto(ids, folder.id);
-    } catch {
-      /* ignore bad payload */
-    }
-  }
-
-  async function onDropOnBreadcrumb(e: DragEvent, targetParent: string | null) {
-    e.preventDefault();
-    e.stopPropagation();
-    setDropTargetId(null);
-    if (hasOsFiles(e) && e.dataTransfer.files.length) {
-      void onUpload(e.dataTransfer.files, targetParent);
-      return;
-    }
-    const raw = e.dataTransfer.getData(DRAG_MIME);
-    if (!raw) return;
-    try {
-      const ids = JSON.parse(raw) as string[];
-      if (!Array.isArray(ids) || !ids.length) return;
-      await moveNodesInto(ids, targetParent);
-    } catch {
-      /* ignore */
-    }
   }
 
   const selectedNodes = nodes.filter((n) => selected.has(n.id));
@@ -779,32 +488,10 @@ export function BrowserPage() {
 
   return (
     <div
-      onDragEnter={(e) => {
-        if (!browsing) return;
-        if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
-        e.preventDefault();
-        dragDepth.current += 1;
-        if (hasOsFiles(e)) setDragging(true);
-      }}
-      onDragOver={(e) => {
-        if (!browsing) return;
-        if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
-        e.preventDefault();
-      }}
-      onDragLeave={() => {
-        dragDepth.current = Math.max(0, dragDepth.current - 1);
-        if (dragDepth.current === 0) setDragging(false);
-      }}
-      onDrop={(e) => {
-        if (!browsing) return;
-        e.preventDefault();
-        setDragging(false);
-        dragDepth.current = 0;
-        setDropTargetId(null);
-        if (hasOsFiles(e) && e.dataTransfer.files.length) {
-          void onUpload(e.dataTransfer.files, parentId);
-        }
-      }}
+      onDragEnter={onRootDragEnter}
+      onDragOver={onRootDragOver}
+      onDragLeave={onRootDragLeave}
+      onDrop={onRootDrop}
       className="relative flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch"
     >
       {dragging && browsing && (
@@ -892,6 +579,7 @@ export function BrowserPage() {
                   workspaceId: node.workspace_id,
                   rootId: node.id,
                   parentId: node.id,
+                  permission: node.permission === 'write' ? 'write' : 'read',
                 });
                 setParentId(node.id);
               } else if (isPreviewable(node)) openPreview(node);
@@ -1203,82 +891,45 @@ export function BrowserPage() {
         canWrite={canWriteFiles}
       />
 
-      {namePrompt && (
-        <NamePrompt
-          title={
-            namePrompt.kind === 'mkdir'
-              ? 'New folder'
-              : namePrompt.kind === 'newfile'
-                ? 'New file'
-                : 'Rename'
-          }
-          label={
-            namePrompt.kind === 'mkdir'
-              ? 'Folder name'
-              : namePrompt.kind === 'newfile'
-                ? 'File name (.txt or .md)'
-                : 'Name'
-          }
-          initialValue={
-            namePrompt.kind === 'rename'
-              ? namePrompt.node.name
-              : namePrompt.kind === 'newfile'
-                ? 'Untitled.txt'
-                : ''
-          }
-          confirmLabel={
-            namePrompt.kind === 'rename' ? 'Rename' : 'Create'
-          }
-          busy={nameBusy}
-          onConfirm={(name) => void submitNamePrompt(name)}
-          onClose={() => {
-            if (!nameBusy) setNamePrompt(null);
-          }}
-        />
-      )}
+      <BrowserModals
+        namePrompt={namePrompt}
+        nameBusy={nameBusy}
+        onConfirmName={(name) => void submitNamePrompt(name)}
+        onCloseNamePrompt={() => {
+          if (!nameBusy) setNamePrompt(null);
+        }}
+        shareNode={shareNode}
+        workspaces={workspaces}
+        onCloseShare={() => setShareNode(null)}
+        previewNode={previewNode}
+        previewStartEditing={previewStartEditing}
+        canWrite={canWriteFiles}
+        onClosePreview={() => {
+          setPreviewNode(null);
+          setPreviewStartEditing(false);
+        }}
+        onPreviewSaved={(updated) => {
+          setPreviewNode(updated);
+          setPreviewStartEditing(false);
+          setNodes((prev) =>
+            prev.map((n) => (n.id === updated.id ? { ...n, ...updated } : n)),
+          );
+          void refreshUsage();
+          showToast('File saved');
+        }}
+        historyNode={historyNode}
+        onCloseHistory={() => setHistoryNode(null)}
+        showMove={showMove}
+        selectedNodes={selectedNodes}
+        workspaceId={workspaceId}
+        moveMode={moveMode}
+        onCloseMove={() => setShowMove(false)}
+        onMoved={() => {
+          void loadNodes();
+          void refreshUsage();
+        }}
+      />
 
-      {shareNode && (
-        <SharePanel
-          nodeId={shareNode.id}
-          nodeName={shareNode.name}
-          workspaces={workspaces.filter((w) => w.type !== 'mount')}
-          onClose={() => setShareNode(null)}
-        />
-      )}
-      {previewNode && (
-        <PreviewModal
-          node={previewNode}
-          startEditing={previewStartEditing}
-          canWrite={canWriteFiles}
-          onClose={() => {
-            setPreviewNode(null);
-            setPreviewStartEditing(false);
-          }}
-          onSaved={(updated) => {
-            setPreviewNode(updated);
-            setPreviewStartEditing(false);
-            setNodes((prev) =>
-              prev.map((n) => (n.id === updated.id ? { ...n, ...updated } : n)),
-            );
-            void refreshUsage();
-            showToast('File saved');
-          }}
-        />
-      )}
-      {historyNode && <VersionsPanel node={historyNode} onClose={() => setHistoryNode(null)} />}
-      {showMove && selectedNodes.length > 0 && workspaceId && (
-        <MoveDialog
-          workspaceId={workspaceId}
-          workspaces={workspaces}
-          nodes={selectedNodes}
-          mode={moveMode}
-          onClose={() => setShowMove(false)}
-          onMoved={() => {
-            void loadNodes();
-            void refreshUsage();
-          }}
-        />
-      )}
       {confirmDialog}
       <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>

@@ -114,10 +114,16 @@ func (a *App) MigrateWorkspaceStorage(ctx context.Context, workspaceID, newBacke
 
 	_, err = a.DB.Exec(ctx, `UPDATE workspaces SET storage_backend_id = $1 WHERE id = $2`, newBackendID, workspaceID)
 	if err != nil {
+		// Compensating cleanup: destination holds duplicates while DB still points at old.
+		for _, key := range keys {
+			if derr := newStore.Delete(ctx, key); derr != nil && a.Logger != nil {
+				a.Logger.Warn("migrate rollback delete failed", "key", key, "err", derr)
+			}
+		}
 		return nil, err
 	}
 
-	// Best-effort cleanup of old objects.
+	// Best-effort cleanup of old objects only after the pointer flip succeeds.
 	for _, key := range keys {
 		_ = oldStore.Delete(ctx, key)
 	}

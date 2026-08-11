@@ -622,7 +622,11 @@ func (h *WebDAVHandler) copyNode(r *http.Request, wsID, userID uuid.UUID, src *m
 		INSERT INTO nodes (id, workspace_id, parent_id, name, kind, size, mime, storage_key, created_by)
 		VALUES ($1, $2, $3, $4, 'file', $5, $6, $7, $8)
 	`, newID, wsID, parentID, name, src.Size, src.Mime, key, userID)
-	return err
+	if err != nil {
+		_ = store.Delete(r.Context(), key)
+		return err
+	}
+	return nil
 }
 
 func (h *WebDAVHandler) parseDest(dest string, wsID uuid.UUID) (string, bool) {

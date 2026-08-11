@@ -40,8 +40,9 @@ Arkive is private by default: anyone can create an account, but new signups stay
 |----------|-----------------|
 | `ARKIVE_DATABASE_URL` | Postgres DSN |
 | `ARKIVE_S3_*` | Seeded default MinIO backend |
-| `ARKIVE_SESSION_SECRET` | Cookie/session material — change for production |
-| `ARKIVE_SECRETS_KEY` | Encrypts S3 credentials at rest (falls back to session secret) |
+| `ARKIVE_ENV` | `development` (default) or `production` — production refuses default secrets |
+| `ARKIVE_SESSION_SECRET` | Cookie/session material — required strong value when `ARKIVE_ENV=production` |
+| `ARKIVE_SECRETS_KEY` | Encrypts S3 credentials at rest (falls back to session secret; must be strong in production) |
 | `ARKIVE_BOOTSTRAP_ADMIN_EMAIL` | Instance admin on register/login (set in `.env`) |
 | `ARKIVE_COOKIE_SECURE` | `true` behind HTTPS |
 | `ARKIVE_MAX_UPLOAD_BYTES` | Max upload size (default `10737418240` = 10 GiB) |
@@ -183,7 +184,7 @@ Compose named volumes hold durable state:
 | `minio_data` | File blobs (default S3 backend) |
 | NFS / local mounts | Whatever paths you assigned as NFS backends |
 
-Back up Postgres and object storage together for a consistent restore. Rotate `ARKIVE_SESSION_SECRET` and `ARKIVE_SECRETS_KEY` for production (changing the secrets key invalidates encrypted S3 credentials stored in the DB — re-enter them after rotation). Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP). Soft-deleted trash is auto-purged after the Admin **trash retention** window (default 30 days; `0` disables).
+Back up Postgres and object storage together for a consistent restore. Set `ARKIVE_ENV=production` with strong `ARKIVE_SESSION_SECRET` and `ARKIVE_SECRETS_KEY` (the API refuses to start on default secrets in production). Changing the secrets key invalidates encrypted S3 credentials stored in the DB — re-enter them after rotation. Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP). Soft-deleted trash is auto-purged after the Admin **trash retention** window (default 30 days; `0` disables).
 
 ## Out of scope (for now)
 

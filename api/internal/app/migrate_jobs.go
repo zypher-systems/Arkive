@@ -74,6 +74,14 @@ func (a *App) GetMigrationJob(ctx context.Context, id uuid.UUID) (*MigrationJob,
 }
 
 func (a *App) RunMigrationWorker(ctx context.Context) {
+	// Re-queue jobs left in 'running' after a crash/restart (older than 1 hour).
+	if _, err := a.DB.Exec(ctx, `
+		UPDATE storage_migrations
+		SET status = 'queued', error = 'requeued after stuck running', updated_at = now()
+		WHERE status = 'running' AND updated_at < now() - interval '1 hour'
+	`); err != nil && a.Logger != nil {
+		a.Logger.Warn("reset stuck migrations", "err", err)
+	}
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -128,27 +136,33 @@ func (a *App) processNextMigration(ctx context.Context) error {
 		var me *MigrateError
 		if errors.As(err, &me) {
 			msg = me.Message
-			_, _ = a.DB.Exec(ctx, `
+			if _, uerr := a.DB.Exec(ctx, `
 				UPDATE storage_migrations
 				SET status = 'failed', error = $1, copied = $2, total = $3, updated_at = now()
 				WHERE id = $4
-			`, msg, me.Copied, me.Total, job.ID)
+			`, msg, me.Copied, me.Total, job.ID); uerr != nil {
+				return fmt.Errorf("mark migration failed: %w", uerr)
+			}
 			return nil
 		}
-		_, _ = a.DB.Exec(ctx, `
+		if _, uerr := a.DB.Exec(ctx, `
 			UPDATE storage_migrations SET status = 'failed', error = $1, updated_at = now() WHERE id = $2
-		`, msg, job.ID)
+		`, msg, job.ID); uerr != nil {
+			return fmt.Errorf("mark migration failed: %w", uerr)
+		}
 		return nil
 	}
 	copied, total := 0, 0
 	if res != nil {
 		copied, total = res.Copied, res.Total
 	}
-	_, _ = a.DB.Exec(ctx, `
+	if _, uerr := a.DB.Exec(ctx, `
 		UPDATE storage_migrations
 		SET status = 'completed', copied = $1, total = $2, error = '', updated_at = now()
 		WHERE id = $3
-	`, copied, total, job.ID)
+	`, copied, total, job.ID); uerr != nil {
+		return fmt.Errorf("mark migration completed: %w", uerr)
+	}
 	return nil
 }
 

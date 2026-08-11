@@ -1,12 +1,16 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 )
 
+const DefaultDevSessionSecret = "dev-secret-change-me"
+
 type Config struct {
+	Env                 string
 	HTTPAddr            string
 	PublicURL           string
 	DatabaseURL         string
@@ -22,20 +26,25 @@ type Config struct {
 	S3Bucket            string
 	S3UseSSL            bool
 	S3Region            string
-	OIDCIssuer           string
-	OIDCClientID         string
-	OIDCClientSecret     string
-	OIDCRedirectURL      string
-	OIDCProviderName     string
-	GoogleClientID       string
-	GoogleClientSecret   string
-	GoogleDriveRedirect  string
+	OIDCIssuer          string
+	OIDCClientID        string
+	OIDCClientSecret    string
+	OIDCRedirectURL     string
+	OIDCProviderName    string
+	GoogleClientID      string
+	GoogleClientSecret  string
+	GoogleDriveRedirect string
 }
 
 func Load() Config {
-	session := getenv("ARKIVE_SESSION_SECRET", "dev-secret-change-me")
+	session := getenv("ARKIVE_SESSION_SECRET", DefaultDevSessionSecret)
 	publicURL := strings.TrimRight(getenv("ARKIVE_PUBLIC_URL", "http://localhost:3080"), "/")
+	env := strings.ToLower(strings.TrimSpace(getenv("ARKIVE_ENV", "development")))
+	if env == "" {
+		env = "development"
+	}
 	return Config{
+		Env:                 env,
 		HTTPAddr:            getenv("ARKIVE_HTTP_ADDR", ":8080"),
 		PublicURL:           publicURL,
 		DatabaseURL:         getenv("ARKIVE_DATABASE_URL", "postgres://arkive:arkive@localhost:5432/arkive?sslmode=disable"),
@@ -60,6 +69,31 @@ func Load() Config {
 		GoogleClientSecret:  strings.TrimSpace(getenv("ARKIVE_GOOGLE_CLIENT_SECRET", "")),
 		GoogleDriveRedirect: getenv("ARKIVE_GOOGLE_REDIRECT_URL", publicURL+"/api/auth/google/drive/callback"),
 	}
+}
+
+func (c Config) IsProduction() bool {
+	return c.Env == "production" || c.Env == "prod"
+}
+
+func (c Config) UsingDevSecrets() bool {
+	return c.SessionSecret == "" ||
+		c.SessionSecret == DefaultDevSessionSecret ||
+		c.SecretsKey == "" ||
+		c.SecretsKey == DefaultDevSessionSecret
+}
+
+// ValidateSecrets returns an error when production is using weak/default secrets.
+func (c Config) ValidateSecrets() error {
+	if !c.IsProduction() {
+		return nil
+	}
+	if c.SessionSecret == "" || c.SessionSecret == DefaultDevSessionSecret {
+		return fmt.Errorf("ARKIVE_SESSION_SECRET must be set to a strong value when ARKIVE_ENV=production")
+	}
+	if c.SecretsKey == "" || c.SecretsKey == DefaultDevSessionSecret {
+		return fmt.Errorf("ARKIVE_SECRETS_KEY must be set to a strong value when ARKIVE_ENV=production (do not reuse the default session secret)")
+	}
+	return nil
 }
 
 func (c Config) OIDCEnabled() bool {

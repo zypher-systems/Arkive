@@ -36,14 +36,9 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		parentID = &id
-		if _, err := h.App.RequireNodeAccess(r.Context(), id, user.ID, false); err != nil {
+		if err := h.App.RequireParentInWorkspace(r.Context(), id, wsID, user.ID, false); err != nil {
 			status, msg := app.WriteHTTPError(err)
 			httpjson.Error(w, status, msg)
-			return
-		}
-		var nodeWS uuid.UUID
-		if err := h.App.DB.QueryRow(r.Context(), `SELECT workspace_id FROM nodes WHERE id = $1`, id).Scan(&nodeWS); err != nil || nodeWS != wsID {
-			httpjson.Error(w, http.StatusBadRequest, "parent not in workspace")
 			return
 		}
 	} else if err := h.App.RequireWorkspaceAccess(r.Context(), wsID, user.ID, false); err != nil {
@@ -139,7 +134,7 @@ func (h *FileHandler) Mkdir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.ParentID != nil {
-		if _, err := h.App.RequireNodeAccess(r.Context(), *req.ParentID, user.ID, true); err != nil {
+		if err := h.App.RequireParentInWorkspace(r.Context(), *req.ParentID, wsID, user.ID, true); err != nil {
 			status, msg := app.WriteHTTPError(err)
 			httpjson.Error(w, status, msg)
 			return
@@ -189,7 +184,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		parentID = &id
-		if _, err := h.App.RequireNodeAccess(r.Context(), id, user.ID, true); err != nil {
+		if err := h.App.RequireParentInWorkspace(r.Context(), id, wsID, user.ID, true); err != nil {
 			status, msg := app.WriteHTTPError(err)
 			httpjson.Error(w, status, msg)
 			return
@@ -376,7 +371,8 @@ func (h *FileHandler) RenameOrMove(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusBadRequest, "invalid node id")
 		return
 	}
-	if _, err := h.App.RequireNodeAccess(r.Context(), nodeID, user.ID, true); err != nil {
+	sourceWS, err := h.App.RequireNodeAccess(r.Context(), nodeID, user.ID, true)
+	if err != nil {
 		status, msg := app.WriteHTTPError(err)
 		httpjson.Error(w, status, msg)
 		return
@@ -396,18 +392,12 @@ func (h *FileHandler) RenameOrMove(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = currentName
 	}
-	if req.Move && req.ParentID != nil {
-		if *req.ParentID == nodeID {
+	if req.ParentID != nil {
+		if req.Move && *req.ParentID == nodeID {
 			httpjson.Error(w, http.StatusBadRequest, "cannot move into itself")
 			return
 		}
-		if _, err := h.App.RequireNodeAccess(r.Context(), *req.ParentID, user.ID, true); err != nil {
-			status, msg := app.WriteHTTPError(err)
-			httpjson.Error(w, status, msg)
-			return
-		}
-	} else if !req.Move && req.ParentID != nil {
-		if _, err := h.App.RequireNodeAccess(r.Context(), *req.ParentID, user.ID, true); err != nil {
+		if err := h.App.RequireParentInWorkspace(r.Context(), *req.ParentID, sourceWS, user.ID, true); err != nil {
 			status, msg := app.WriteHTTPError(err)
 			httpjson.Error(w, status, msg)
 			return
@@ -690,7 +680,8 @@ func (h *FileHandler) Thumb(w http.ResponseWriter, r *http.Request) {
 func (h *FileHandler) GetSharedWithMe(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 	rows, err := h.App.DB.Query(r.Context(), `
-		SELECT DISTINCT n.id, n.workspace_id, n.parent_id, n.name, n.kind, n.size, n.mime, n.checksum, n.created_by, n.created_at, n.updated_at
+		SELECT n.id, n.workspace_id, n.parent_id, n.name, n.kind, n.size, n.mime, n.checksum, n.created_by, n.created_at, n.updated_at,
+		       CASE WHEN bool_or(s.permission = 'write') THEN 'write' ELSE 'read' END
 		FROM shares s
 		JOIN nodes n ON n.id = s.node_id
 		WHERE n.deleted_at IS NULL
@@ -700,6 +691,7 @@ func (h *FileHandler) GetSharedWithMe(w http.ResponseWriter, r *http.Request) {
 		      SELECT workspace_id FROM workspace_members WHERE user_id = $1
 		    )
 		  )
+		GROUP BY n.id, n.workspace_id, n.parent_id, n.name, n.kind, n.size, n.mime, n.checksum, n.created_by, n.created_at, n.updated_at
 		ORDER BY n.name ASC
 	`, user.ID)
 	if err != nil {
@@ -710,10 +702,14 @@ func (h *FileHandler) GetSharedWithMe(w http.ResponseWriter, r *http.Request) {
 	nodes := []models.Node{}
 	for rows.Next() {
 		var n models.Node
-		if err := rows.Scan(&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt); err != nil {
+		var perm string
+		if err := rows.Scan(
+			&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt, &perm,
+		); err != nil {
 			httpjson.Error(w, http.StatusInternalServerError, "scan failed")
 			return
 		}
+		n.Permission = &perm
 		nodes = append(nodes, n)
 	}
 	httpjson.Write(w, http.StatusOK, nodes)

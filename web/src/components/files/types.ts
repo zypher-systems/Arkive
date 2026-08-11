@@ -10,7 +10,7 @@ export type ContextMenuState =
 export type FileKindHint = 'file' | 'folder';
 
 const IMAGE_EXT =
-  /\.(png|jpe?g|gif|webp|svg|bmp|avif|ico|jfif)$/i;
+  /\.(png|jpe?g|gif|webp|bmp|avif|ico|jfif)$/i;
 const VIDEO_EXT = /\.(mp4|webm|ogg|ogv|mov|m4v|mkv)$/i;
 const AUDIO_EXT = /\.(mp3|wav|ogg|oga|m4a|flac|aac|opus)$/i;
 const PDF_EXT = /\.pdf$/i;

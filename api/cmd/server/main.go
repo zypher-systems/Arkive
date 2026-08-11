@@ -19,6 +19,13 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	cfg := config.Load()
+	if err := cfg.ValidateSecrets(); err != nil {
+		logger.Error("refusing to start with insecure secrets", "err", err, "env", cfg.Env)
+		os.Exit(1)
+	}
+	if !cfg.IsProduction() && cfg.UsingDevSecrets() {
+		logger.Warn("using default development secrets; set ARKIVE_SESSION_SECRET and ARKIVE_SECRETS_KEY for any shared deploy", "env", cfg.Env)
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()

@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	ErrForbidden = errors.New("forbidden")
-	ErrNotFound  = errors.New("not found")
+	ErrForbidden          = errors.New("forbidden")
+	ErrNotFound           = errors.New("not found")
+	ErrWorkspaceMismatch  = errors.New("parent not in workspace")
 )
 
 type AccessLevel int
@@ -145,12 +146,26 @@ func (a *App) RequireNodeAccess(ctx context.Context, nodeID, userID uuid.UUID, w
 	return workspaceID, nil
 }
 
+// RequireParentInWorkspace ensures the user can access parentID and that it belongs to workspaceID.
+func (a *App) RequireParentInWorkspace(ctx context.Context, parentID, workspaceID, userID uuid.UUID, write bool) error {
+	parentWS, err := a.RequireNodeAccess(ctx, parentID, userID, write)
+	if err != nil {
+		return err
+	}
+	if parentWS != workspaceID {
+		return ErrWorkspaceMismatch
+	}
+	return nil
+}
+
 func WriteHTTPError(err error) (int, string) {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return 404, "not found"
 	case errors.Is(err, ErrForbidden):
 		return 403, "forbidden"
+	case errors.Is(err, ErrWorkspaceMismatch):
+		return 400, "parent not in workspace"
 	default:
 		return 500, fmt.Sprintf("internal error: %v", err)
 	}

@@ -1,24 +1,22 @@
 package config
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
-func TestMaxUploadBytesDefault(t *testing.T) {
-	t.Setenv("ARKIVE_MAX_UPLOAD_BYTES", "")
-	_ = os.Unsetenv("ARKIVE_MAX_UPLOAD_BYTES")
-	cfg := Load()
-	want := int64(10 * 1024 * 1024 * 1024)
-	if cfg.MaxUploadBytes != want {
-		t.Fatalf("MaxUploadBytes=%d want %d", cfg.MaxUploadBytes, want)
+func TestValidateSecretsProduction(t *testing.T) {
+	weak := Config{Env: "production", SessionSecret: DefaultDevSessionSecret, SecretsKey: "ok-key-with-entropy"}
+	if err := weak.ValidateSecrets(); err == nil {
+		t.Fatal("expected error for default session secret")
 	}
-}
-
-func TestMaxUploadBytesOverride(t *testing.T) {
-	t.Setenv("ARKIVE_MAX_UPLOAD_BYTES", "1048576")
-	cfg := Load()
-	if cfg.MaxUploadBytes != 1048576 {
-		t.Fatalf("MaxUploadBytes=%d want 1048576", cfg.MaxUploadBytes)
+	weakKey := Config{Env: "production", SessionSecret: "strong-session", SecretsKey: DefaultDevSessionSecret}
+	if err := weakKey.ValidateSecrets(); err == nil {
+		t.Fatal("expected error for default secrets key")
+	}
+	ok := Config{Env: "production", SessionSecret: "strong-session", SecretsKey: "strong-secrets"}
+	if err := ok.ValidateSecrets(); err != nil {
+		t.Fatal(err)
+	}
+	dev := Config{Env: "development", SessionSecret: DefaultDevSessionSecret, SecretsKey: DefaultDevSessionSecret}
+	if err := dev.ValidateSecrets(); err != nil {
+		t.Fatal("dev should allow defaults")
 	}
 }

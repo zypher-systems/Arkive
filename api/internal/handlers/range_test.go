@@ -45,6 +45,18 @@ func TestIsTextPreview(t *testing.T) {
 	}
 }
 
+func TestDangerousInlineNotPreviewable(t *testing.T) {
+	if isPreviewable("text/html", "x.html") {
+		t.Fatal("html must not be previewable")
+	}
+	if isPreviewable("image/svg+xml", "icon.svg") {
+		t.Fatal("svg must not be previewable")
+	}
+	if !isDangerousInline("text/html", "x.bin") {
+		t.Fatal("text/html is dangerous")
+	}
+}
+
 func TestLinkUnlockCookieName(t *testing.T) {
 	name := linkUnlockCookieName("abc123")
 	if name != "arkive_pl_abc123" {

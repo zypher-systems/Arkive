@@ -208,8 +208,17 @@ func (h *FileHandler) Content(w http.ResponseWriter, r *http.Request) {
 		total = meta.Size
 	}
 
-	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Content-Disposition", `inline; filename="`+strings.ReplaceAll(name, `"`, ``)+`"`)
+	safeName := strings.ReplaceAll(name, `"`, ``)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	if isDangerousInline(ct, name) {
+		// Never execute uploaded HTML/SVG in the app origin.
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+safeName+`"`)
+	} else {
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Content-Disposition", `inline; filename="`+safeName+`"`)
+	}
 	w.Header().Set("Accept-Ranges", "bytes")
 
 	if textLike && rangeHdr != "" {
@@ -467,7 +476,19 @@ func parseBytesRange(h string, size int64) (start, end int64, ok bool) {
 	return start, end, true
 }
 
+func isDangerousInline(ct, name string) bool {
+	ct = strings.ToLower(ct)
+	n := strings.ToLower(name)
+	if strings.Contains(ct, "html") || strings.Contains(ct, "svg") {
+		return true
+	}
+	return strings.HasSuffix(n, ".html") || strings.HasSuffix(n, ".htm") || strings.HasSuffix(n, ".svg") || strings.HasSuffix(n, ".svgz")
+}
+
 func isPreviewable(ct, name string) bool {
+	if isDangerousInline(ct, name) {
+		return false
+	}
 	ct = strings.ToLower(ct)
 	if strings.HasPrefix(ct, "image/") ||
 		strings.HasPrefix(ct, "video/") ||
@@ -494,7 +515,7 @@ func isTextExt(name string) bool {
 	for _, ext := range []string{
 		".txt", ".md", ".markdown", ".json", ".yaml", ".yml", ".toml", ".csv", ".tsv", ".log",
 		".go", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".css", ".scss", ".less",
-		".html", ".htm", ".xml", ".sh", ".bash", ".zsh", ".env", ".ini", ".conf", ".cfg", ".sql",
+		".xml", ".sh", ".bash", ".zsh", ".env", ".ini", ".conf", ".cfg", ".sql",
 		".rb", ".java", ".kt", ".c", ".cc", ".cpp", ".h", ".hpp", ".php", ".vue", ".svelte",
 		".swift", ".dart", ".lua", ".r", ".pl", ".ps1",
 	} {
@@ -507,7 +528,7 @@ func isTextExt(name string) bool {
 
 func isImageExt(name string) bool {
 	n := strings.ToLower(name)
-	for _, ext := range []string{".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif", ".ico", ".jfif"} {
+	for _, ext := range []string{".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".avif", ".ico", ".jfif"} {
 		if strings.HasSuffix(n, ext) {
 			return true
 		}

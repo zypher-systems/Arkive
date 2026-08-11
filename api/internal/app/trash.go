@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -73,11 +74,17 @@ func (a *App) PurgeDeletedNode(ctx context.Context, nodeID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
+	// Delete blobs first so a failed storage delete leaves the soft-deleted row for retry.
+	for _, key := range keys {
+		if err := store.Delete(ctx, key); err != nil {
+			if a.Logger != nil {
+				a.Logger.Warn("trash blob delete failed", "node_id", nodeID, "key", key, "err", err)
+			}
+			return fmt.Errorf("delete storage object: %w", err)
+		}
+	}
 	if _, err := a.DB.Exec(ctx, `DELETE FROM nodes WHERE id = $1`, nodeID); err != nil {
 		return err
-	}
-	for _, key := range keys {
-		_ = store.Delete(ctx, key)
 	}
 	return nil
 }

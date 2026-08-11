@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.9",
     "framer-motion": "^11.15.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
