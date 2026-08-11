@@ -176,6 +176,7 @@ export function BrowserPage() {
   const warnedQuota = useRef(false);
   const [namePrompt, setNamePrompt] = useState<
     | { kind: 'mkdir' }
+    | { kind: 'newfile' }
     | { kind: 'rename'; node: Node }
     | null
   >(null);
@@ -383,6 +384,23 @@ export function BrowserPage() {
     setNamePrompt({ kind: 'mkdir' });
   }
 
+  function createFile() {
+    if (!workspaceId || !canWriteFiles) return;
+    setNamePrompt({ kind: 'newfile' });
+  }
+
+  function normalizeNewTextName(raw: string) {
+    const name = raw.trim();
+    if (!name) return '';
+    if (/\.[^./\\]+$/.test(name)) return name;
+    return `${name}.txt`;
+  }
+
+  function mimeForTextName(name: string) {
+    if (/\.(md|markdown)$/i.test(name)) return 'text/markdown; charset=utf-8';
+    return 'text/plain; charset=utf-8';
+  }
+
   async function submitNamePrompt(name: string) {
     if (!namePrompt) return;
     setNameBusy(true);
@@ -393,19 +411,35 @@ export function BrowserPage() {
         const into =
           view?.kind === 'shared-folder' ? (parentId ?? view.rootId) : parentId;
         await api.mkdir(workspaceId, name, into);
+        setNamePrompt(null);
+        await loadNodes();
+        await refreshUsage();
+      } else if (namePrompt.kind === 'newfile') {
+        if (!workspaceId) return;
+        const fileName = normalizeNewTextName(name);
+        if (!fileName) return;
+        const into =
+          view?.kind === 'shared-folder' ? (parentId ?? view.rootId) : parentId;
+        const file = new File([''], fileName, { type: mimeForTextName(fileName) });
+        const created = await api.upload(workspaceId, file, into);
+        setNamePrompt(null);
+        await loadNodes();
+        await refreshUsage();
+        openPreview(created, true);
       } else {
         await api.rename(namePrompt.node.id, name);
+        setNamePrompt(null);
+        await loadNodes();
       }
-      setNamePrompt(null);
-      await loadNodes();
-      if (namePrompt.kind === 'mkdir') await refreshUsage();
     } catch (e) {
       setError(
         e instanceof Error
           ? e.message
           : namePrompt.kind === 'mkdir'
             ? 'Could not create folder'
-            : 'Rename failed',
+            : namePrompt.kind === 'newfile'
+              ? 'Could not create file'
+              : 'Rename failed',
       );
     } finally {
       setNameBusy(false);
@@ -771,7 +805,7 @@ export function BrowserPage() {
           void onUpload(e.dataTransfer.files, parentId);
         }
       }}
-      className="relative flex flex-col gap-6 lg:flex-row lg:items-start"
+      className="relative flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch"
     >
       {dragging && browsing && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-arkive-amber/60 bg-arkive-amber/10 text-arkive-amber">
@@ -811,7 +845,7 @@ export function BrowserPage() {
         }}
       />
 
-      <div className="min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <FileToolbar
           title={activeTitle}
           subtitle={
@@ -835,6 +869,7 @@ export function BrowserPage() {
           showTrash={showTrash}
           onToggleTrash={() => setShowTrash((v) => !v)}
           onNewFolder={createFolder}
+          onNewFile={canWriteFiles ? createFile : undefined}
           onUpload={() => fileRef.current?.click()}
           hideTrash={sharedBrowse}
         />
@@ -1039,11 +1074,16 @@ export function BrowserPage() {
             )}
 
             <div
+              data-file-pane
+              className="flex min-h-[16rem] flex-1 flex-col"
               onContextMenu={(e) => {
                 if (!browsing || results) return;
                 const t = e.target as HTMLElement;
-                if (t.closest('[data-file-row], button, a, input')) return;
+                // File/folder rows open the item menu; empty pane (and empty-state copy) open create/upload.
+                if (t.closest('[data-file-row]')) return;
+                if (t.closest('button, a, input, textarea, select')) return;
                 e.preventDefault();
+                e.stopPropagation();
                 setContextMenu({ kind: 'pane', x: e.clientX, y: e.clientY });
               }}
             >
@@ -1156,6 +1196,7 @@ export function BrowserPage() {
         )}
         onTrash={deleteNode}
         onNewFolder={createFolder}
+        onNewFile={canWriteFiles ? createFile : undefined}
         onUpload={() => fileRef.current?.click()}
         canPaste={!!clipboard?.length}
         onPaste={() => void pasteClipboard()}
@@ -1164,10 +1205,30 @@ export function BrowserPage() {
 
       {namePrompt && (
         <NamePrompt
-          title={namePrompt.kind === 'mkdir' ? 'New folder' : 'Rename'}
-          label={namePrompt.kind === 'mkdir' ? 'Folder name' : 'Name'}
-          initialValue={namePrompt.kind === 'rename' ? namePrompt.node.name : ''}
-          confirmLabel={namePrompt.kind === 'mkdir' ? 'Create' : 'Rename'}
+          title={
+            namePrompt.kind === 'mkdir'
+              ? 'New folder'
+              : namePrompt.kind === 'newfile'
+                ? 'New file'
+                : 'Rename'
+          }
+          label={
+            namePrompt.kind === 'mkdir'
+              ? 'Folder name'
+              : namePrompt.kind === 'newfile'
+                ? 'File name (.txt or .md)'
+                : 'Name'
+          }
+          initialValue={
+            namePrompt.kind === 'rename'
+              ? namePrompt.node.name
+              : namePrompt.kind === 'newfile'
+                ? 'Untitled.txt'
+                : ''
+          }
+          confirmLabel={
+            namePrompt.kind === 'rename' ? 'Rename' : 'Create'
+          }
           busy={nameBusy}
           onConfirm={(name) => void submitNamePrompt(name)}
           onClose={() => {

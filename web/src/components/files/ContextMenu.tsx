@@ -8,6 +8,7 @@ type Props = {
   onOpen: (node: Node) => void;
   onPreview: (node: Node) => void;
   onEdit?: (node: Node) => void;
+  onNewFile?: () => void;
   onShare: (node: Node) => void;
   onHistory: (node: Node) => void;
   onRename: (node: Node) => void;
@@ -50,6 +51,7 @@ export function ContextMenu({
   onOpen,
   onPreview,
   onEdit,
+  onNewFile,
   onShare,
   onHistory,
   onRename,
@@ -97,13 +99,26 @@ export function ContextMenu({
     >
       {menu.kind === 'pane' ? (
         <>
-          <Item
-            label="New folder"
-            onClick={() => {
-              onNewFolder();
-              onClose();
-            }}
-          />
+          {canWrite && (
+            <>
+              <Item
+                label="New folder"
+                onClick={() => {
+                  onNewFolder();
+                  onClose();
+                }}
+              />
+              {onNewFile && (
+                <Item
+                  label="New file"
+                  onClick={() => {
+                    onNewFile();
+                    onClose();
+                  }}
+                />
+              )}
+            </>
+          )}
           <Item
             label="Upload"
             onClick={() => {

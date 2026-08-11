@@ -55,7 +55,9 @@ export function AppShell() {
         </div>
       </header>
       <main
-        className={`mx-auto w-full flex-1 px-4 py-6 ${wide ? 'max-w-[1600px]' : 'max-w-6xl'}`}
+        className={`mx-auto flex w-full flex-1 flex-col px-4 py-6 ${
+          wide ? 'max-w-[1600px]' : 'max-w-6xl'
+        }`}
       >
         <Outlet />
       </main>

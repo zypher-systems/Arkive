@@ -17,6 +17,7 @@ type Props = {
   showTrash: boolean;
   onToggleTrash: () => void;
   onNewFolder: () => void;
+  onNewFile?: () => void;
   onUpload: () => void;
   hideTrash?: boolean;
 };
@@ -60,6 +61,7 @@ export function FileToolbar({
   showTrash,
   onToggleTrash,
   onNewFolder,
+  onNewFile,
   onUpload,
   hideTrash,
 }: Props) {
@@ -110,6 +112,15 @@ export function FileToolbar({
               >
                 New folder
               </button>
+              {onNewFile && (
+                <button
+                  type="button"
+                  onClick={onNewFile}
+                  className="rounded-lg border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/40"
+                >
+                  New file
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onUpload}

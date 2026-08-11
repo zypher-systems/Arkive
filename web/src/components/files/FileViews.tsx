@@ -98,7 +98,7 @@ export function FileListView({
   handlers: FileViewHandlers;
 }) {
   return (
-    <ul className="divide-y divide-arkive-border overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
+    <ul className="flex min-h-full flex-1 flex-col divide-y divide-arkive-border overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
       {nodes.map((node) => (
         <li
           key={node.id}
@@ -145,8 +145,10 @@ export function FileListView({
         </li>
       ))}
       {nodes.length === 0 && (
-        <li className="px-4 py-10 text-center text-sm text-arkive-muted">
-          {results ? 'No matches.' : 'This folder is empty. Drop files here or create a folder.'}
+        <li className="flex flex-1 items-center justify-center px-4 py-10 text-center text-sm text-arkive-muted">
+          {results
+            ? 'No matches.'
+            : 'This folder is empty. Right-click for New file / New folder, or drop files here.'}
         </li>
       )}
     </ul>
@@ -163,7 +165,7 @@ export function FileDetailsView({
   handlers: FileViewHandlers;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
+    <div className="min-h-full flex-1 overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
       <table className="w-full text-left text-sm">
         <thead className="border-b border-arkive-border text-xs uppercase tracking-wider text-arkive-muted">
           <tr>
@@ -228,12 +230,14 @@ export function FileDetailsView({
             </tr>
           ))}
           {nodes.length === 0 && (
-            <tr>
+            <tr className="h-48">
               <td
                 colSpan={6}
-                className="px-4 py-10 text-center text-sm text-arkive-muted"
+                className="px-4 py-10 text-center text-sm text-arkive-muted align-middle"
               >
-                {results ? 'No matches.' : 'This folder is empty.'}
+                {results
+                  ? 'No matches.'
+                  : 'This folder is empty. Right-click for New file / New folder.'}
               </td>
             </tr>
           )}
@@ -253,7 +257,7 @@ export function FileTilesView({
   handlers: FileViewHandlers;
 }) {
   return (
-    <div>
+    <div className="flex min-h-full flex-1 flex-col">
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
         {nodes.map((node) => (
           <li
@@ -302,8 +306,10 @@ export function FileTilesView({
         ))}
       </ul>
       {nodes.length === 0 && (
-        <p className="rounded-2xl border border-arkive-border px-4 py-10 text-center text-sm text-arkive-muted">
-          {results ? 'No matches.' : 'This folder is empty. Drop files here or create a folder.'}
+        <p className="flex flex-1 items-center justify-center rounded-2xl border border-arkive-border px-4 py-10 text-center text-sm text-arkive-muted">
+          {results
+            ? 'No matches.'
+            : 'This folder is empty. Right-click for New file / New folder, or drop files here.'}
         </p>
       )}
     </div>
