@@ -119,14 +119,16 @@ export function ContextMenu({
               )}
             </>
           )}
-          <Item
-            label="Upload"
-            onClick={() => {
-              onUpload();
-              onClose();
-            }}
-          />
-          {canPaste && onPaste && (
+          {canWrite && (
+            <Item
+              label="Upload"
+              onClick={() => {
+                onUpload();
+                onClose();
+              }}
+            />
+          )}
+          {canWrite && canPaste && onPaste && (
             <Item
               label="Paste"
               onClick={() => {
@@ -188,21 +190,25 @@ export function ContextMenu({
               }}
             />
           )}
-          <div className="my-1 border-t border-arkive-border" />
-          <Item
-            label="Rename"
-            onClick={() => {
-              onRename(menu.node);
-              onClose();
-            }}
-          />
-          <Item
-            label="Move"
-            onClick={() => {
-              onMove(menu.node);
-              onClose();
-            }}
-          />
+          {canWrite && (
+            <>
+              <div className="my-1 border-t border-arkive-border" />
+              <Item
+                label="Rename"
+                onClick={() => {
+                  onRename(menu.node);
+                  onClose();
+                }}
+              />
+              <Item
+                label="Move"
+                onClick={() => {
+                  onMove(menu.node);
+                  onClose();
+                }}
+              />
+            </>
+          )}
           <Item
             label="Copy"
             onClick={() => {
@@ -210,22 +216,28 @@ export function ContextMenu({
               onClose();
             }}
           />
-          <Item
-            label="Copy to…"
-            onClick={() => {
-              onCopyTo(menu.node);
-              onClose();
-            }}
-          />
-          <div className="my-1 border-t border-arkive-border" />
-          <Item
-            label="Move to trash"
-            danger
-            onClick={() => {
-              onTrash(menu.node);
-              onClose();
-            }}
-          />
+          {canWrite && (
+            <Item
+              label="Copy to…"
+              onClick={() => {
+                onCopyTo(menu.node);
+                onClose();
+              }}
+            />
+          )}
+          {canWrite && (
+            <>
+              <div className="my-1 border-t border-arkive-border" />
+              <Item
+                label="Move to trash"
+                danger
+                onClick={() => {
+                  onTrash(menu.node);
+                  onClose();
+                }}
+              />
+            </>
+          )}
         </>
       )}
     </div>

@@ -69,13 +69,13 @@ func (h *ActivityHandler) ListForNode(w http.ResponseWriter, r *http.Request) {
 }
 
 type recentDTO struct {
-	ID          uuid.UUID `json:"id"`
-	Action      string    `json:"action"`
+	ID          uuid.UUID  `json:"id"`
+	Action      string     `json:"action"`
 	NodeID      *uuid.UUID `json:"node_id,omitempty"`
-	NodeName    *string   `json:"node_name,omitempty"`
+	NodeName    *string    `json:"node_name,omitempty"`
 	WorkspaceID *uuid.UUID `json:"workspace_id,omitempty"`
 	ParentID    *uuid.UUID `json:"parent_id,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 func (h *ActivityHandler) Recent(w http.ResponseWriter, r *http.Request) {

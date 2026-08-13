@@ -100,6 +100,30 @@ func (a *App) EnsureQuota(ctx context.Context, workspaceID uuid.UUID, incoming, 
 	return nil
 }
 
+// QuotaHeadroom is remaining bytes that may be added after replacing replaceExisting.
+// unlimited is true when the workspace has no quota.
+func (a *App) QuotaHeadroom(ctx context.Context, workspaceID uuid.UUID, replaceExisting int64) (remaining int64, unlimited bool, err error) {
+	info, err := a.WorkspaceQuotaInfo(ctx, workspaceID)
+	if err != nil {
+		return 0, false, err
+	}
+	if info.QuotaBytes == nil {
+		return 0, true, nil
+	}
+	used := info.UsedBytes - replaceExisting
+	if used < 0 {
+		used = 0
+	}
+	remaining = *info.QuotaBytes - used
+	if remaining < 0 {
+		remaining = 0
+	}
+	if remaining == 0 {
+		return 0, false, fmt.Errorf("%w: used %d exceeds quota %d", ErrQuotaExceeded, info.UsedBytes, *info.QuotaBytes)
+	}
+	return remaining, false, nil
+}
+
 func (a *App) TreeSize(ctx context.Context, nodeID uuid.UUID) (int64, error) {
 	var total int64
 	err := a.DB.QueryRow(ctx, `

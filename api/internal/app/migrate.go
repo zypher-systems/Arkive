@@ -4,8 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/arkive/arkive/internal/storage"
 	"github.com/google/uuid"
 )
+
+// migrateFlipOverride, when set, replaces the destination backend id used for
+// the pointer flip. Tests use it to force a failed flip after a successful copy.
+var migrateFlipOverride *uuid.UUID
 
 type MigrateResult struct {
 	Migrated bool      `json:"migrated"`
@@ -84,6 +89,7 @@ func (a *App) MigrateWorkspaceStorage(ctx context.Context, workspaceID, newBacke
 		}
 		rc, meta, gerr := oldStore.Get(ctx, key)
 		if gerr != nil {
+			a.deleteStoreKeys(ctx, newStore, keys)
 			return nil, &MigrateError{
 				Message:   "failed to read source object",
 				Copied:    copied,
@@ -102,6 +108,7 @@ func (a *App) MigrateWorkspaceStorage(ctx context.Context, workspaceID, newBacke
 		perr := newStore.Put(ctx, key, rc, size, ct)
 		_ = rc.Close()
 		if perr != nil {
+			a.deleteStoreKeys(ctx, newStore, keys)
 			return nil, &MigrateError{
 				Message:   "failed to write destination object",
 				Copied:    copied,
@@ -112,23 +119,30 @@ func (a *App) MigrateWorkspaceStorage(ctx context.Context, workspaceID, newBacke
 		copied++
 	}
 
-	_, err = a.DB.Exec(ctx, `UPDATE workspaces SET storage_backend_id = $1 WHERE id = $2`, newBackendID, workspaceID)
+	flipTo := newBackendID
+	if migrateFlipOverride != nil {
+		flipTo = *migrateFlipOverride
+	}
+	_, err = a.DB.Exec(ctx, `UPDATE workspaces SET storage_backend_id = $1 WHERE id = $2`, flipTo, workspaceID)
 	if err != nil {
 		// Compensating cleanup: destination holds duplicates while DB still points at old.
-		for _, key := range keys {
-			if derr := newStore.Delete(ctx, key); derr != nil && a.Logger != nil {
-				a.Logger.Warn("migrate rollback delete failed", "key", key, "err", derr)
-			}
-		}
+		a.deleteStoreKeys(ctx, newStore, keys)
 		return nil, err
 	}
 
-	// Best-effort cleanup of old objects only after the pointer flip succeeds.
-	for _, key := range keys {
-		_ = oldStore.Delete(ctx, key)
-	}
+	// Leave source objects in place. Deleting them here risks data loss if the
+	// pointer flip is later rolled back; a sweeper can reclaim them later.
+	_ = oldStore
 
 	return &MigrateResult{Migrated: true, Copied: copied, Total: total, Backend: newBackendID}, nil
+}
+
+func (a *App) deleteStoreKeys(ctx context.Context, store storage.BlobStore, keys []string) {
+	for _, key := range keys {
+		if derr := store.Delete(ctx, key); derr != nil && a.Logger != nil {
+			a.Logger.Warn("migrate dest cleanup failed", "key", key, "err", derr)
+		}
+	}
 }
 
 func (a *App) workspaceStorageKeys(ctx context.Context, workspaceID uuid.UUID) ([]string, error) {

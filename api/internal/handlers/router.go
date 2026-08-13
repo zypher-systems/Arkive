@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -36,11 +37,34 @@ func NewRouter(a *app.App) http.Handler {
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		httpjson.Write(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	r.Get("/api/ready", func(w http.ResponseWriter, req *http.Request) {
+		if a.DB == nil {
+			httpjson.Error(w, http.StatusServiceUnavailable, "not ready")
+			return
+		}
+		ctx, cancel := context.WithTimeout(req.Context(), 3*time.Second)
+		defer cancel()
+		if err := a.DB.Ping(ctx); err != nil {
+			httpjson.Error(w, http.StatusServiceUnavailable, "database unavailable")
+			return
+		}
+		id, err := a.DefaultBackendID(ctx)
+		if err != nil {
+			httpjson.Error(w, http.StatusServiceUnavailable, "storage backend unavailable")
+			return
+		}
+		if _, err := a.StoreForBackend(ctx, id); err != nil {
+			httpjson.Error(w, http.StatusServiceUnavailable, "storage unavailable")
+			return
+		}
+		httpjson.Write(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
 
 	r.Get("/api/public/{token}", publicH.Meta)
 	r.Get("/api/public/{token}/nodes", publicH.ListNodes)
-	r.Get("/api/public/{token}/download", publicH.Download)
-	r.Post("/api/public/{token}/download-zip", publicH.DownloadZip)
+	pubLimit := middleware.NewIPRateLimiter(60, time.Minute)
+	r.With(middleware.RateLimit(pubLimit)).Get("/api/public/{token}/download", publicH.Download)
+	r.With(middleware.RateLimit(pubLimit)).Post("/api/public/{token}/download-zip", publicH.DownloadZip)
 	r.Get("/api/storage/google/enabled", gdriveH.Enabled)
 	r.Get("/api/auth/google/drive/callback", gdriveH.Callback)
 
@@ -54,6 +78,7 @@ func NewRouter(a *app.App) http.Handler {
 		r.Get("/oidc/enabled", oidcH.Enabled)
 		r.Get("/oidc/start", oidcH.Start)
 		r.Get("/oidc/callback", oidcH.Callback)
+		r.Get("/registration", authH.RegistrationOpen)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(authH.SessionLookup()))
 			r.Post("/logout", authH.Logout)
@@ -78,6 +103,7 @@ func NewRouter(a *app.App) http.Handler {
 		r.Patch("/api/workspaces/{workspaceID}/members/{userID}", wsH.UpdateMember)
 		r.Delete("/api/workspaces/{workspaceID}/members/{userID}", wsH.RemoveMember)
 		r.Post("/api/workspaces/{workspaceID}/invite", wsH.RotateInvite)
+		r.Post("/api/workspaces/{workspaceID}/invite/send", wsH.SendInvite)
 		r.Patch("/api/workspaces/{workspaceID}/storage", gdriveH.AssignWorkspaceStorage)
 		r.Post("/api/workspaces/{workspaceID}/migrate", wsH.Migrate)
 		r.Get("/api/migrations/{jobID}", wsH.GetMigration)
@@ -97,6 +123,7 @@ func NewRouter(a *app.App) http.Handler {
 		r.Get("/api/workspaces/{workspaceID}/trash", fileH.Trash)
 		r.Delete("/api/workspaces/{workspaceID}/trash", fileH.EmptyTrash)
 		r.Get("/api/workspaces/{workspaceID}/search", fileH.Search)
+		r.Get("/api/search", fileH.SearchAll)
 		r.Post("/api/workspaces/{workspaceID}/download-zip", fileH.DownloadZip)
 		r.Get("/api/nodes/{nodeID}/download", fileH.Download)
 		r.Get("/api/nodes/{nodeID}/content", fileH.Content)
@@ -135,6 +162,9 @@ func NewRouter(a *app.App) http.Handler {
 			r.Get("/api/admin/users", adminUsersH.List)
 			r.Post("/api/admin/users/{userID}/approve", adminUsersH.Approve)
 			r.Post("/api/admin/users/{userID}/reject", adminUsersH.Reject)
+			r.Post("/api/admin/users/{userID}/disable", adminUsersH.Disable)
+			r.Delete("/api/admin/users/{userID}", adminUsersH.Delete)
+			r.Patch("/api/admin/users/{userID}/admin", adminUsersH.PatchAdmin)
 			r.Patch("/api/admin/users/{userID}/quota", adminUsersH.PatchQuota)
 			r.Patch("/api/admin/workspaces/{workspaceID}/quota", backendH.PatchWorkspaceQuota)
 			r.Get("/api/admin/settings/google", settingsH.GetGoogle)
@@ -145,12 +175,15 @@ func NewRouter(a *app.App) http.Handler {
 			r.Put("/api/admin/settings/quota", settingsH.PutQuotaDefaults)
 			r.Get("/api/admin/settings/trash", settingsH.GetTrashRetention)
 			r.Put("/api/admin/settings/trash", settingsH.PutTrashRetention)
+			r.Get("/api/admin/settings/registration", settingsH.GetRegistration)
+			r.Put("/api/admin/settings/registration", settingsH.PutRegistration)
 			r.Post("/api/admin/search/reindex", settingsH.ReindexSearch)
 		})
 	})
 
 	// WebDAV verbs (PROPFIND/MKCOL/…) are not in chi's method map — route outside chi.
-	davAuth := middleware.RequireAuthOrBasic(authH.SessionLookup(), davH.BasicLookup())(davH)
+	davLimit := middleware.NewIPRateLimiter(120, time.Minute)
+	davAuth := middleware.RateLimit(davLimit)(middleware.RequireAuthOrBasic(authH.SessionLookup(), davH.BasicLookup())(davH))
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if strings.HasPrefix(req.URL.Path, "/dav/") {
 			davAuth.ServeHTTP(w, req)

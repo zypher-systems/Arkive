@@ -23,6 +23,16 @@ stages:
 test:api:
   stage: test
   image: golang:1.25-alpine
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+  variables:
+    POSTGRES_USER: arkive
+    POSTGRES_PASSWORD: arkive
+    POSTGRES_DB: arkive
+    ARKIVE_TEST_DATABASE_URL: postgres://arkive:arkive@postgres:5432/arkive?sslmode=disable
+  before_script:
+    - apk add --no-cache git
   script:
     - cd api
     - go test ./...
@@ -33,11 +43,13 @@ test:web:
   image: node:22-alpine
   script:
     - cd web
-    - npm install
+    - npm ci
+    - npm test
     - npm run build
   timeout: 15m
 
 # Build production images to prove Dockerfiles stay green.
+# Tags (including v1.0.0) also run this stage.
 build:api:
   stage: build
   image: docker:27
@@ -58,4 +70,38 @@ build:web:
     - docker info
   script:
     - docker build -f docker/Dockerfile.web -t "arkive-web:${CI_COMMIT_SHORT_SHA}" .
+  timeout: 30m
+
+# Full-stack smoke against compose: register → approve → upload → download.
+test:smoke:
+  stage: test
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    ARKIVE_BOOTSTRAP_ADMIN_EMAIL: admin@arkive.local
+  before_script:
+    - docker info
+    - docker compose version || apk add --no-cache docker-cli-compose
+  script:
+    - docker compose up -d --build
+    - |
+      ok=0
+      for i in $(seq 1 90); do
+        if docker compose exec -T api wget -qO- http://127.0.0.1:8080/api/ready >/dev/null 2>&1; then
+          ok=1
+          break
+        fi
+        sleep 2
+      done
+      test "$ok" = 1
+    - |
+      NET=$(docker inspect "$(docker compose ps -q api)" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+      docker run --rm --network "$NET" \
+        -e ARKIVE_PUBLIC_URL=http://web:8080 \
+        -e ARKIVE_BOOTSTRAP_ADMIN_EMAIL=admin@arkive.local \
+        -v "$PWD/scripts/smoke.sh:/smoke.sh:ro" \
+        python:3.12-alpine sh -c "apk add --no-cache curl bash && bash /smoke.sh"
+  after_script:
+    - docker compose down -v || true
   timeout: 30m

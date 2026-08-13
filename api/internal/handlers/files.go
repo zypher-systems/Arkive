@@ -47,19 +47,24 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limit, offset := parsePage(r)
+	fetch := limit + 1
+
 	var rows pgx.Rows
 	if parentID == nil {
 		rows, err = h.App.DB.Query(r.Context(), `
 			SELECT id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
 			FROM nodes WHERE workspace_id = $1 AND parent_id IS NULL AND deleted_at IS NULL
 			ORDER BY kind DESC, name ASC
-		`, wsID)
+			LIMIT $2 OFFSET $3
+		`, wsID, fetch, offset)
 	} else {
 		rows, err = h.App.DB.Query(r.Context(), `
 			SELECT id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
 			FROM nodes WHERE workspace_id = $1 AND parent_id = $2 AND deleted_at IS NULL
 			ORDER BY kind DESC, name ASC
-		`, wsID, *parentID)
+			LIMIT $3 OFFSET $4
+		`, wsID, *parentID, fetch, offset)
 	}
 	if err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "query failed")
@@ -77,6 +82,11 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 		nodes = append(nodes, n)
 	}
 
+	hasMore := len(nodes) > limit
+	if hasMore {
+		nodes = nodes[:limit]
+	}
+
 	breadcrumbs := []models.Breadcrumb{}
 	if parentID != nil {
 		breadcrumbs, err = h.buildBreadcrumbs(r, *parentID)
@@ -86,9 +96,15 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	nextOffset := 0
+	if hasMore {
+		nextOffset = offset + limit
+	}
 	httpjson.Write(w, http.StatusOK, map[string]any{
 		"nodes":       nodes,
 		"breadcrumbs": breadcrumbs,
+		"has_more":    hasMore,
+		"next_offset": nextOffset,
 	})
 }
 
@@ -207,15 +223,12 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	if contentType == "" || contentType == "application/octet-stream" {
 		contentType = "application/octet-stream"
 	}
-	size := r.ContentLength
 
 	store, err := h.App.StoreForWorkspace(r.Context(), wsID)
 	if err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "storage unavailable")
 		return
 	}
-
-	incoming := max64(size, 0)
 
 	// Overwrite existing file with same name (archives prior version).
 	var existingID uuid.UUID
@@ -230,14 +243,21 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			SELECT id, size FROM nodes WHERE workspace_id = $1 AND parent_id = $2 AND name = $3 AND kind = 'file' AND deleted_at IS NULL
 		`, wsID, *parentID, name).Scan(&existingID, &existingSize)
 	}
+	replace := int64(0)
 	if findErr == nil {
-		if err := h.App.EnsureQuota(r.Context(), wsID, incoming, existingSize); err != nil {
-			httpjson.Error(w, http.StatusRequestEntityTooLarge, "storage quota exceeded")
-			return
-		}
+		replace = existingSize
+	}
+	counted, sizeHint, qerr := wrapQuotaBody(h.App, r, wsID, replace)
+	if qerr != nil {
+		httpjson.Error(w, http.StatusRequestEntityTooLarge, "storage quota exceeded")
+		return
+	}
+
+	if findErr == nil {
 		_ = h.App.ArchiveCurrentVersion(r.Context(), existingID, user.ID)
 		newKey := app.StorageKey(wsID, uuid.New())
-		if err := store.Put(r.Context(), newKey, r.Body, size, contentType); err != nil {
+		if err := store.Put(r.Context(), newKey, counted, sizeHint, contentType); err != nil {
+			_ = store.Delete(r.Context(), newKey)
 			if isUploadTooLarge(err) {
 				httpjson.Error(w, http.StatusRequestEntityTooLarge, "payload too large")
 				return
@@ -250,7 +270,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			UPDATE nodes SET storage_key = $1, size = $2, mime = $3, updated_at = now()
 			WHERE id = $4
 			RETURNING id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
-		`, newKey, max64(size, 0), contentType, existingID).Scan(
+		`, newKey, storedSize(counted, sizeHint), contentType, existingID).Scan(
 			&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt,
 		)
 		if err != nil {
@@ -264,15 +284,11 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.App.EnsureQuota(r.Context(), wsID, incoming, 0); err != nil {
-		httpjson.Error(w, http.StatusRequestEntityTooLarge, "storage quota exceeded")
-		return
-	}
-
 	nodeID := uuid.New()
 	key := app.StorageKey(wsID, nodeID)
 
-	if err := store.Put(r.Context(), key, r.Body, size, contentType); err != nil {
+	if err := store.Put(r.Context(), key, counted, sizeHint, contentType); err != nil {
+		_ = store.Delete(r.Context(), key)
 		if isUploadTooLarge(err) {
 			httpjson.Error(w, http.StatusRequestEntityTooLarge, "payload too large")
 			return
@@ -286,7 +302,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO nodes (id, workspace_id, parent_id, name, kind, size, mime, storage_key, created_by)
 		VALUES ($1, $2, $3, $4, 'file', $5, $6, $7, $8)
 		RETURNING id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
-	`, nodeID, wsID, parentID, name, max64(size, 0), contentType, key, user.ID).Scan(
+	`, nodeID, wsID, parentID, name, storedSize(counted, sizeHint), contentType, key, user.ID).Scan(
 		&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt,
 	)
 	if err != nil {
@@ -477,6 +493,8 @@ func (h *FileHandler) Trash(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, status, msg)
 		return
 	}
+	limit, offset := parsePage(r)
+	fetch := limit + 1
 	rows, err := h.App.DB.Query(r.Context(), `
 		SELECT id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at, deleted_at
 		FROM nodes
@@ -485,7 +503,8 @@ func (h *FileHandler) Trash(w http.ResponseWriter, r *http.Request) {
 		    SELECT id FROM nodes WHERE workspace_id = $1 AND deleted_at IS NOT NULL
 		  ))
 		ORDER BY deleted_at DESC
-	`, wsID)
+		LIMIT $2 OFFSET $3
+	`, wsID, fetch, offset)
 	if err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "query failed")
 		return
@@ -500,7 +519,19 @@ func (h *FileHandler) Trash(w http.ResponseWriter, r *http.Request) {
 		}
 		nodes = append(nodes, n)
 	}
-	httpjson.Write(w, http.StatusOK, nodes)
+	hasMore := len(nodes) > limit
+	if hasMore {
+		nodes = nodes[:limit]
+	}
+	nextOffset := 0
+	if hasMore {
+		nextOffset = offset + limit
+	}
+	httpjson.Write(w, http.StatusOK, map[string]any{
+		"items":       nodes,
+		"has_more":    hasMore,
+		"next_offset": nextOffset,
+	})
 }
 
 func (h *FileHandler) Restore(w http.ResponseWriter, r *http.Request) {
@@ -679,6 +710,8 @@ func (h *FileHandler) Thumb(w http.ResponseWriter, r *http.Request) {
 
 func (h *FileHandler) GetSharedWithMe(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
+	limit, offset := parsePage(r)
+	fetch := limit + 1
 	rows, err := h.App.DB.Query(r.Context(), `
 		SELECT n.id, n.workspace_id, n.parent_id, n.name, n.kind, n.size, n.mime, n.checksum, n.created_by, n.created_at, n.updated_at,
 		       CASE WHEN bool_or(s.permission = 'write') THEN 'write' ELSE 'read' END
@@ -693,7 +726,8 @@ func (h *FileHandler) GetSharedWithMe(w http.ResponseWriter, r *http.Request) {
 		  )
 		GROUP BY n.id, n.workspace_id, n.parent_id, n.name, n.kind, n.size, n.mime, n.checksum, n.created_by, n.created_at, n.updated_at
 		ORDER BY n.name ASC
-	`, user.ID)
+		LIMIT $2 OFFSET $3
+	`, user.ID, fetch, offset)
 	if err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "query failed")
 		return
@@ -712,7 +746,19 @@ func (h *FileHandler) GetSharedWithMe(w http.ResponseWriter, r *http.Request) {
 		n.Permission = &perm
 		nodes = append(nodes, n)
 	}
-	httpjson.Write(w, http.StatusOK, nodes)
+	hasMore := len(nodes) > limit
+	if hasMore {
+		nodes = nodes[:limit]
+	}
+	nextOffset := 0
+	if hasMore {
+		nextOffset = offset + limit
+	}
+	httpjson.Write(w, http.StatusOK, map[string]any{
+		"items":       nodes,
+		"has_more":    hasMore,
+		"next_offset": nextOffset,
+	})
 }
 
 func sanitizeName(name string) string {

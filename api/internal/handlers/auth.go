@@ -45,6 +45,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	isAdmin := h.App.Cfg.BootstrapAdminEmail != "" && email == h.App.Cfg.BootstrapAdminEmail
+	if !isAdmin && !h.App.RegistrationOpen(r.Context()) {
+		httpjson.Error(w, http.StatusForbidden, "registration is closed")
+		return
+	}
 	status := "pending"
 	if isAdmin {
 		status = "active"
@@ -139,9 +143,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Promote bootstrap admin if needed
+	// Promote bootstrap admin only when no instance admin exists yet.
 	if h.App.Cfg.BootstrapAdminEmail != "" && email == h.App.Cfg.BootstrapAdminEmail {
-		if !user.IsInstanceAdmin || user.Status != "active" {
+		var admins int
+		_ = h.App.DB.QueryRow(r.Context(), `
+			SELECT COUNT(*) FROM users WHERE is_instance_admin = TRUE AND status = 'active'
+		`).Scan(&admins)
+		if admins == 0 {
 			_, _ = h.App.DB.Exec(r.Context(), `
 				UPDATE users SET is_instance_admin = TRUE, status = 'active' WHERE id = $1
 			`, user.ID)
@@ -152,6 +160,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	if user.Status == "pending" {
 		httpjson.Error(w, http.StatusForbidden, "pending approval")
+		return
+	}
+	if user.Status == "disabled" {
+		httpjson.Error(w, http.StatusForbidden, "account disabled")
 		return
 	}
 	if user.Status != "active" {
@@ -415,4 +427,10 @@ func randomToken(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func (h *AuthHandler) RegistrationOpen(w http.ResponseWriter, r *http.Request) {
+	httpjson.Write(w, http.StatusOK, map[string]any{
+		"open": h.App.RegistrationOpen(r.Context()),
+	})
 }

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   api,
   downloadUrl,
   isPreviewable,
   type Node,
 } from '../lib/api';
+import { canWriteFiles } from '../lib/access';
 import { Toast, type ToastState } from '../components/Toast';
 import { useConfirm } from '../lib/confirm';
 import { FilesSidebar } from '../components/files/FilesSidebar';
@@ -37,6 +39,8 @@ function loadViewMode(): FileViewMode {
 }
 
 export function BrowserPage() {
+  const navigate = useNavigate();
+  const { workspaceId: urlWorkspaceId, folderId: urlFolderId } = useParams();
   const [error, setError] = useState('');
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [shareNode, setShareNode] = useState<Node | null>(null);
@@ -87,6 +91,7 @@ export function BrowserPage() {
     setLiveItems,
     results,
     setResults,
+    loading,
     rootBytes,
     rootQuota,
     totalBytes,
@@ -109,13 +114,24 @@ export function BrowserPage() {
   const teams = workspaces.filter((w) => w.type === 'team');
   const mounts = workspaces.filter((w) => w.type === 'mount');
   const activeWorkspace = workspaces.find((w) => w.id === workspaceId);
-  const canWriteFiles =
-    view?.kind === 'shared-folder'
-      ? view.permission === 'write'
-      : !activeWorkspace?.role ||
-        activeWorkspace.role === 'owner' ||
-        activeWorkspace.role === 'admin' ||
-        activeWorkspace.role === 'member';
+  const canWrite = canWriteFiles({
+    viewKind: view?.kind,
+    sharePermission: view?.kind === 'shared-folder' ? view.permission : undefined,
+    workspaceRole: activeWorkspace?.role,
+  });
+
+  useEffect(() => {
+    if (!urlWorkspaceId || workspaces.length === 0) return;
+    if (!workspaces.some((w) => w.id === urlWorkspaceId)) return;
+    setView({ kind: 'workspace', id: urlWorkspaceId });
+    setParentId(urlFolderId || null);
+  }, [urlWorkspaceId, urlFolderId, workspaces, setView, setParentId]);
+
+  useEffect(() => {
+    if (view?.kind !== 'workspace') return;
+    const next = parentId ? `/w/${view.id}/f/${parentId}` : `/w/${view.id}`;
+    if (window.location.pathname !== next) navigate(next, { replace: true });
+  }, [view, parentId, navigate]);
 
   const selectWorkspace = useCallback((id: string) => {
     setView({ kind: 'workspace', id });
@@ -161,7 +177,7 @@ export function BrowserPage() {
   }
 
   function createFile() {
-    if (!workspaceId || !canWriteFiles) return;
+    if (!workspaceId || !canWrite) return;
     setNamePrompt({ kind: 'newfile' });
   }
 
@@ -467,7 +483,7 @@ export function BrowserPage() {
   const viewHandlers: FileViewHandlers = {
     selected,
     dropTargetId,
-    onToggleSelect: toggleSelect,
+    onToggleSelect: (id, e) => toggleSelect(id, e, (results || nodes).map((n) => n.id)),
     onOpen: openNode,
     onPreview: (n) => openPreview(n),
     onHistory: (n) => setHistoryNode(n),
@@ -556,7 +572,7 @@ export function BrowserPage() {
           showTrash={showTrash}
           onToggleTrash={() => setShowTrash((v) => !v)}
           onNewFolder={createFolder}
-          onNewFile={canWriteFiles ? createFile : undefined}
+          onNewFile={canWrite ? createFile : undefined}
           onUpload={() => fileRef.current?.click()}
           hideTrash={sharedBrowse}
         />
@@ -775,6 +791,17 @@ export function BrowserPage() {
                 setContextMenu({ kind: 'pane', x: e.clientX, y: e.clientY });
               }}
             >
+              {loading && (
+                <div className="mb-3 space-y-2 px-1" aria-hidden>
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div
+                      key={i}
+                      className="h-12 animate-pulse rounded-lg bg-arkive-panel/80"
+                    />
+                  ))}
+                </div>
+              )}
+              <div className={loading ? 'pointer-events-none opacity-40' : undefined}>
               {viewMode === 'details' ? (
                 <FileDetailsView nodes={list} results={!!results} handlers={viewHandlers} />
               ) : viewMode === 'tiles' ? (
@@ -782,6 +809,7 @@ export function BrowserPage() {
               ) : (
                 <FileListView nodes={list} results={!!results} handlers={viewHandlers} />
               )}
+              </div>
             </div>
 
             {showTrash && (
@@ -884,11 +912,11 @@ export function BrowserPage() {
         )}
         onTrash={deleteNode}
         onNewFolder={createFolder}
-        onNewFile={canWriteFiles ? createFile : undefined}
+        onNewFile={canWrite ? createFile : undefined}
         onUpload={() => fileRef.current?.click()}
         canPaste={!!clipboard?.length}
         onPaste={() => void pasteClipboard()}
-        canWrite={canWriteFiles}
+        canWrite={canWrite}
       />
 
       <BrowserModals
@@ -903,7 +931,7 @@ export function BrowserPage() {
         onCloseShare={() => setShareNode(null)}
         previewNode={previewNode}
         previewStartEditing={previewStartEditing}
-        canWrite={canWriteFiles}
+        canWrite={canWrite}
         onClosePreview={() => {
           setPreviewNode(null);
           setPreviewStartEditing(false);

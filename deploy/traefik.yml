@@ -1,0 +1,46 @@
+# Traefik static config snippet + Docker labels for the Arkive web service.
+# TLS at Traefik; Arkive stays HTTP. Set:
+#   ARKIVE_PUBLIC_URL=https://arkive.example.com
+#   ARKIVE_COOKIE_SECURE=true
+#
+# Outer body-size / timeout must match ARKIVE_MAX_UPLOAD_BYTES (default 10 GiB).
+# Forwarded headers must be replaced by Traefik (default), not appended from the client.
+
+# --- traefik.yml (static) ---
+# entryPoints:
+#   web:
+#     address: ":80"
+#     http:
+#       redirections:
+#         entryPoint:
+#           to: websecure
+#           scheme: https
+#   websecure:
+#     address: ":443"
+#     transport:
+#       respondingTimeouts:
+#         readTimeout: 3600s
+#         writeTimeout: 3600s
+#     http:
+#       tls:
+#         certResolver: letsencrypt
+# certificatesResolvers:
+#   letsencrypt:
+#     acme:
+#       email: you@example.com
+#       storage: /letsencrypt/acme.json
+#       httpChallenge:
+#         entryPoint: web
+
+# --- docker-compose labels on the `web` service ---
+# labels:
+#   - traefik.enable=true
+#   - traefik.http.routers.arkive.rule=Host(`arkive.example.com`)
+#   - traefik.http.routers.arkive.entrypoints=websecure
+#   - traefik.http.routers.arkive.tls.certresolver=letsencrypt
+#   - traefik.http.services.arkive.loadbalancer.server.port=8080
+#   - traefik.http.middlewares.arkive-limit.buffering.maxRequestBodyBytes=10737418240
+#   - traefik.http.routers.arkive.middlewares=arkive-limit
+#
+# WebDAV verbs (PROPFIND, MKCOL, MOVE, COPY) are ordinary HTTP methods; Traefik
+# forwards them without extra config.

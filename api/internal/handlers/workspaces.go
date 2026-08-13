@@ -274,6 +274,49 @@ func (h *WorkspaceHandler) RotateInvite(w http.ResponseWriter, r *http.Request) 
 	httpjson.Write(w, http.StatusOK, map[string]string{"invite_token": token})
 }
 
+func (h *WorkspaceHandler) SendInvite(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	wsID, err := uuid.Parse(chi.URLParam(r, "workspaceID"))
+	if err != nil {
+		httpjson.Error(w, http.StatusBadRequest, "invalid workspace id")
+		return
+	}
+	role, err := h.App.WorkspaceRole(r.Context(), wsID, user.ID)
+	if err != nil || (role != "owner" && role != "admin") {
+		httpjson.Error(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := httpjson.Decode(r, &body); err != nil {
+		httpjson.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(body.Email))
+	if email == "" {
+		httpjson.Error(w, http.StatusBadRequest, "email required")
+		return
+	}
+	var name, token string
+	err = h.App.DB.QueryRow(r.Context(), `
+		SELECT name, COALESCE(invite_token, '') FROM workspaces WHERE id = $1 AND type = 'team'
+	`, wsID).Scan(&name, &token)
+	if err != nil {
+		httpjson.Error(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if token == "" {
+		token = randomToken(16)
+		_, _ = h.App.DB.Exec(r.Context(), `UPDATE workspaces SET invite_token = $1 WHERE id = $2`, token, wsID)
+	}
+	if err := h.App.SendTeamInviteEmail(r.Context(), email, name, token, user.DisplayName); err != nil {
+		httpjson.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpjson.Write(w, http.StatusOK, map[string]string{"status": "sent"})
+}
+
 type migrateWorkspaceRequest struct {
 	StorageBackendID *uuid.UUID `json:"storage_backend_id"`
 	UseDefault       bool       `json:"use_default"`

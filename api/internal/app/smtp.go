@@ -125,13 +125,13 @@ func (a *App) SMTPSettingsPublic(ctx context.Context) map[string]any {
 	}
 	enc, _ := a.getSetting(ctx, settingSMTPPassword)
 	return map[string]any{
-		"enabled":     cfg.Enabled(),
-		"host":        cfg.Host,
-		"port":        cfg.Port,
-		"user":        cfg.User,
-		"from":        cfg.From,
+		"enabled":      cfg.Enabled(),
+		"host":         cfg.Host,
+		"port":         cfg.Port,
+		"user":         cfg.User,
+		"from":         cfg.From,
 		"has_password": enc != "" || (source == "env" && cfg.Password != ""),
-		"source":      source,
+		"source":       source,
 	}
 }
 
@@ -169,4 +169,27 @@ func (a *App) SendPasswordResetEmail(ctx context.Context, email, displayName, re
 		resetURL + "\n\n" +
 		"If you did not request this, you can ignore this email.\n\n— Arkive\n"
 	return mail.Send(cfg, email, subject, body)
+}
+
+func (a *App) SendShareEmail(ctx context.Context, toEmail, nodeName, actorName, permission string) error {
+	cfg := a.ResolveSMTP(ctx)
+	if !cfg.Enabled() {
+		return fmt.Errorf("smtp not configured")
+	}
+	subject := actorName + " shared “" + nodeName + "” with you"
+	body := "Hi,\n\n" + actorName + " shared “" + nodeName + "” with you (" + permission + " access).\n\nOpen Arkive:\n" +
+		a.Cfg.PublicURL + "\n\n— Arkive\n"
+	return mail.Send(cfg, toEmail, subject, body)
+}
+
+func (a *App) SendTeamInviteEmail(ctx context.Context, toEmail, teamName, token, actorName string) error {
+	cfg := a.ResolveSMTP(ctx)
+	if !cfg.Enabled() {
+		return fmt.Errorf("smtp not configured")
+	}
+	subject := "You're invited to " + teamName + " on Arkive"
+	body := "Hi,\n\n" + actorName + " invited you to the team “" + teamName + "”.\n\n" +
+		"Sign in at " + a.Cfg.PublicURL + " and join with this invite token:\n\n" +
+		token + "\n\n— Arkive\n"
+	return mail.Send(cfg, toEmail, subject, body)
 }

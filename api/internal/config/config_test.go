@@ -11,6 +11,10 @@ func TestValidateSecretsProduction(t *testing.T) {
 	if err := weakKey.ValidateSecrets(); err == nil {
 		t.Fatal("expected error for default secrets key")
 	}
+	placeholder := Config{Env: "production", SessionSecret: DefaultComposeSecret, SecretsKey: "strong-secrets"}
+	if err := placeholder.ValidateSecrets(); err == nil {
+		t.Fatal("expected error for compose placeholder session secret")
+	}
 	ok := Config{Env: "production", SessionSecret: "strong-session", SecretsKey: "strong-secrets"}
 	if err := ok.ValidateSecrets(); err != nil {
 		t.Fatal(err)

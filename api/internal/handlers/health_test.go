@@ -19,3 +19,14 @@ func TestHealth(t *testing.T) {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestReadyWithoutDB(t *testing.T) {
+	a := &app.App{Cfg: config.Load()}
+	h := NewRouter(a)
+	req := httptest.NewRequest(http.MethodGet, "/api/ready", nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+}

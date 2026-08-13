@@ -14,6 +14,8 @@ export function TeamsPage() {
   const [joinToken, setJoinToken] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteInfo, setInviteInfo] = useState('');
   const { ask, dialog: confirmDialog } = useConfirm();
 
   async function refresh() {
@@ -95,7 +97,7 @@ export function TeamsPage() {
       <div className="mb-6">
         <h1 className="font-display text-3xl font-bold tracking-tight">Teams</h1>
         <p className="mt-1 text-sm text-arkive-muted">
-          Shared workspaces with invite links. No email plumbing in v1 — copy the token.
+          Shared workspaces with invite tokens. Send an email when SMTP is configured.
         </p>
       </div>
 
@@ -194,6 +196,39 @@ export function TeamsPage() {
                   </button>
                 )}
               </div>
+              {canManage && (
+                <form
+                  className="mt-3 flex flex-wrap gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setError('');
+                    setInviteInfo('');
+                    void api
+                      .sendInvite(selected, inviteEmail)
+                      .then(() => {
+                        setInviteInfo(`Invite sent to ${inviteEmail}`);
+                        setInviteEmail('');
+                      })
+                      .catch((err) => setError(err instanceof Error ? err.message : 'Send failed'));
+                  }}
+                >
+                  <input
+                    type="email"
+                    required
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="Send invite to email"
+                    className="min-w-48 flex-1 rounded-lg border border-arkive-border bg-arkive-bg px-3 py-1.5 text-sm"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-lg border border-arkive-border px-3 py-1.5 text-xs hover:border-arkive-amber/40"
+                  >
+                    Send invite
+                  </button>
+                </form>
+              )}
+              {inviteInfo && <p className="mt-2 text-xs text-arkive-muted">{inviteInfo}</p>}
             </div>
 
             <ul className="divide-y divide-arkive-border">

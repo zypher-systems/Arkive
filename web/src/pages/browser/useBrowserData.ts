@@ -48,6 +48,7 @@ export function useBrowserData({
   const [recent, setRecent] = useState<RecentItem[]>([]);
   const [liveItems, setLiveItems] = useState<LiveDriveItem[]>([]);
   const [results, setResults] = useState<Node[] | null>(null);
+  const [loading, setLoading] = useState(false);
   const [rootBytes, setRootBytes] = useState<number | null>(null);
   const [rootQuota, setRootQuota] = useState<number | null>(null);
   const [totalBytes, setTotalBytes] = useState(0);
@@ -119,6 +120,8 @@ export function useBrowserData({
   const loadNodes = useCallback(
     async (signal?: AbortSignal) => {
       const init = signal ? { signal } : undefined;
+      setLoading(true);
+      try {
       setShared(await api.sharedWithMe(init));
       setRecent(await api.recentActivity(init).catch(() => [] as RecentItem[]));
       if (view?.kind === 'live-drive') {
@@ -149,6 +152,9 @@ export function useBrowserData({
         setRootBytes(null);
       }
       setSelected(new Set());
+      } finally {
+        if (!signal?.aborted) setLoading(false);
+      }
     },
     [workspaceId, parentId, view, refreshRootUsage, setSelected],
   );
@@ -192,7 +198,7 @@ export function useBrowserData({
     const ctrl = new AbortController();
     searchTimer.current = window.setTimeout(() => {
       void api
-        .search(workspaceId, query.trim(), { signal: ctrl.signal })
+        .searchAll(query.trim(), { signal: ctrl.signal })
         .then((r) => {
           if (!ctrl.signal.aborted) setResults(r);
         })
@@ -229,6 +235,7 @@ export function useBrowserData({
     setLiveItems,
     results,
     setResults,
+    loading,
     rootBytes,
     rootQuota,
     totalBytes,

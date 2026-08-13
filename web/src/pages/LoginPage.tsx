@@ -16,12 +16,16 @@ export function LoginPage() {
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
   const [oidc, setOidc] = useState<{ enabled: boolean; provider_name: string } | null>(null);
+  const [registrationOpen, setRegistrationOpen] = useState(true);
 
   useEffect(() => {
     void api.oidcEnabled().then(setOidc).catch(() => setOidc({ enabled: false, provider_name: 'SSO' }));
+    void api.registrationOpen().then((r) => setRegistrationOpen(r.open)).catch(() => setRegistrationOpen(true));
     const err = params.get('error');
     if (err === 'pending') setError('Your account is pending admin approval.');
     else if (err === 'rejected') setError('Your account was rejected by an admin.');
+    else if (err === 'registration_closed') setError('Registration is closed on this instance.');
+    else if (err === 'oidc_email_taken') setError('That email is already registered. Sign in with your password.');
     else if (err) setError(`SSO sign-in failed (${err})`);
     if (params.get('reset') === 'ok') {
       setInfo('Password updated. Sign in with your new password.');
@@ -106,24 +110,38 @@ export function LoginPage() {
         >
           {mode !== 'forgot' && (
             <div className="mb-5 flex gap-2 rounded-lg bg-arkive-panel p-1">
-              {(['login', 'register'] as const).map((m) => (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setError('');
+                  setInfo('');
+                }}
+                className={`flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium capitalize transition ${
+                  mode === 'login'
+                    ? 'bg-gradient-to-r from-arkive-orange to-arkive-amber text-black'
+                    : 'text-arkive-muted hover:text-arkive-text'
+                }`}
+              >
+                login
+              </button>
+              {registrationOpen && (
                 <button
-                  key={m}
                   type="button"
                   onClick={() => {
-                    setMode(m);
+                    setMode('register');
                     setError('');
                     setInfo('');
                   }}
                   className={`flex-1 cursor-pointer rounded-md px-3 py-2 text-sm font-medium capitalize transition ${
-                    mode === m
+                    mode === 'register'
                       ? 'bg-gradient-to-r from-arkive-orange to-arkive-amber text-black'
                       : 'text-arkive-muted hover:text-arkive-text'
                   }`}
                 >
-                  {m}
+                  register
                 </button>
-              ))}
+              )}
             </div>
           )}
 

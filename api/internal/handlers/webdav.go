@@ -22,6 +22,8 @@ type WebDAVHandler struct {
 	App *app.App
 }
 
+const davClassHeader = "1"
+
 func (h *WebDAVHandler) BasicLookup() middleware.BasicAuthLookup {
 	return func(r *http.Request, email, password string) (*models.User, error) {
 		email = strings.ToLower(strings.TrimSpace(email))
@@ -98,7 +100,7 @@ func (h *WebDAVHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodOptions:
 		w.Header().Set("Allow", "OPTIONS, PROPFIND, GET, HEAD, PUT, MKCOL, DELETE, MOVE, COPY")
-		w.Header().Set("DAV", "1, 2")
+		w.Header().Set("DAV", davClassHeader)
 		w.WriteHeader(http.StatusOK)
 	case "PROPFIND":
 		h.propfind(w, r, wsID, user, rel)
@@ -371,17 +373,21 @@ func (h *WebDAVHandler) put(w http.ResponseWriter, r *http.Request, wsID uuid.UU
 	if ct == "" {
 		ct = "application/octet-stream"
 	}
-	size := r.ContentLength
-	incoming := max64(size, 0)
+	replace := int64(0)
+	if node != nil {
+		replace = node.Size
+	}
+	counted, sizeHint, qerr := wrapQuotaBody(h.App, r, wsID, replace)
+	if qerr != nil {
+		http.Error(w, "storage quota exceeded", http.StatusRequestEntityTooLarge)
+		return
+	}
 
 	if node != nil {
-		if err := h.App.EnsureQuota(r.Context(), wsID, incoming, node.Size); err != nil {
-			http.Error(w, "storage quota exceeded", http.StatusRequestEntityTooLarge)
-			return
-		}
 		_ = h.App.ArchiveCurrentVersion(r.Context(), node.ID, user.ID)
 		newKey := app.StorageKey(wsID, uuid.New())
-		if err := store.Put(r.Context(), newKey, r.Body, size, ct); err != nil {
+		if err := store.Put(r.Context(), newKey, counted, sizeHint, ct); err != nil {
+			_ = store.Delete(r.Context(), newKey)
 			if isUploadTooLarge(err) {
 				http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
 				return
@@ -392,7 +398,7 @@ func (h *WebDAVHandler) put(w http.ResponseWriter, r *http.Request, wsID uuid.UU
 		oldKey := node.StorageKey
 		_, err = h.App.DB.Exec(r.Context(), `
 			UPDATE nodes SET storage_key = $1, size = $2, mime = $3, updated_at = now() WHERE id = $4
-		`, newKey, max64(size, 0), ct, node.ID)
+		`, newKey, storedSize(counted, sizeHint), ct, node.ID)
 		if err != nil {
 			_ = store.Delete(r.Context(), newKey)
 			http.Error(w, "update failed", http.StatusInternalServerError)
@@ -404,13 +410,10 @@ func (h *WebDAVHandler) put(w http.ResponseWriter, r *http.Request, wsID uuid.UU
 		return
 	}
 
-	if err := h.App.EnsureQuota(r.Context(), wsID, incoming, 0); err != nil {
-		http.Error(w, "storage quota exceeded", http.StatusRequestEntityTooLarge)
-		return
-	}
 	nodeID := uuid.New()
 	key := app.StorageKey(wsID, nodeID)
-	if err := store.Put(r.Context(), key, r.Body, size, ct); err != nil {
+	if err := store.Put(r.Context(), key, counted, sizeHint, ct); err != nil {
+		_ = store.Delete(r.Context(), key)
 		if isUploadTooLarge(err) {
 			http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
 			return
@@ -421,7 +424,7 @@ func (h *WebDAVHandler) put(w http.ResponseWriter, r *http.Request, wsID uuid.UU
 	_, err = h.App.DB.Exec(r.Context(), `
 		INSERT INTO nodes (id, workspace_id, parent_id, name, kind, size, mime, storage_key, created_by)
 		VALUES ($1, $2, $3, $4, 'file', $5, $6, $7, $8)
-	`, nodeID, wsID, parentID, name, max64(size, 0), ct, key, user.ID)
+	`, nodeID, wsID, parentID, name, storedSize(counted, sizeHint), ct, key, user.ID)
 	if err != nil {
 		_ = store.Delete(r.Context(), key)
 		http.Error(w, "create failed", http.StatusConflict)

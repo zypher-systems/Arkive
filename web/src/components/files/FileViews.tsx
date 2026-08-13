@@ -147,6 +147,10 @@ export function FileListView({
               onDrop={(e) => h.onDropOnFolder(e, node)}
               onContextMenu={(e) => h.onContextMenu(e, node)}
               onClick={(e) => {
+                if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                  h.onToggleSelect(node.id, e);
+                  return;
+                }
                 if (isRowOpenTarget(e.target)) h.onOpen(node);
               }}
               onKeyDown={(e) => rowOpenKey(e, node, h.onOpen)}
@@ -265,6 +269,10 @@ export function FileDetailsView({
                 onDrop={(e) => h.onDropOnFolder(e, node)}
                 onContextMenu={(e) => h.onContextMenu(e, node)}
                 onClick={(e) => {
+                  if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                    h.onToggleSelect(node.id, e);
+                    return;
+                  }
                   if (isRowOpenTarget(e.target)) h.onOpen(node);
                 }}
                 className={`absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-arkive-border text-sm hover:bg-arkive-panel/40 ${
@@ -371,6 +379,10 @@ export function FileTilesView({
                   onDrop={(e) => h.onDropOnFolder(e, node)}
                   onContextMenu={(e) => h.onContextMenu(e, node)}
                   onClick={(e) => {
+                    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                      h.onToggleSelect(node.id, e);
+                      return;
+                    }
                     if (isRowOpenTarget(e.target)) h.onOpen(node);
                   }}
                   onKeyDown={(e) => rowOpenKey(e, node, h.onOpen)}

@@ -123,12 +123,17 @@ func (h *AuthOIDC) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var claims struct {
-		Subject string `json:"sub"`
-		Email   string `json:"email"`
-		Name    string `json:"name"`
+		Subject       string `json:"sub"`
+		Email         string `json:"email"`
+		Name          string `json:"name"`
+		EmailVerified *bool  `json:"email_verified"`
 	}
-	if err := idToken.Claims(&claims); err != nil || claims.Email == "" {
+	if err := idToken.Claims(&claims); err != nil || claims.Email == "" || claims.Subject == "" {
 		http.Redirect(w, r, "/login?error=oidc_claims", http.StatusFound)
+		return
+	}
+	if claims.EmailVerified != nil && !*claims.EmailVerified {
+		http.Redirect(w, r, "/login?error=oidc_email_unverified", http.StatusFound)
 		return
 	}
 	email := strings.ToLower(strings.TrimSpace(claims.Email))
@@ -139,6 +144,14 @@ func (h *AuthOIDC) Callback(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.upsertOIDCUser(r.Context(), claims.Subject, email, display)
 	if err != nil {
+		if err == errOIDCEmailTaken {
+			http.Redirect(w, r, "/login?error=oidc_email_taken", http.StatusFound)
+			return
+		}
+		if err != nil && err.Error() == "registration is closed" {
+			http.Redirect(w, r, "/login?error=registration_closed", http.StatusFound)
+			return
+		}
 		http.Redirect(w, r, "/login?error=oidc_user", http.StatusFound)
 		return
 	}
@@ -157,30 +170,43 @@ func (h *AuthOIDC) Callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
+var errOIDCEmailTaken = errString("oidc email already registered")
+
 func (h *AuthOIDC) upsertOIDCUser(ctx context.Context, sub, email, display string) (*models.User, error) {
 	var user models.User
 	err := h.Auth.App.DB.QueryRow(ctx, `
 		SELECT id, email, display_name, is_instance_admin, status, created_at
-		FROM users WHERE oidc_sub = $1 OR email = $2
-		ORDER BY CASE WHEN oidc_sub = $1 THEN 0 ELSE 1 END
-		LIMIT 1
-	`, sub, email).Scan(&user.ID, &user.Email, &user.DisplayName, &user.IsInstanceAdmin, &user.Status, &user.CreatedAt)
+		FROM users WHERE oidc_sub = $1
+	`, sub).Scan(&user.ID, &user.Email, &user.DisplayName, &user.IsInstanceAdmin, &user.Status, &user.CreatedAt)
 	if err == nil {
 		_, _ = h.Auth.App.DB.Exec(ctx, `
-			UPDATE users SET oidc_sub = $1, display_name = COALESCE(NULLIF($2, ''), display_name)
-			WHERE id = $3
-		`, sub, display, user.ID)
-		if h.Auth.App.Cfg.BootstrapAdminEmail != "" && email == h.Auth.App.Cfg.BootstrapAdminEmail {
-			_, _ = h.Auth.App.DB.Exec(ctx, `
-				UPDATE users SET is_instance_admin = TRUE, status = 'active' WHERE id = $1
-			`, user.ID)
-			user.IsInstanceAdmin = true
-			user.Status = "active"
+			UPDATE users SET display_name = COALESCE(NULLIF($1, ''), display_name)
+			WHERE id = $2
+		`, display, user.ID)
+		if h.Auth.App.Cfg.BootstrapAdminEmail != "" && email == h.Auth.App.Cfg.BootstrapAdminEmail && !user.IsInstanceAdmin {
+			var admins int
+			_ = h.Auth.App.DB.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE is_instance_admin = TRUE AND status = 'active'`).Scan(&admins)
+			if admins == 0 {
+				_, _ = h.Auth.App.DB.Exec(ctx, `
+					UPDATE users SET is_instance_admin = TRUE, status = 'active' WHERE id = $1
+				`, user.ID)
+				user.IsInstanceAdmin = true
+				user.Status = "active"
+			}
 		}
 		return &user, nil
 	}
 
+	var existing uuid.UUID
+	err = h.Auth.App.DB.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, email).Scan(&existing)
+	if err == nil {
+		return nil, errOIDCEmailTaken
+	}
+
 	isAdmin := h.Auth.App.Cfg.BootstrapAdminEmail != "" && email == h.Auth.App.Cfg.BootstrapAdminEmail
+	if !isAdmin && !h.Auth.App.RegistrationOpen(ctx) {
+		return nil, errString("registration is closed")
+	}
 	status := "pending"
 	if isAdmin {
 		status = "active"

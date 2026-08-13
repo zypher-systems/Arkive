@@ -14,6 +14,21 @@ docker compose up --build
 
 Open [http://localhost:3080](http://localhost:3080).
 
+### Production
+
+TLS terminates at a reverse proxy; Arkive stays HTTP. Examples: [`deploy/Caddyfile`](deploy/Caddyfile), [`deploy/traefik.yml`](deploy/traefik.yml), [`deploy/nginx-proxy.conf`](deploy/nginx-proxy.conf).
+
+```bash
+# Strong unique values — production refuses placeholders
+# POSTGRES_PASSWORD, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD,
+# ARKIVE_SESSION_SECRET, ARKIVE_SECRETS_KEY, ARKIVE_PUBLIC_URL
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Set `ARKIVE_PUBLIC_URL=https://arkive.example.com` and `ARKIVE_COOKIE_SECURE=true`. The outer proxy must **replace** `X-Forwarded-For` (do not append a client-supplied value) and cap `client_max_body_size` to match `ARKIVE_MAX_UPLOAD_BYTES` (default 10 GiB). Inner nginx has no body-size cap.
+
+See [`docs/backup.md`](docs/backup.md) and [`docs/upgrade.md`](docs/upgrade.md).
+
 ### Bootstrap admin
 
 Put your email in `.env` as `ARKIVE_BOOTSTRAP_ADMIN_EMAIL` (compose default if unset: `admin@arkive.local`). Register or log in with that address — it becomes the instance admin (Storage + user approvals).
@@ -155,8 +170,13 @@ Configure under **Admin → SMTP** or `ARKIVE_SMTP_*` env vars. When enabled, ap
 api/          Go module
 web/          React + Vite + Tailwind SPA
 docker/       Dockerfiles + nginx.conf
+deploy/       Caddy / Traefik / nginx TLS examples
+docs/         Backup and upgrade runbooks
 assets/       Logo / brand source
 docker-compose.yml
+docker-compose.prod.yml
+LICENSE
+CHANGELOG.md
 ```
 
 ## Development
@@ -166,13 +186,21 @@ cd api && go test ./...
 cd web && npm install && npm run build
 ```
 
-CI (GitLab, runner tag `docker-build`) runs `go test ./...`, `web` production build, and Docker image builds for api/web.
+CI (GitLab, runner tag `docker-build`) runs `go test ./...` against Postgres, `web` unit tests + production build, and Docker image builds for api/web (including git tags such as `v1.0.0`).
 
-Optional signup-approval integration test (needs a Postgres DSN):
+Optional signup-approval integration test (needs a Postgres DSN; set automatically in CI):
 
 ```bash
 ARKIVE_TEST_DATABASE_URL='postgres://arkive:arkive@localhost:5432/arkive?sslmode=disable' go test ./internal/handlers/ -run TestSignupApprovalFlow
 ```
+
+Compose smoke (stack already up). Registers a pending user, approves them as the bootstrap admin, then uploads and downloads a file:
+
+```bash
+./scripts/smoke.sh
+```
+
+If the bootstrap admin already exists, set `ARKIVE_SMOKE_ADMIN_PASSWORD` to that account’s password. CI runs this against a fresh compose stack.
 
 ## Backup and ops
 
@@ -184,7 +212,7 @@ Compose named volumes hold durable state:
 | `minio_data` | File blobs (default S3 backend) |
 | NFS / local mounts | Whatever paths you assigned as NFS backends |
 
-Back up Postgres and object storage together for a consistent restore. Set `ARKIVE_ENV=production` with strong `ARKIVE_SESSION_SECRET` and `ARKIVE_SECRETS_KEY` (the API refuses to start on default secrets in production). Changing the secrets key invalidates encrypted S3 credentials stored in the DB — re-enter them after rotation. Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP). Soft-deleted trash is auto-purged after the Admin **trash retention** window (default 30 days; `0` disables).
+Back up Postgres and object storage together for a consistent restore — see [`docs/backup.md`](docs/backup.md). Set `ARKIVE_ENV=production` with strong `ARKIVE_SESSION_SECRET` and `ARKIVE_SECRETS_KEY` (the API refuses to start on default secrets in production). Changing the secrets key invalidates encrypted S3 credentials stored in the DB — re-enter them after rotation. Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP). Soft-deleted trash is auto-purged after the Admin **trash retention** window (default 30 days; `0` disables). Licensed under MIT.
 
 ## Out of scope (for now)
 

@@ -8,6 +8,7 @@ import (
 )
 
 const DefaultDevSessionSecret = "dev-secret-change-me"
+const DefaultComposeSecret = "change-me-in-production-use-long-random-string"
 
 type Config struct {
 	Env                 string
@@ -75,11 +76,13 @@ func (c Config) IsProduction() bool {
 	return c.Env == "production" || c.Env == "prod"
 }
 
+func isWeakSecret(s string) bool {
+	s = strings.TrimSpace(s)
+	return s == "" || s == DefaultDevSessionSecret || s == DefaultComposeSecret
+}
+
 func (c Config) UsingDevSecrets() bool {
-	return c.SessionSecret == "" ||
-		c.SessionSecret == DefaultDevSessionSecret ||
-		c.SecretsKey == "" ||
-		c.SecretsKey == DefaultDevSessionSecret
+	return isWeakSecret(c.SessionSecret) || isWeakSecret(c.SecretsKey)
 }
 
 // ValidateSecrets returns an error when production is using weak/default secrets.
@@ -87,10 +90,10 @@ func (c Config) ValidateSecrets() error {
 	if !c.IsProduction() {
 		return nil
 	}
-	if c.SessionSecret == "" || c.SessionSecret == DefaultDevSessionSecret {
+	if isWeakSecret(c.SessionSecret) {
 		return fmt.Errorf("ARKIVE_SESSION_SECRET must be set to a strong value when ARKIVE_ENV=production")
 	}
-	if c.SecretsKey == "" || c.SecretsKey == DefaultDevSessionSecret {
+	if isWeakSecret(c.SecretsKey) {
 		return fmt.Errorf("ARKIVE_SECRETS_KEY must be set to a strong value when ARKIVE_ENV=production (do not reuse the default session secret)")
 	}
 	return nil

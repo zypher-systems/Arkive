@@ -65,6 +65,9 @@ func (h *FileHandler) CopyNodes(w http.ResponseWriter, r *http.Request) {
 	for _, id := range req.NodeIDs {
 		n, err := h.copyNodeTree(r, id, req.TargetWorkspaceID, req.TargetParentID, user.ID)
 		if err != nil {
+			for _, c := range created {
+				h.compensateCreatedCopy(r.Context(), req.TargetWorkspaceID, c.ID)
+			}
 			httpjson.Error(w, http.StatusInternalServerError, err.Error())
 			return
 		}

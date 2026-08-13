@@ -21,11 +21,11 @@ type App struct {
 }
 
 func (a *App) SeedDefaultBackend(ctx context.Context) error {
-	var count int
-	if err := a.DB.QueryRow(ctx, `SELECT COUNT(*) FROM storage_backends`).Scan(&count); err != nil {
+	var n int
+	if err := a.DB.QueryRow(ctx, `SELECT COUNT(*) FROM storage_backends WHERE is_default = TRUE`).Scan(&n); err != nil {
 		return err
 	}
-	if count > 0 {
+	if n > 0 {
 		return nil
 	}
 	raw, err := a.EncryptAndMarshalS3(crypto.S3Config{

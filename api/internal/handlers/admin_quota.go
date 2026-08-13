@@ -80,7 +80,7 @@ func (h *SettingsHandler) PutQuotaDefaults(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	httpjson.Write(w, http.StatusOK, map[string]any{
-		"status":                         "ok",
+		"status":                        "ok",
 		"default_workspace_quota_bytes": body.DefaultWorkspaceQuotaBytes,
 	})
 }
@@ -118,10 +118,39 @@ func (h *SettingsHandler) PutTrashRetention(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *SettingsHandler) ReindexSearch(w http.ResponseWriter, r *http.Request) {
-	n, err := h.App.ReindexMissing(r.Context(), 500)
+	n, err := h.App.ReindexMissing(r.Context(), 2000)
 	if err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	httpjson.Write(w, http.StatusOK, map[string]any{"status": "ok", "indexed": n})
+	remaining, _ := h.App.CountUnindexed(r.Context())
+	httpjson.Write(w, http.StatusOK, map[string]any{"status": "ok", "indexed": n, "remaining": remaining})
+}
+
+func (h *SettingsHandler) GetRegistration(w http.ResponseWriter, r *http.Request) {
+	httpjson.Write(w, http.StatusOK, map[string]any{
+		"registration_open": h.App.RegistrationOpen(r.Context()),
+	})
+}
+
+func (h *SettingsHandler) PutRegistration(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RegistrationOpen *bool `json:"registration_open"`
+	}
+	if err := httpjson.Decode(r, &body); err != nil || body.RegistrationOpen == nil {
+		httpjson.Error(w, http.StatusBadRequest, "registration_open required")
+		return
+	}
+	val := "true"
+	if !*body.RegistrationOpen {
+		val = "false"
+	}
+	if err := h.App.PutSetting(r.Context(), "registration_open", val); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "save failed")
+		return
+	}
+	httpjson.Write(w, http.StatusOK, map[string]any{
+		"status":            "ok",
+		"registration_open": *body.RegistrationOpen,
+	})
 }

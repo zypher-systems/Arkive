@@ -37,6 +37,8 @@ export default function App() {
         }
       >
         <Route index element={<BrowserPage />} />
+        <Route path="w/:workspaceId" element={<BrowserPage />} />
+        <Route path="w/:workspaceId/f/:folderId" element={<BrowserPage />} />
         <Route path="teams" element={<TeamsPage />} />
         <Route path="account" element={<AccountPage />} />
         <Route path="admin" element={<AdminPage />} />

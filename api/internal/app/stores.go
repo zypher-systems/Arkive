@@ -37,6 +37,22 @@ func (a *App) InvalidateStore(id uuid.UUID) {
 	a.Stores.mu.Unlock()
 }
 
+// ReplaceCachedStore swaps the live BlobStore for a backend. Tests inject
+// failing stores this way; production does not call it.
+func (a *App) ReplaceCachedStore(ctx context.Context, backendID uuid.UUID, st storage.BlobStore) error {
+	if a.Stores == nil {
+		a.Stores = NewStoreRegistry()
+	}
+	var raw []byte
+	if err := a.DB.QueryRow(ctx, `SELECT config FROM storage_backends WHERE id = $1`, backendID).Scan(&raw); err != nil {
+		return err
+	}
+	a.Stores.mu.Lock()
+	a.Stores.cache[backendID] = storeCacheEntry{store: st, config: string(raw)}
+	a.Stores.mu.Unlock()
+	return nil
+}
+
 func (a *App) StoreForWorkspace(ctx context.Context, workspaceID uuid.UUID) (storage.BlobStore, error) {
 	var backendID *uuid.UUID
 	err := a.DB.QueryRow(ctx, `SELECT storage_backend_id FROM workspaces WHERE id = $1`, workspaceID).Scan(&backendID)

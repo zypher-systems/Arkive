@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	ErrForbidden          = errors.New("forbidden")
-	ErrNotFound           = errors.New("not found")
-	ErrWorkspaceMismatch  = errors.New("parent not in workspace")
+	ErrForbidden         = errors.New("forbidden")
+	ErrNotFound          = errors.New("not found")
+	ErrWorkspaceMismatch = errors.New("parent not in workspace")
 )
 
 type AccessLevel int

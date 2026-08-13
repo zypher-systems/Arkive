@@ -4,11 +4,11 @@ import "testing"
 
 func TestParseBytesRange(t *testing.T) {
 	cases := []struct {
-		h          string
-		size       int64
-		wantStart  int64
-		wantEnd    int64
-		wantOK     bool
+		h         string
+		size      int64
+		wantStart int64
+		wantEnd   int64
+		wantOK    bool
 	}{
 		{"bytes=0-479", 10000, 0, 479, true},
 		{"bytes=0-", 1000, 0, 999, true},

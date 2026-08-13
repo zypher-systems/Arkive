@@ -411,6 +411,47 @@ func (h *FileHandler) Search(w http.ResponseWriter, r *http.Request) {
 	httpjson.Write(w, http.StatusOK, out)
 }
 
+func (h *FileHandler) SearchAll(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(q) < 1 {
+		httpjson.Write(w, http.StatusOK, []models.Node{})
+		return
+	}
+	pattern := "%" + escapeLike(q) + "%"
+	rows, err := h.App.DB.Query(r.Context(), `
+		SELECT id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
+		FROM nodes
+		WHERE deleted_at IS NULL
+		  AND workspace_id IN (
+		    SELECT workspace_id FROM workspace_members WHERE user_id = $1
+		  )
+		  AND (
+		    search_vector @@ plainto_tsquery('english', $2)
+		    OR name ILIKE $3 ESCAPE '\'
+		  )
+		ORDER BY
+		  ts_rank(COALESCE(search_vector, ''::tsvector), plainto_tsquery('english', $2)) DESC,
+		  kind DESC, name ASC
+		LIMIT 50
+	`, user.ID, q, pattern)
+	if err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	defer rows.Close()
+	out := []models.Node{}
+	for rows.Next() {
+		var n models.Node
+		if err := rows.Scan(&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt); err != nil {
+			httpjson.Error(w, http.StatusInternalServerError, "scan failed")
+			return
+		}
+		out = append(out, n)
+	}
+	httpjson.Write(w, http.StatusOK, out)
+}
+
 func escapeLike(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `%`, `\%`)

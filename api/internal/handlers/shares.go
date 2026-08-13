@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -129,6 +130,16 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"permission": req.Permission,
 		"share_id":   s.ID.String(),
 	})
+	if granteeUserID != nil {
+		var toEmail, nodeName string
+		_ = h.App.DB.QueryRow(r.Context(), `SELECT email FROM users WHERE id = $1`, *granteeUserID).Scan(&toEmail)
+		_ = h.App.DB.QueryRow(r.Context(), `SELECT name FROM nodes WHERE id = $1`, nodeID).Scan(&nodeName)
+		if toEmail != "" {
+			go func() {
+				_ = h.App.SendShareEmail(context.Background(), toEmail, nodeName, user.DisplayName, req.Permission)
+			}()
+		}
+	}
 	httpjson.Write(w, http.StatusCreated, s)
 }
 

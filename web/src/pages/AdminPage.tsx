@@ -53,9 +53,11 @@ export function AdminPage() {
   const [smtpFrom, setSmtpFrom] = useState('');
   const [defaultQuotaGB, setDefaultQuotaGB] = useState('');
   const [trashRetentionDays, setTrashRetentionDays] = useState('30');
+  const [registrationOpen, setRegistrationOpen] = useState(true);
+  const [quotaDraft, setQuotaDraft] = useState<Record<string, string>>({});
 
   async function refresh() {
-    const [b, w, u, g, s, q, t] = await Promise.all([
+    const [b, w, u, g, s, q, t, reg] = await Promise.all([
       api.backends(),
       api.workspaces(),
       api.adminUsers(),
@@ -71,6 +73,7 @@ export function AdminPage() {
       })),
       api.quotaSettings().catch(() => ({ default_workspace_quota_bytes: null })),
       api.trashSettings().catch(() => ({ trash_retention_days: 30 })),
+      api.registrationSettings().catch(() => ({ registration_open: true })),
     ]);
     setBackends(b);
     setWorkspaces(w);
@@ -90,6 +93,12 @@ export function AdminPage() {
         : '',
     );
     setTrashRetentionDays(String(t.trash_retention_days ?? 30));
+    setRegistrationOpen(reg.registration_open);
+    const drafts: Record<string, string> = {};
+    for (const user of u) {
+      drafts[user.id] = user.quota_bytes ? String(Math.round(user.quota_bytes / 1024 ** 3)) : '';
+    }
+    setQuotaDraft(drafts);
   }
 
   useEffect(() => {
@@ -396,7 +405,12 @@ export function AdminPage() {
             onClick={() =>
               void api
                 .reindexSearch()
-                .then((r) => setMessage(`Reindexed ${r.indexed} file(s)`))
+                .then((r) =>
+                  setMessage(
+                    `Reindexed ${r.indexed} file(s)` +
+                      (r.remaining > 0 ? ` — ${r.remaining} remaining, run again` : ''),
+                  ),
+                )
                 .catch((e) => setError(String(e)))
             }
             className="rounded-md border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/40"
@@ -405,7 +419,7 @@ export function AdminPage() {
           </button>
         </div>
         <ul className="space-y-2 text-sm">
-          {others.slice(0, 12).map((u) => (
+          {others.map((u) => (
             <li
               key={u.id}
               className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-arkive-border/60 px-3 py-2"
@@ -414,29 +428,33 @@ export function AdminPage() {
                 {u.display_name}{' '}
                 <span className="text-arkive-muted">({u.email})</span>
               </span>
-              <button
-                type="button"
-                className="text-xs text-arkive-amber hover:underline"
-                onClick={() => {
-                  const raw = window.prompt(
-                    'User quota in GB (empty = unlimited)',
-                    u.quota_bytes ? String(Math.round(u.quota_bytes / 1024 ** 3)) : '',
-                  );
-                  if (raw === null) return;
-                  const gb = Number(raw);
-                  const bytes =
-                    raw.trim() === '' || !Number.isFinite(gb) || gb <= 0
-                      ? null
-                      : Math.round(gb * 1024 ** 3);
-                  void api
-                    .setUserQuota(u.id, bytes)
-                    .then(() => refresh())
-                    .then(() => setMessage('User quota updated'))
-                    .catch((e) => setError(String(e)));
-                }}
-              >
-                Quota{u.quota_bytes ? `: ${Math.round(u.quota_bytes / 1024 ** 3)} GB` : ''}
-              </button>
+              <span className="flex items-center gap-2 text-xs">
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="GB"
+                  value={quotaDraft[u.id] ?? ''}
+                  onChange={(e) => setQuotaDraft((d) => ({ ...d, [u.id]: e.target.value }))}
+                  className="w-20 rounded border border-arkive-border bg-arkive-bg px-2 py-1"
+                />
+                <button
+                  type="button"
+                  className="text-arkive-amber hover:underline"
+                  onClick={() => {
+                    const raw = (quotaDraft[u.id] ?? '').trim();
+                    const gb = Number(raw);
+                    const bytes =
+                      raw === '' || !Number.isFinite(gb) || gb <= 0 ? null : Math.round(gb * 1024 ** 3);
+                    void api
+                      .setUserQuota(u.id, bytes)
+                      .then(() => refresh())
+                      .then(() => setMessage('User quota updated'))
+                      .catch((e) => setError(String(e)));
+                  }}
+                >
+                  Save quota
+                </button>
+              </span>
             </li>
           ))}
         </ul>
@@ -445,8 +463,23 @@ export function AdminPage() {
       <section className="mb-8 rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
         <h2 className="mb-1 font-display text-lg font-semibold">Users</h2>
         <p className="mb-4 text-xs text-arkive-muted">
-          New registrations stay pending until approved. Rejected accounts cannot sign in.
+          New registrations stay pending until approved. Rejected and disabled accounts cannot sign in.
         </p>
+        <label className="mb-4 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={registrationOpen}
+            onChange={(e) => {
+              const open = e.target.checked;
+              setRegistrationOpen(open);
+              void api
+                .putRegistrationSettings(open)
+                .then(() => setMessage(open ? 'Registration open' : 'Registration closed'))
+                .catch((err) => setError(String(err)));
+            }}
+          />
+          Allow public registration
+        </label>
         {pending.length === 0 ? (
           <p className="mb-4 text-sm text-arkive-muted">No pending signups.</p>
         ) : (
@@ -507,11 +540,76 @@ export function AdminPage() {
         {others.length > 0 && (
           <ul className="space-y-1 text-sm text-arkive-muted">
             {others.map((u) => (
-              <li key={u.id} className="flex flex-wrap gap-2">
+              <li key={u.id} className="flex flex-wrap items-center gap-2">
                 <span className="text-arkive-text">{u.display_name}</span>
                 <span>{u.email}</span>
                 <span className="capitalize">{u.status}</span>
                 {u.is_instance_admin && <span className="text-arkive-amber">admin</span>}
+                {u.id !== user?.id && (
+                  <span className="ml-auto flex flex-wrap gap-2 text-xs">
+                    {u.status === 'active' && (
+                      <button
+                        type="button"
+                        className="hover:text-arkive-amber"
+                        onClick={() =>
+                          void api
+                            .disableUser(u.id)
+                            .then(refresh)
+                            .then(() => setMessage(`Disabled ${u.email}`))
+                            .catch((e) => setError(String(e)))
+                        }
+                      >
+                        Disable
+                      </button>
+                    )}
+                    {u.status === 'disabled' && (
+                      <button
+                        type="button"
+                        className="hover:text-arkive-amber"
+                        onClick={() =>
+                          void api
+                            .approveUser(u.id)
+                            .then(refresh)
+                            .then(() => setMessage(`Re-enabled ${u.email}`))
+                            .catch((e) => setError(String(e)))
+                        }
+                      >
+                        Enable
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="hover:text-arkive-amber"
+                      onClick={() =>
+                        void api
+                          .setInstanceAdmin(u.id, !u.is_instance_admin)
+                          .then(refresh)
+                          .then(() => setMessage(u.is_instance_admin ? 'Demoted' : 'Promoted'))
+                          .catch((e) => setError(String(e)))
+                      }
+                    >
+                      {u.is_instance_admin ? 'Demote' : 'Promote'}
+                    </button>
+                    <button
+                      type="button"
+                      className="hover:text-red-300"
+                      onClick={() =>
+                        ask({
+                          title: 'Delete user',
+                          message: `Permanently delete ${u.email} and their personal vault? Team owners cannot be deleted.`,
+                          confirmLabel: 'Delete',
+                          run: async () => {
+                            await api.deleteUser(u.id);
+                            await refresh();
+                            setMessage(`Deleted ${u.email}`);
+                          },
+                        })
+                      }
+                    >
+                      Delete
+                    </button>
+                  </span>
+                )}
               </li>
             ))}
           </ul>

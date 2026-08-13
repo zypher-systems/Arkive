@@ -132,6 +132,17 @@ func (a *App) PutSetting(ctx context.Context, key, value string) error {
 	return a.setSetting(ctx, key, value)
 }
 
+const settingRegistrationOpen = "registration_open"
+
+func (a *App) RegistrationOpen(ctx context.Context) bool {
+	raw, err := a.getSetting(ctx, settingRegistrationOpen)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return true
+	}
+	v := strings.ToLower(strings.TrimSpace(raw))
+	return v != "false" && v != "0" && v != "closed"
+}
+
 func (a *App) deleteSetting(ctx context.Context, key string) error {
 	_, err := a.DB.Exec(ctx, `DELETE FROM instance_settings WHERE key = $1`, key)
 	return err

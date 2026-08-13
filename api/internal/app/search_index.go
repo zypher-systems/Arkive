@@ -85,6 +85,16 @@ func (a *App) ReindexMissing(ctx context.Context, limit int) (int, error) {
 	return n, rows.Err()
 }
 
+func (a *App) CountUnindexed(ctx context.Context) (int, error) {
+	var n int
+	err := a.DB.QueryRow(ctx, `
+		SELECT COUNT(*) FROM nodes
+		WHERE kind = 'file' AND deleted_at IS NULL AND storage_key IS NOT NULL
+		  AND (content_text IS NULL OR content_text = '')
+	`).Scan(&n)
+	return n, err
+}
+
 func isIndexable(mime, name string) bool {
 	return isTextMime(mime) || isOfficeName(name) || isOfficeMime(mime)
 }

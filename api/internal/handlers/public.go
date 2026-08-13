@@ -81,10 +81,10 @@ func (h *PublicHandler) Create(w http.ResponseWriter, r *http.Request) {
 	link.URL = "/s/" + link.Token
 	actor := user.ID
 	h.App.LogActivity(r.Context(), &nodeID, nil, &actor, "link.created", map[string]any{
-		"link_id":        link.ID.String(),
-		"has_password":   link.HasPass,
-		"has_expiry":     req.ExpiresAt != nil,
-		"max_downloads":  req.MaxDownloads,
+		"link_id":       link.ID.String(),
+		"has_password":  link.HasPass,
+		"has_expiry":    req.ExpiresAt != nil,
+		"max_downloads": req.MaxDownloads,
 	})
 	httpjson.Write(w, http.StatusCreated, link)
 }

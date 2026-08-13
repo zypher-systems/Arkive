@@ -3,7 +3,7 @@ export type User = {
   email: string;
   display_name: string;
   is_instance_admin: boolean;
-  status: 'pending' | 'active' | 'rejected';
+  status: 'pending' | 'active' | 'rejected' | 'disabled';
   quota_bytes?: number | null;
   created_at: string;
 };
@@ -128,6 +128,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
+  if (res.status === 401) {
+    const skip =
+      path.startsWith('/api/auth/login') ||
+      path.startsWith('/api/auth/register') ||
+      path.startsWith('/api/auth/me') ||
+      path.startsWith('/api/auth/forgot') ||
+      path.startsWith('/api/auth/reset') ||
+      path.startsWith('/api/auth/oidc') ||
+      path.startsWith('/api/auth/registration');
+    if (!skip && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.assign('/login');
+    }
+  }
   if (!res.ok) {
     let message = res.statusText;
     try {
@@ -140,6 +153,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+type Page<T> = { items: T[]; has_more: boolean; next_offset: number };
+
+async function collectPages<T>(fetchPage: (offset: number) => Promise<Page<T>>): Promise<T[]> {
+  const all: T[] = [];
+  let offset = 0;
+  for (let i = 0; i < 50; i++) {
+    const page = await fetchPage(offset);
+    all.push(...(page.items || []));
+    if (!page.has_more) break;
+    offset = page.next_offset ?? all.length;
+  }
+  return all;
 }
 
 export const api = {
@@ -164,10 +191,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email, password, display_name }),
     }),
-  adminUsers: (status?: string) => {
-    const q = status ? `?status=${encodeURIComponent(status)}` : '';
-    return request<User[]>(`/api/admin/users${q}`);
+  adminUsers: async (status?: string) => {
+    return collectPages<User>((offset) => {
+      const q = new URLSearchParams({ limit: '200', offset: String(offset) });
+      if (status) q.set('status', status);
+      return request<Page<User>>(`/api/admin/users?${q}`);
+    });
   },
+  disableUser: (userId: string) =>
+    request<User>(`/api/admin/users/${userId}/disable`, { method: 'POST' }),
+  deleteUser: (userId: string) =>
+    request<{ status: string }>(`/api/admin/users/${userId}`, { method: 'DELETE' }),
+  setInstanceAdmin: (userId: string, is_instance_admin: boolean) =>
+    request<User>(`/api/admin/users/${userId}/admin`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_instance_admin }),
+    }),
   approveUser: (userId: string) =>
     request<User>(`/api/admin/users/${userId}/approve`, { method: 'POST' }),
   rejectUser: (userId: string) =>
@@ -197,7 +236,17 @@ export const api = {
       body: JSON.stringify({ trash_retention_days }),
     }),
   reindexSearch: () =>
-    request<{ status: string; indexed: number }>('/api/admin/search/reindex', { method: 'POST' }),
+    request<{ status: string; indexed: number; remaining: number }>('/api/admin/search/reindex', {
+      method: 'POST',
+    }),
+  registrationSettings: () =>
+    request<{ registration_open: boolean }>('/api/admin/settings/registration'),
+  putRegistrationSettings: (registration_open: boolean) =>
+    request<{ status: string; registration_open: boolean }>('/api/admin/settings/registration', {
+      method: 'PUT',
+      body: JSON.stringify({ registration_open }),
+    }),
+  registrationOpen: () => request<{ open: boolean }>('/api/auth/registration'),
   logout: () => request<{ status: string }>('/api/auth/logout', { method: 'POST' }),
   updateProfile: (display_name: string, password?: string) =>
     request<User>('/api/auth/me', {
@@ -245,6 +294,11 @@ export const api = {
     request<{ invite_token: string }>(`/api/workspaces/${workspaceId}/invite`, {
       method: 'POST',
     }),
+  sendInvite: (workspaceId: string, email: string) =>
+    request<{ status: string }>(`/api/workspaces/${workspaceId}/invite/send`, {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
   removeMember: (workspaceId: string, userId: string) =>
     request<{ status: string }>(`/api/workspaces/${workspaceId}/members/${userId}`, {
       method: 'DELETE',
@@ -272,12 +326,25 @@ export const api = {
         quota_bytes?: number | null;
       }[];
     }>('/api/storage/usage'),
-  listNodes: (workspaceId: string, parentId?: string | null, init?: RequestInit) => {
-    const q = parentId ? `?parent_id=${parentId}` : '';
-    return request<{ nodes: Node[]; breadcrumbs: Breadcrumb[] }>(
-      `/api/workspaces/${workspaceId}/nodes${q}`,
-      init,
-    );
+  listNodes: async (workspaceId: string, parentId?: string | null, init?: RequestInit) => {
+    const nodes: Node[] = [];
+    let breadcrumbs: Breadcrumb[] = [];
+    let offset = 0;
+    for (let i = 0; i < 50; i++) {
+      const q = new URLSearchParams({ limit: '200', offset: String(offset) });
+      if (parentId) q.set('parent_id', parentId);
+      const data = await request<{
+        nodes: Node[];
+        breadcrumbs: Breadcrumb[];
+        has_more: boolean;
+        next_offset: number;
+      }>(`/api/workspaces/${workspaceId}/nodes?${q}`, init);
+      breadcrumbs = data.breadcrumbs || [];
+      nodes.push(...(data.nodes || []));
+      if (!data.has_more) break;
+      offset = data.next_offset ?? nodes.length;
+    }
+    return { nodes, breadcrumbs };
   },
   mkdir: (workspaceId: string, name: string, parentId?: string | null) =>
     request<Node>(`/api/workspaces/${workspaceId}/folders`, {
@@ -302,6 +369,11 @@ export const api = {
         if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
       };
       xhr.onload = () => {
+        if (xhr.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.assign('/login');
+          reject(new Error('unauthorized'));
+          return;
+        }
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(JSON.parse(xhr.responseText) as Node);
         } else {
@@ -339,6 +411,8 @@ export const api = {
       `/api/workspaces/${workspaceId}/search?q=${encodeURIComponent(q)}`,
       init,
     ),
+  searchAll: (q: string, init?: RequestInit) =>
+    request<Node[]>(`/api/search?q=${encodeURIComponent(q)}`, init),
   downloadZip: async (workspaceId: string, nodeIds: string[]) => {
     const res = await fetch(`/api/workspaces/${workspaceId}/download-zip`, {
       method: 'POST',
@@ -366,8 +440,13 @@ export const api = {
   },
   oidcEnabled: () =>
     request<{ enabled: boolean; provider_name: string }>('/api/auth/oidc/enabled'),
-  trash: (workspaceId: string, init?: RequestInit) =>
-    request<Node[]>(`/api/workspaces/${workspaceId}/trash`, init),
+  trash: async (workspaceId: string, init?: RequestInit) =>
+    collectPages<Node>((offset) =>
+      request<Page<Node>>(
+        `/api/workspaces/${workspaceId}/trash?limit=200&offset=${offset}`,
+        init,
+      ),
+    ),
   emptyTrash: (workspaceId: string) =>
     request<{ status: string; purged: number }>(`/api/workspaces/${workspaceId}/trash`, {
       method: 'DELETE',
@@ -465,7 +544,10 @@ export const api = {
     }),
   deleteShare: (shareId: string) =>
     request<{ status: string }>(`/api/shares/${shareId}`, { method: 'DELETE' }),
-  sharedWithMe: (init?: RequestInit) => request<Node[]>('/api/shared', init),
+  sharedWithMe: async (init?: RequestInit) =>
+    collectPages<Node>((offset) =>
+      request<Page<Node>>(`/api/shared?limit=200&offset=${offset}`, init),
+    ),
   links: (nodeId: string) => request<PublicLink[]>(`/api/nodes/${nodeId}/links`),
   createLink: (
     nodeId: string,
