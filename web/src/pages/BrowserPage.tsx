@@ -1,5 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  AlertCircle,
+  Archive,
+  ChevronRight,
+  Copy,
+  FolderInput,
+  Home,
+  RotateCcw,
+  Search,
+  Trash2,
+  UploadCloud,
+  X,
+} from 'lucide-react';
+import { Button, IconButton } from '../components/ui/Button';
 import {
   api,
   downloadUrl,
@@ -510,11 +525,25 @@ export function BrowserPage() {
       onDrop={onRootDrop}
       className="relative flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch"
     >
-      {dragging && browsing && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-arkive-amber/60 bg-arkive-amber/10 text-arkive-amber">
-          Drop files to upload
-        </div>
-      )}
+      <AnimatePresence>
+        {dragging && browsing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-arkive-accent/70 bg-arkive-accent/10 backdrop-blur-sm"
+          >
+            <motion.div
+              animate={{ y: [0, -8, 0] }}
+              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+              className="flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-arkive-accent/40 to-arkive-accent2/30 text-white shadow-[0_0_40px_rgba(139,92,246,0.5)] ring-1 ring-white/20"
+            >
+              <UploadCloud size={30} />
+            </motion.div>
+            <p className="font-display text-lg font-semibold text-white">Drop files to upload</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <FilesSidebar
         personal={personal}
@@ -655,55 +684,64 @@ export function BrowserPage() {
           />
         ) : (
           <>
-            {selected.size > 0 && (
-              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-arkive-border bg-arkive-panel/50 px-3 py-2 text-sm">
-                <span className="text-arkive-muted">{selected.size} selected</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMoveMode('move');
-                    setShowMove(true);
-                  }}
-                  className="rounded-md border border-arkive-border px-2 py-1 hover:border-arkive-amber/40"
+            <AnimatePresence>
+              {selected.size > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  className="glass glass-hairline mb-4 flex flex-wrap items-center gap-1.5 rounded-2xl px-3 py-2 text-sm shadow-[0_8px_32px_rgba(3,4,12,0.5)]"
                 >
-                  Move
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMoveMode('copy');
-                    setShowMove(true);
-                  }}
-                  className="rounded-md border border-arkive-border px-2 py-1 hover:border-arkive-amber/40"
-                >
-                  Copy to…
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void bulkZip()}
-                  className="rounded-md border border-arkive-border px-2 py-1 hover:border-arkive-amber/40"
-                >
-                  Download zip
-                </button>
-                <button
-                  type="button"
-                  onClick={() => bulkDelete()}
-                  className="rounded-md border border-arkive-border px-2 py-1 hover:text-red-300"
-                >
-                  Trash
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelected(new Set())}
-                  className="rounded-md px-2 py-1 text-arkive-muted hover:text-arkive-text"
-                >
-                  Clear
-                </button>
-              </div>
-            )}
+                  <span className="mr-1 flex items-center gap-2 font-medium text-arkive-text">
+                    <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-iridescent px-1.5 text-[11px] font-bold text-white shadow-[0_0_12px_rgba(139,92,246,0.5)]">
+                      {selected.size}
+                    </span>
+                    selected
+                  </span>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    icon={<FolderInput size={13} />}
+                    onClick={() => {
+                      setMoveMode('move');
+                      setShowMove(true);
+                    }}
+                  >
+                    Move
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    icon={<Copy size={13} />}
+                    onClick={() => {
+                      setMoveMode('copy');
+                      setShowMove(true);
+                    }}
+                  >
+                    Copy to…
+                  </Button>
+                  <Button size="xs" variant="ghost" icon={<Archive size={13} />} onClick={() => void bulkZip()}>
+                    Download zip
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    icon={<Trash2 size={13} />}
+                    className="hover:!bg-red-500/12 hover:!text-red-300"
+                    onClick={() => bulkDelete()}
+                  >
+                    Trash
+                  </Button>
+                  <IconButton label="Clear selection" size="xs" className="ml-auto" onClick={() => setSelected(new Set())}>
+                    <X size={13} />
+                  </IconButton>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {!results && (
-              <nav className="mb-4 flex flex-wrap items-center gap-1 text-sm text-arkive-muted">
+              <nav className="mb-4 flex flex-wrap items-center gap-0.5 text-sm text-arkive-muted">
                 <button
                   type="button"
                   onClick={() => setParentId(null)}
@@ -716,15 +754,15 @@ export function BrowserPage() {
                     setDropTargetId((c) => (c === '__root__' ? null : c))
                   }
                   onDrop={(e) => void onDropOnBreadcrumb(e, null)}
-                  className={`rounded px-1.5 py-0.5 hover:bg-arkive-panel hover:text-arkive-text ${
-                    dropTargetId === '__root__' ? 'ring-2 ring-arkive-amber/70' : ''
+                  className={`flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 transition hover:bg-white/[0.07] hover:text-arkive-text ${
+                    dropTargetId === '__root__' ? 'bg-arkive-accent/15 ring-2 ring-arkive-accent/70' : ''
                   }`}
                 >
-                  Root
+                  <Home size={13} /> Root
                 </button>
-                {breadcrumbs.map((b) => (
-                  <span key={b.id} className="flex items-center gap-1">
-                    <span>/</span>
+                {breadcrumbs.map((b, i) => (
+                  <span key={b.id} className="flex items-center gap-0.5">
+                    <ChevronRight size={13} className="text-arkive-muted/50" />
                     <button
                       type="button"
                       onClick={() => setParentId(b.id)}
@@ -737,8 +775,12 @@ export function BrowserPage() {
                         setDropTargetId((c) => (c === b.id ? null : c))
                       }
                       onDrop={(e) => void onDropOnBreadcrumb(e, b.id)}
-                      className={`rounded px-1.5 py-0.5 hover:bg-arkive-panel hover:text-arkive-text ${
-                        dropTargetId === b.id ? 'ring-2 ring-arkive-amber/70' : ''
+                      className={`cursor-pointer rounded-lg px-2 py-1 transition hover:bg-white/[0.07] hover:text-arkive-text ${
+                        dropTargetId === b.id
+                          ? 'bg-arkive-accent/15 ring-2 ring-arkive-accent/70'
+                          : i === breadcrumbs.length - 1
+                            ? 'font-medium text-arkive-text'
+                            : ''
                       }`}
                     >
                       {b.name}
@@ -749,32 +791,53 @@ export function BrowserPage() {
             )}
 
             {results && (
-              <p className="mb-3 text-sm text-arkive-muted">
-                Search results for “{query}” —{' '}
+              <p className="mb-3 flex items-center gap-1.5 text-sm text-arkive-muted">
+                <Search size={14} className="text-arkive-accent2" />
+                Results for <span className="font-medium text-arkive-text">“{query}”</span>
                 <button
                   type="button"
-                  className="text-arkive-amber hover:underline"
+                  className="ml-1 cursor-pointer rounded-md px-1.5 py-0.5 text-xs text-arkive-accent2 transition hover:bg-white/[0.07]"
                   onClick={() => setQuery('')}
                 >
-                  clear
+                  clear ✕
                 </button>
               </p>
             )}
 
             {uploadPct !== null && (
-              <div className="mb-4 overflow-hidden rounded-lg border border-arkive-border bg-arkive-panel">
-                <div
-                  className="h-1.5 bg-gradient-to-r from-arkive-orange to-arkive-glow transition-all"
-                  style={{ width: `${uploadPct}%` }}
-                />
-                <p className="px-3 py-2 text-xs text-arkive-muted">Uploading… {uploadPct}%</p>
+              <div className="glass glass-hairline mb-4 overflow-hidden rounded-2xl px-4 py-3">
+                <div className="mb-2 flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-2 font-medium text-arkive-text">
+                    <motion.span
+                      animate={{ y: [0, -3, 0] }}
+                      transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                      className="text-arkive-accent2"
+                    >
+                      <UploadCloud size={15} />
+                    </motion.span>
+                    Uploading…
+                  </span>
+                  <span className="font-display font-semibold text-arkive-accent2">{uploadPct}%</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/6">
+                  <motion.div
+                    className="bg-iridescent h-full rounded-full shadow-[0_0_12px_rgba(139,92,246,0.7)]"
+                    animate={{ width: `${uploadPct}%` }}
+                    transition={{ ease: 'easeOut', duration: 0.25 }}
+                  />
+                </div>
               </div>
             )}
 
             {error && (
-              <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              <motion.p
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-300"
+              >
+                <AlertCircle size={15} className="shrink-0" />
                 {error}
-              </p>
+              </motion.p>
             )}
 
             <div
@@ -794,10 +857,7 @@ export function BrowserPage() {
               {loading && (
                 <div className="mb-3 space-y-2 px-1" aria-hidden>
                   {[0, 1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="h-12 animate-pulse rounded-lg bg-arkive-panel/80"
-                    />
+                    <div key={i} className="skeleton h-12" style={{ animationDelay: `${i * 0.12}s` }} />
                   ))}
                 </div>
               )}
@@ -813,12 +873,24 @@ export function BrowserPage() {
             </div>
 
             {showTrash && (
-              <section className="mt-8">
+              <motion.section
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+                className="mt-8"
+              >
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <h2 className="font-display text-lg font-semibold">Trash</h2>
+                  <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500/12 text-red-300 ring-1 ring-red-400/20">
+                      <Trash2 size={15} />
+                    </span>
+                    Trash
+                  </h2>
                   {trash.length > 0 && (
-                    <button
-                      type="button"
+                    <Button
+                      size="xs"
+                      variant="danger"
+                      icon={<Trash2 size={12} />}
                       onClick={() =>
                         ask({
                           title: 'Empty trash',
@@ -836,54 +908,53 @@ export function BrowserPage() {
                           },
                         })
                       }
-                      className="rounded-md border border-arkive-border px-2 py-1 text-xs hover:text-red-300"
                     >
                       Empty trash
-                    </button>
+                    </Button>
                   )}
                 </div>
-                <ul className="divide-y divide-arkive-border overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/50">
+                <ul className="glass glass-hairline divide-y divide-white/4 overflow-hidden rounded-2xl">
                   {trash.length === 0 && (
-                    <li className="px-4 py-6 text-center text-sm text-arkive-muted">Trash is empty.</li>
+                    <li className="px-4 py-8 text-center text-sm text-arkive-muted">Trash is empty — nothing to rescue.</li>
                   )}
                   {trash.map((node) => (
                     <li
                       key={node.id}
-                      className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
+                      className="group flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm transition-colors hover:bg-white/[0.03]"
                     >
-                      <span>
-                        {node.name} <span className="text-arkive-muted">({node.kind})</span>
+                      <span className="min-w-0 truncate">
+                        <span className="font-medium text-arkive-text/90">{node.name}</span>{' '}
+                        <span className="text-xs text-arkive-muted">({node.kind})</span>
                       </span>
-                      <div className="flex gap-2 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => void restoreNode(node)}
-                          className="rounded-md border border-arkive-border px-2 py-1 hover:border-arkive-amber/40"
-                        >
+                      <div className="flex gap-1.5 text-xs">
+                        <Button size="xs" variant="ghost" icon={<RotateCcw size={12} />} onClick={() => void restoreNode(node)}>
                           Restore
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          icon={<Trash2 size={12} />}
+                          className="hover:!bg-red-500/12 hover:!text-red-300"
+                          onClick={(e: ReactMouseEvent) => {
                             e.preventDefault();
                             e.stopPropagation();
                             purgeNode(node);
                           }}
-                          className="rounded-md border border-arkive-border px-2 py-1 hover:text-red-300"
                         >
                           Delete forever
-                        </button>
+                        </Button>
                       </div>
                     </li>
                   ))}
                 </ul>
-              </section>
+              </motion.section>
             )}
           </>
         )}
 
         {error && view?.kind === 'shared' && (
-          <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          <p className="mt-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
+            <AlertCircle size={15} className="shrink-0" />
             {error}
           </p>
         )}

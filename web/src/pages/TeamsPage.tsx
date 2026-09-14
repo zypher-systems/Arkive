@@ -1,6 +1,20 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
+import {
+  AlertCircle,
+  Check,
+  Copy,
+  KeyRound,
+  Mail,
+  RefreshCw,
+  Send,
+  UserPlus,
+  UserX,
+  Users,
+} from 'lucide-react';
 import { api, type Workspace, type WorkspaceMember } from '../lib/api';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
 import { useAuth } from '../lib/auth';
 import { useConfirm } from '../lib/confirm';
 
@@ -95,14 +109,17 @@ export function TeamsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Teams</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight">
+          <span className="text-iridescent">Teams</span>
+        </h1>
         <p className="mt-1 text-sm text-arkive-muted">
           Shared workspaces with invite tokens. Send an email when SMTP is configured.
         </p>
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+        <p className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
+          <AlertCircle size={15} className="shrink-0" />
           {error}
         </p>
       )}
@@ -112,22 +129,24 @@ export function TeamsPage() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           onSubmit={createTeam}
-          className="rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5"
+          className="glass glass-hairline rounded-3xl p-5"
         >
-          <h2 className="mb-3 font-display text-lg font-semibold">Create team</h2>
+          <h2 className="mb-3 flex items-center gap-2.5 font-display text-lg font-semibold">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+              <Users size={15} />
+            </span>
+            Create team
+          </h2>
           <input
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Team name"
-            className="mb-3 w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 outline-none focus:ring-2 focus:ring-arkive-amber/40"
+            className="input-glass mb-3"
           />
-          <button
-            type="submit"
-            className="rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-4 py-2 text-sm font-semibold text-black"
-          >
+          <Button type="submit" variant="primary" icon={<UserPlus size={14} />} className="font-semibold">
             Create
-          </button>
+          </Button>
         </motion.form>
 
         <motion.form
@@ -135,32 +154,34 @@ export function TeamsPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
           onSubmit={joinTeam}
-          className="rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5"
+          className="glass glass-hairline rounded-3xl p-5"
         >
-          <h2 className="mb-3 font-display text-lg font-semibold">Join with invite</h2>
+          <h2 className="mb-3 flex items-center gap-2.5 font-display text-lg font-semibold">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+              <KeyRound size={15} />
+            </span>
+            Join with invite
+          </h2>
           <input
             required
             value={joinToken}
             onChange={(e) => setJoinToken(e.target.value)}
             placeholder="Invite token"
-            className="mb-3 w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-arkive-amber/40"
+            className="input-glass mb-3 font-mono"
           />
-          <button
-            type="submit"
-            className="rounded-lg border border-arkive-border px-4 py-2 text-sm hover:border-arkive-amber/40"
-          >
+          <Button type="submit" variant="glass" icon={<UserPlus size={14} />}>
             Join team
-          </button>
+          </Button>
         </motion.form>
       </div>
 
-      <div className="mt-8 rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
+      <Card className="mt-8 p-5">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <h2 className="font-display text-lg font-semibold">Your teams</h2>
           <select
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
-            className="rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm"
+            className="input-glass w-auto cursor-pointer !py-1.5 text-sm [&>option]:bg-arkive-surface"
           >
             {teams.length === 0 && <option value="">No teams yet</option>}
             {teams.map((t) => (
@@ -173,27 +194,31 @@ export function TeamsPage() {
 
         {current && (
           <>
-            <div className="mb-5 rounded-xl border border-arkive-border bg-arkive-panel/40 p-4">
-              <p className="mb-2 text-sm text-arkive-muted">Invite token</p>
+            <div className="mb-5 rounded-2xl border border-white/7 bg-black/20 p-4">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-[0.12em] text-arkive-muted uppercase">
+                <KeyRound size={12} className="text-arkive-accent2" /> Invite token
+              </p>
               <div className="flex flex-wrap items-center gap-2">
-                <code className="rounded-lg bg-arkive-bg px-3 py-2 font-mono text-xs text-arkive-glow">
+                <code className="rounded-xl border border-white/8 bg-black/35 px-3 py-2 font-mono text-xs text-arkive-accent2 shadow-[0_0_14px_rgba(34,211,238,0.12)]">
                   {inviteToken || '—'}
                 </code>
-                <button
-                  type="button"
+                <Button
+                  size="xs"
+                  variant="glass"
+                  icon={copied ? <Check size={12} className="text-emerald-300" /> : <Copy size={12} />}
                   onClick={() => void copyInvite()}
-                  className="rounded-lg border border-arkive-border px-3 py-1.5 text-xs hover:border-arkive-amber/40"
                 >
                   {copied ? 'Copied' : 'Copy'}
-                </button>
+                </Button>
                 {canManage && (
-                  <button
-                    type="button"
+                  <Button
+                    size="xs"
+                    variant="glass"
+                    icon={<RefreshCw size={12} />}
                     onClick={() => void rotate().catch((e) => setError(String(e)))}
-                    className="rounded-lg border border-arkive-border px-3 py-1.5 text-xs hover:border-arkive-amber/40"
                   >
                     Rotate
-                  </button>
+                  </Button>
                 )}
               </div>
               {canManage && (
@@ -218,25 +243,31 @@ export function TeamsPage() {
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     placeholder="Send invite to email"
-                    className="min-w-48 flex-1 rounded-lg border border-arkive-border bg-arkive-bg px-3 py-1.5 text-sm"
+                    className="input-glass min-w-48 flex-1 !py-1.5 text-sm"
                   />
-                  <button
-                    type="submit"
-                    className="rounded-lg border border-arkive-border px-3 py-1.5 text-xs hover:border-arkive-amber/40"
-                  >
+                  <Button type="submit" size="sm" variant="glass" icon={<Send size={12} />}>
                     Send invite
-                  </button>
+                  </Button>
                 </form>
               )}
-              {inviteInfo && <p className="mt-2 text-xs text-arkive-muted">{inviteInfo}</p>}
+              {inviteInfo && (
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-emerald-300">
+                  <Mail size={12} /> {inviteInfo}
+                </p>
+              )}
             </div>
 
-            <ul className="divide-y divide-arkive-border">
+            <ul className="divide-y divide-white/5">
               {members.map((m) => (
-                <li key={m.user_id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                  <div>
-                    <div className="font-medium">{m.display_name}</div>
-                    <div className="text-arkive-muted">{m.email}</div>
+                <li key={m.user_id} className="group flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-arkive-accent/40 to-arkive-accent2/30 font-display text-sm font-bold text-white ring-1 ring-white/15">
+                      {(m.display_name || m.email || '?').trim().charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{m.display_name}</div>
+                      <div className="truncate text-xs text-arkive-muted">{m.email}</div>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {canManage && m.role !== 'owner' ? (
@@ -248,20 +279,27 @@ export function TeamsPage() {
                             .then(refresh)
                             .catch((err) => setError(String(err)))
                         }
-                        className="rounded-md border border-arkive-border bg-arkive-bg px-2 py-1 text-xs"
+                        className="cursor-pointer rounded-lg border border-white/8 bg-black/30 px-2 py-1 text-xs text-arkive-muted outline-none transition hover:border-arkive-accent/50 hover:text-arkive-text [&>option]:bg-arkive-surface"
                       >
                         <option value="admin">admin</option>
                         <option value="member">member</option>
                         <option value="viewer">viewer</option>
                       </select>
                     ) : (
-                      <span className="rounded-md border border-arkive-border px-2 py-1 text-xs text-arkive-muted">
+                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${
+                        m.role === 'owner'
+                          ? 'bg-arkive-accent/15 text-violet-300 ring-arkive-accent/30'
+                          : 'bg-white/6 text-arkive-muted ring-white/10'
+                      }`}>
                         {m.role}
                       </span>
                     )}
                     {(canManage || m.user_id === user?.id) && m.role !== 'owner' && (
-                      <button
-                        type="button"
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        icon={<UserX size={12} />}
+                        className="hover:!bg-red-500/12 hover:!text-red-300"
                         onClick={() =>
                           ask({
                             title: 'Remove member',
@@ -278,10 +316,9 @@ export function TeamsPage() {
                             },
                           })
                         }
-                        className="text-xs text-arkive-muted hover:text-red-300"
                       >
                         Remove
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </li>
@@ -289,7 +326,7 @@ export function TeamsPage() {
             </ul>
           </>
         )}
-      </div>
+      </Card>
       {confirmDialog}
     </div>
   );

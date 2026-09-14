@@ -13,8 +13,12 @@ function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-arkive-muted">
-        Opening vault…
+      <div className="flex h-full flex-col items-center justify-center gap-4">
+        <div className="relative h-12 w-12">
+          <div className="absolute inset-0 rounded-full border-2 border-arkive-border" />
+          <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-arkive-accent border-r-arkive-accent2" />
+        </div>
+        <p className="text-sm text-arkive-muted">Opening vault…</p>
       </div>
     );
   }

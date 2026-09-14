@@ -1,3 +1,17 @@
+import {
+  FilePlus2,
+  FolderPlus,
+  LayoutGrid,
+  List,
+  Rows3,
+  Search,
+  Trash2,
+  UploadCloud,
+  X,
+} from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { Segmented } from '../ui/Segmented';
 import type { FileViewMode } from './types';
 import { formatBytes } from '../../lib/api';
 
@@ -22,30 +36,6 @@ type Props = {
   hideTrash?: boolean;
 };
 
-function ModeBtn({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-md px-2 py-1 text-xs font-medium ${
-        active
-          ? 'bg-arkive-amber/20 text-arkive-amber'
-          : 'text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
 export function FileToolbar({
   title,
   subtitle,
@@ -69,13 +59,15 @@ export function FileToolbar({
 
   return (
     <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h1 className="font-display text-3xl font-bold tracking-tight">{title}</h1>
+      <div className="min-w-0">
+        <h1 className="font-display text-3xl font-bold tracking-tight">
+          <span className="text-iridescent">{title}</span>
+        </h1>
         <p className="mt-1 text-sm text-arkive-muted">{subtitle}</p>
         {browsing && rootBytes != null && (
           <p className="mt-1 text-xs text-arkive-muted">
             This root:{' '}
-            <span className="text-arkive-text">{formatBytes(rootBytes)}</span>
+            <span className="font-medium text-arkive-text">{formatBytes(rootBytes)}</span>
             {rootQuota != null && rootQuota > 0 && (
               <span> / {formatBytes(rootQuota)}</span>
             )}
@@ -84,62 +76,68 @@ export function FileToolbar({
       </div>
       {modes && (
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-0.5 rounded-lg border border-arkive-border bg-arkive-surface p-0.5">
-            <ModeBtn active={viewMode === 'list'} label="List" onClick={() => onViewMode('list')} />
-            <ModeBtn
-              active={viewMode === 'details'}
-              label="Details"
-              onClick={() => onViewMode('details')}
-            />
-            <ModeBtn
-              active={viewMode === 'tiles'}
-              label="Tiles"
-              onClick={() => onViewMode('tiles')}
-            />
-          </div>
+          <Segmented
+            layoutId="file-view-mode"
+            size="sm"
+            value={viewMode}
+            onChange={onViewMode}
+            items={[
+              { value: 'list', icon: <List size={14} />, title: 'List view' },
+              { value: 'details', icon: <Rows3 size={14} />, title: 'Details view' },
+              { value: 'tiles', icon: <LayoutGrid size={14} />, title: 'Tiles view' },
+            ]}
+          />
           {browsing && (
             <>
-              <input
-                value={query}
-                onChange={(e) => onQuery(e.target.value)}
-                placeholder="Search files…"
-                className="w-40 rounded-lg border border-arkive-border bg-arkive-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-arkive-amber/40 sm:w-52"
-              />
-              <button
-                type="button"
-                onClick={onNewFolder}
-                className="rounded-lg border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/40"
-              >
-                New folder
-              </button>
+              <div className="relative">
+                <Input
+                  value={query}
+                  onChange={(e) => onQuery(e.target.value)}
+                  placeholder="Search files…"
+                  icon={<Search size={14} />}
+                  className="w-40 sm:w-52"
+                />
+                {query && (
+                  <IconButton
+                    label="Clear search"
+                    size="xs"
+                    onClick={() => onQuery('')}
+                    className="absolute top-1/2 right-2 -translate-y-1/2"
+                  >
+                    <X size={12} />
+                  </IconButton>
+                )}
+              </div>
+              <Button size="sm" variant="glass" onClick={onNewFolder} icon={<FolderPlus size={14} />}>
+                <span className="hidden sm:inline">New folder</span>
+              </Button>
               {onNewFile && (
-                <button
-                  type="button"
-                  onClick={onNewFile}
-                  className="rounded-lg border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/40"
-                >
-                  New file
-                </button>
+                <Button size="sm" variant="glass" onClick={onNewFile} icon={<FilePlus2 size={14} />}>
+                  <span className="hidden sm:inline">New file</span>
+                </Button>
               )}
-              <button
-                type="button"
-                onClick={onUpload}
-                className="rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-2 text-sm font-semibold text-black"
-              >
+              <Button size="sm" variant="primary" onClick={onUpload} icon={<UploadCloud size={14} />} className="font-semibold">
                 Upload
-              </button>
+              </Button>
               {!hideTrash && (
-                <button
-                  type="button"
+                <Button
+                  size="sm"
+                  variant={showTrash ? 'primary' : 'outline'}
                   onClick={onToggleTrash}
-                  className={`rounded-lg border px-3 py-2 text-sm ${
-                    showTrash
-                      ? 'border-arkive-amber/50 text-arkive-amber'
-                      : 'border-arkive-border hover:border-arkive-amber/40'
-                  }`}
+                  icon={<Trash2 size={14} />}
+                  className={showTrash ? '' : ''}
                 >
-                  Trash{trashCount ? ` (${trashCount})` : ''}
-                </button>
+                  <span className="hidden sm:inline">Trash</span>
+                  {trashCount > 0 && (
+                    <span
+                      className={`rounded-full px-1.5 text-[10px] font-bold ${
+                        showTrash ? 'bg-black/25 text-white' : 'bg-white/8 text-arkive-muted'
+                      }`}
+                    >
+                      {trashCount}
+                    </span>
+                  )}
+                </Button>
               )}
             </>
           )}

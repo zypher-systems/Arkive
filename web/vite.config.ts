@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'http://localhost:8080',
+      '/api': process.env.ARKIVE_API_PROXY || 'http://localhost:8080',
     },
   },
 });

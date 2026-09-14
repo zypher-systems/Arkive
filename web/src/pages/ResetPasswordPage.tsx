@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { AlertCircle, Loader2, Lock, LockKeyhole } from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 import { ArkiveLogo } from '../components/ArkiveLogo';
 import { api } from '../lib/api';
 
@@ -47,57 +50,63 @@ export function ResetPasswordPage() {
         className="w-full max-w-md"
       >
         <div className="mb-6 flex flex-col items-center text-center">
-          <ArkiveLogo size={72} />
-          <h1 className="mt-4 font-display text-3xl font-bold">Reset password</h1>
+          <ArkiveLogo size={76} />
+          <h1 className="mt-5 font-display text-3xl font-bold tracking-tight">Reset password</h1>
           <p className="mt-2 text-sm text-arkive-muted">Choose a new password for your Arkive account.</p>
         </div>
 
         <form
           onSubmit={onSubmit}
-          className="rounded-2xl border border-arkive-border bg-arkive-surface/90 p-6"
+          className="glass-strong glass-hairline rounded-3xl p-6 shadow-[0_24px_80px_rgba(3,4,12,0.6)]"
         >
           {!token && (
-            <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            <p className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
+              <AlertCircle size={16} className="shrink-0" />
               This page needs a valid reset link from your email.
             </p>
           )}
-          <label className="mb-3 block text-sm">
-            <span className="mb-1.5 block text-arkive-muted">New password</span>
-            <input
+          <div className="space-y-3.5">
+            <Input
               required
               type="password"
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2.5 outline-none focus:ring-2 focus:ring-arkive-amber/40"
+              placeholder="New password"
+              autoComplete="new-password"
+              icon={<Lock size={16} />}
             />
-          </label>
-          <label className="mb-5 block text-sm">
-            <span className="mb-1.5 block text-arkive-muted">Confirm password</span>
-            <input
+            <Input
               required
               type="password"
               minLength={8}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2.5 outline-none focus:ring-2 focus:ring-arkive-amber/40"
+              placeholder="Confirm password"
+              autoComplete="new-password"
+              icon={<LockKeyhole size={16} />}
             />
-          </label>
+          </div>
           {error && (
-            <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            <p className="mt-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
+              <AlertCircle size={16} className="shrink-0" />
               {error}
             </p>
           )}
-          <button
+          <Button
             type="submit"
+            variant="primary"
+            size="lg"
+            full
             disabled={busy || !token}
-            className="w-full cursor-pointer rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-4 py-2.5 font-semibold text-black disabled:opacity-60"
+            className="mt-5 font-semibold"
+            icon={busy ? <Loader2 size={16} className="animate-spin" /> : undefined}
           >
             {busy ? 'Saving…' : 'Update password'}
-          </button>
+          </Button>
           <p className="mt-4 text-center text-sm text-arkive-muted">
-            <Link to="/login" className="text-arkive-amber hover:underline">
-              Back to sign in
+            <Link to="/login" className="text-arkive-accent2 transition hover:text-cyan-200 hover:underline">
+              ← Back to sign in
             </Link>
           </p>
         </form>

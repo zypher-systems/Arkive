@@ -1,6 +1,23 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Cloud,
+  Database,
+  Gauge,
+  HardDrive,
+  Mail,
+  Plus,
+  SearchCheck,
+  ShieldCheck,
+  Star,
+  Trash2,
+  UserCheck,
+  UserX,
+  Users,
+} from 'lucide-react';
 import { api, type StorageBackend, type User, type Workspace } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useConfirm } from '../lib/confirm';
@@ -132,21 +149,33 @@ export function AdminPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Admin</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight">
+          <span className="text-iridescent">Admin</span>
+        </h1>
         <p className="mt-1 text-sm text-arkive-muted">
           Approve signups and manage storage backends for this instance.
         </p>
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+        <p className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
+          <AlertCircle size={15} className="shrink-0" />
           {error}
         </p>
       )}
-      {message && <p className="mb-4 text-sm text-arkive-glow">{message}</p>}
+      {message && (
+        <p className="mb-4 flex items-center gap-2 text-sm text-emerald-300">
+          <CheckCircle2 size={15} className="shrink-0" /> {message}
+        </p>
+      )}
 
-      <section className="mb-8 rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
-        <h2 className="mb-1 font-display text-lg font-semibold">Google Drive OAuth</h2>
+      <section className="glass glass-hairline mb-8 rounded-3xl p-5">
+        <h2 className="mb-1 flex items-center gap-2.5 font-display text-lg font-semibold">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+            <Cloud size={15} />
+          </span>
+          Google Drive OAuth
+        </h2>
         <p className="mb-3 text-xs text-arkive-muted">
           Instance-wide Google Cloud web client so users can connect Drive under Account. Redirect URI must
           be allowlisted in Google Cloud Console (default ends with{' '}
@@ -165,32 +194,32 @@ export function AdminPage() {
         </p>
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm sm:col-span-2">
-            <span className="mb-1 block text-arkive-muted">Client ID</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Client ID</span>
             <input
               value={googleClientID}
               onChange={(e) => setGoogleClientID(e.target.value)}
               disabled={google.source === 'env'}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 font-mono text-xs disabled:opacity-60"
+              className="input-glass font-mono text-xs disabled:opacity-60"
             />
           </label>
           <label className="block text-sm sm:col-span-2">
-            <span className="mb-1 block text-arkive-muted">Client secret</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Client secret</span>
             <input
               type="password"
               value={googleSecret}
               onChange={(e) => setGoogleSecret(e.target.value)}
               disabled={google.source === 'env'}
               placeholder={google.has_secret ? 'unchanged' : ''}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 font-mono text-xs disabled:opacity-60"
+              className="input-glass font-mono text-xs disabled:opacity-60"
             />
           </label>
           <label className="block text-sm sm:col-span-2">
-            <span className="mb-1 block text-arkive-muted">Redirect URL (optional override)</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Redirect URL (optional override)</span>
             <input
               value={googleRedirect}
               onChange={(e) => setGoogleRedirect(e.target.value)}
               disabled={google.source === 'env'}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 font-mono text-xs disabled:opacity-60"
+              className="input-glass font-mono text-xs disabled:opacity-60"
             />
           </label>
         </div>
@@ -212,7 +241,7 @@ export function AdminPage() {
                 })
                 .catch((e) => setError(String(e)))
             }
-            className="rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-1.5 text-sm font-semibold text-black disabled:opacity-50"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-iridescent px-3 py-1.5 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(139,92,246,0.35)] transition hover:brightness-110 disabled:opacity-50"
           >
             Save
           </button>
@@ -231,65 +260,70 @@ export function AdminPage() {
                 })
                 .catch((e) => setError(String(e)))
             }
-            className="rounded-md border border-arkive-border px-3 py-1.5 text-sm hover:text-red-300 disabled:opacity-50"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 px-2.5 py-1 text-xs text-arkive-muted transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50 !px-3 !py-1.5 !text-sm"
           >
             Clear DB settings
           </button>
         </div>
       </section>
 
-      <section className="mb-8 rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
-        <h2 className="mb-1 font-display text-lg font-semibold">SMTP (signup email)</h2>
+      <section className="glass glass-hairline mb-8 rounded-3xl p-5">
+        <h2 className="mb-1 flex items-center gap-2.5 font-display text-lg font-semibold">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+            <Mail size={15} />
+          </span>
+          SMTP (signup email)
+        </h2>
         <p className="mb-3 text-xs text-arkive-muted">
           Optional. When configured, approve/reject sends a short email. Env{' '}
           <code>ARKIVE_SMTP_*</code> overrides DB. Source: {smtp.source}.
         </p>
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
-            <span className="mb-1 block text-arkive-muted">Host</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Host</span>
             <input
               value={smtpHost}
               onChange={(e) => setSmtpHost(e.target.value)}
               disabled={smtp.source === 'env'}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm disabled:opacity-60"
+              className="input-glass text-sm disabled:opacity-60"
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-arkive-muted">Port</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Port</span>
             <input
               value={smtpPort}
               onChange={(e) => setSmtpPort(e.target.value)}
               disabled={smtp.source === 'env'}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm disabled:opacity-60"
+              className="input-glass text-sm disabled:opacity-60"
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-arkive-muted">Username</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Username</span>
             <input
               value={smtpUser}
               onChange={(e) => setSmtpUser(e.target.value)}
               disabled={smtp.source === 'env'}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm disabled:opacity-60"
+              className="input-glass text-sm disabled:opacity-60"
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-arkive-muted">Password</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Password</span>
             <input
               type="password"
               value={smtpPass}
               onChange={(e) => setSmtpPass(e.target.value)}
               disabled={smtp.source === 'env'}
               placeholder={smtp.has_password ? 'unchanged' : ''}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm disabled:opacity-60"
+              className="input-glass text-sm disabled:opacity-60"
             />
           </label>
           <label className="block text-sm sm:col-span-2">
-            <span className="mb-1 block text-arkive-muted">From address</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">From address</span>
             <input
               value={smtpFrom}
               onChange={(e) => setSmtpFrom(e.target.value)}
               disabled={smtp.source === 'env'}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm disabled:opacity-60"
+              className="input-glass text-sm disabled:opacity-60"
             />
           </label>
         </div>
@@ -313,7 +347,7 @@ export function AdminPage() {
                 })
                 .catch((e) => setError(String(e)))
             }
-            className="rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-1.5 text-sm font-semibold text-black disabled:opacity-50"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-iridescent px-3 py-1.5 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(139,92,246,0.35)] transition hover:brightness-110 disabled:opacity-50"
           >
             Save SMTP
           </button>
@@ -332,15 +366,20 @@ export function AdminPage() {
                 })
                 .catch((e) => setError(String(e)))
             }
-            className="rounded-md border border-arkive-border px-3 py-1.5 text-sm hover:text-red-300 disabled:opacity-50"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 px-2.5 py-1 text-xs text-arkive-muted transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50 !px-3 !py-1.5 !text-sm"
           >
             Clear
           </button>
         </div>
       </section>
 
-      <section className="mb-8 rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
-        <h2 className="mb-1 font-display text-lg font-semibold">Quotas &amp; search</h2>
+      <section className="glass glass-hairline mb-8 rounded-3xl p-5">
+        <h2 className="mb-1 flex items-center gap-2.5 font-display text-lg font-semibold">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+            <Gauge size={15} />
+          </span>
+          Quotas &amp; search
+        </h2>
         <p className="mb-3 text-xs text-arkive-muted">
           Default workspace quota (GB). Empty = unlimited. Personal workspaces also inherit the
           owner’s user quota when set. Auto-purge permanently deletes trash older than N days (0 =
@@ -348,12 +387,12 @@ export function AdminPage() {
         </p>
         <div className="mb-4 flex flex-wrap items-end gap-2">
           <label className="block text-sm">
-            <span className="mb-1 block text-arkive-muted">Default quota (GB)</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Default quota (GB)</span>
             <input
               value={defaultQuotaGB}
               onChange={(e) => setDefaultQuotaGB(e.target.value)}
               placeholder="unlimited"
-              className="w-40 rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm"
+              className="input-glass w-40 text-sm"
             />
           </label>
           <button
@@ -369,18 +408,18 @@ export function AdminPage() {
                 .then(() => setMessage('Default quota saved'))
                 .catch((e) => setError(String(e)));
             }}
-            className="rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-2 text-sm font-semibold text-black"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-iridescent px-3.5 py-2 text-sm font-semibold text-white shadow-[0_4px_20px_rgba(139,92,246,0.35)] transition hover:brightness-110 hover:shadow-[0_6px_28px_rgba(139,92,246,0.5)] disabled:opacity-50"
           >
             Save default
           </button>
           <label className="block text-sm">
-            <span className="mb-1 block text-arkive-muted">Auto-purge trash after N days</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Auto-purge trash after N days</span>
             <input
               type="number"
               min={0}
               value={trashRetentionDays}
               onChange={(e) => setTrashRetentionDays(e.target.value)}
-              className="w-40 rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm"
+              className="input-glass w-40 text-sm"
             />
           </label>
           <button
@@ -396,7 +435,7 @@ export function AdminPage() {
                 .then(() => setMessage(`Trash retention saved (${days === 0 ? 'disabled' : `${days} days`})`))
                 .catch((e) => setError(String(e)));
             }}
-            className="rounded-lg border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/40"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-white/8 bg-white/[0.04] px-3.5 py-2 text-sm text-arkive-text backdrop-blur-md transition hover:border-white/16 hover:bg-white/[0.08] disabled:opacity-50"
           >
             Save retention
           </button>
@@ -413,7 +452,7 @@ export function AdminPage() {
                 )
                 .catch((e) => setError(String(e)))
             }
-            className="rounded-md border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/40"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-white/8 bg-white/[0.04] px-3.5 py-2 text-sm text-arkive-text backdrop-blur-md transition hover:border-white/16 hover:bg-white/[0.08] disabled:opacity-50"
           >
             Reindex search
           </button>
@@ -422,7 +461,7 @@ export function AdminPage() {
           {others.map((u) => (
             <li
               key={u.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-arkive-border/60 px-3 py-2"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/7 bg-white/[0.03] px-3.5 py-2.5 transition hover:border-white/12"
             >
               <span className="truncate">
                 {u.display_name}{' '}
@@ -435,11 +474,11 @@ export function AdminPage() {
                   placeholder="GB"
                   value={quotaDraft[u.id] ?? ''}
                   onChange={(e) => setQuotaDraft((d) => ({ ...d, [u.id]: e.target.value }))}
-                  className="w-20 rounded border border-arkive-border bg-arkive-bg px-2 py-1"
+                  className="input-glass w-20 !rounded-lg !px-2 !py-1 text-xs"
                 />
                 <button
                   type="button"
-                  className="text-arkive-amber hover:underline"
+                  className="cursor-pointer rounded-lg px-2 py-1 font-medium text-arkive-accent2 transition hover:bg-white/[0.07]"
                   onClick={() => {
                     const raw = (quotaDraft[u.id] ?? '').trim();
                     const gb = Number(raw);
@@ -460,14 +499,20 @@ export function AdminPage() {
         </ul>
       </section>
 
-      <section className="mb-8 rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
-        <h2 className="mb-1 font-display text-lg font-semibold">Users</h2>
+      <section className="glass glass-hairline mb-8 rounded-3xl p-5">
+        <h2 className="mb-1 flex items-center gap-2.5 font-display text-lg font-semibold">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+            <Users size={15} />
+          </span>
+          Users
+        </h2>
         <p className="mb-4 text-xs text-arkive-muted">
           New registrations stay pending until approved. Rejected and disabled accounts cannot sign in.
         </p>
-        <label className="mb-4 flex items-center gap-2 text-sm">
+        <label className="mb-4 flex cursor-pointer items-center gap-2.5 rounded-xl border border-white/7 bg-white/[0.03] px-3.5 py-2.5 text-sm transition hover:border-white/12">
           <input
             type="checkbox"
+            className="h-4 w-4 accent-arkive-accent"
             checked={registrationOpen}
             onChange={(e) => {
               const open = e.target.checked;
@@ -487,7 +532,7 @@ export function AdminPage() {
             {pending.map((u) => (
               <li
                 key={u.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-arkive-amber/30 bg-arkive-panel/40 px-3 py-2 text-sm"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-arkive-accent/35 bg-gradient-to-r from-arkive-accent/12 to-arkive-accent2/6 px-4 py-3 text-sm shadow-[0_0_24px_rgba(139,92,246,0.1)]"
               >
                 <div>
                   <div className="font-medium">{u.display_name}</div>
@@ -505,9 +550,9 @@ export function AdminPage() {
                         .then(() => setMessage(`Approved ${u.email}`))
                         .catch((e) => setError(String(e)))
                     }
-                    className="rounded-md bg-gradient-to-r from-arkive-orange to-arkive-amber px-2 py-1 font-semibold text-black"
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-iridescent px-3 py-1.5 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(139,92,246,0.35)] transition hover:brightness-110 disabled:opacity-50 !px-2.5 !py-1 !text-xs"
                   >
-                    Approve
+                    <UserCheck size={12} /> Approve
                   </button>
                   <button
                     type="button"
@@ -528,9 +573,9 @@ export function AdminPage() {
                         },
                       })
                     }
-                    className="rounded-md border border-arkive-border px-2 py-1 hover:text-red-300"
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 px-2.5 py-1 text-xs text-arkive-muted transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
                   >
-                    Reject
+                    <UserX size={12} /> Reject
                   </button>
                 </div>
               </li>
@@ -540,17 +585,37 @@ export function AdminPage() {
         {others.length > 0 && (
           <ul className="space-y-1 text-sm text-arkive-muted">
             {others.map((u) => (
-              <li key={u.id} className="flex flex-wrap items-center gap-2">
+              <li
+                key={u.id}
+                className="flex flex-wrap items-center gap-2 rounded-xl px-2.5 py-2 transition hover:bg-white/[0.04]"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-arkive-accent/40 to-arkive-accent2/30 text-[11px] font-bold text-white ring-1 ring-white/15">
+                  {(u.display_name || u.email || '?').trim().charAt(0).toUpperCase()}
+                </span>
                 <span className="text-arkive-text">{u.display_name}</span>
                 <span>{u.email}</span>
-                <span className="capitalize">{u.status}</span>
-                {u.is_instance_admin && <span className="text-arkive-amber">admin</span>}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 capitalize ${
+                    u.status === 'active'
+                      ? 'bg-emerald-500/12 text-emerald-300 ring-emerald-400/30'
+                      : u.status === 'rejected'
+                        ? 'bg-red-500/12 text-red-300 ring-red-400/30'
+                        : 'bg-amber-500/12 text-amber-300 ring-amber-400/30'
+                  }`}
+                >
+                  {u.status}
+                </span>
+                {u.is_instance_admin && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-arkive-accent/15 px-2 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-arkive-accent/30">
+                    <ShieldCheck size={10} /> admin
+                  </span>
+                )}
                 {u.id !== user?.id && (
                   <span className="ml-auto flex flex-wrap gap-2 text-xs">
                     {u.status === 'active' && (
                       <button
                         type="button"
-                        className="hover:text-arkive-amber"
+                        className="cursor-pointer rounded-md px-1.5 py-0.5 transition hover:bg-white/[0.07] hover:text-arkive-accent2"
                         onClick={() =>
                           void api
                             .disableUser(u.id)
@@ -565,7 +630,7 @@ export function AdminPage() {
                     {u.status === 'disabled' && (
                       <button
                         type="button"
-                        className="hover:text-arkive-amber"
+                        className="cursor-pointer rounded-md px-1.5 py-0.5 transition hover:bg-white/[0.07] hover:text-arkive-accent2"
                         onClick={() =>
                           void api
                             .approveUser(u.id)
@@ -579,7 +644,7 @@ export function AdminPage() {
                     )}
                     <button
                       type="button"
-                      className="hover:text-arkive-amber"
+                      className="cursor-pointer rounded-md px-1.5 py-0.5 transition hover:bg-white/[0.07] hover:text-arkive-accent2"
                       onClick={() =>
                         void api
                           .setInstanceAdmin(u.id, !u.is_instance_admin)
@@ -592,7 +657,7 @@ export function AdminPage() {
                     </button>
                     <button
                       type="button"
-                      className="hover:text-red-300"
+                      className="cursor-pointer rounded-md px-1.5 py-0.5 transition hover:bg-red-500/12 hover:text-red-300"
                       onClick={() =>
                         ask({
                           title: 'Delete user',
@@ -616,31 +681,41 @@ export function AdminPage() {
         )}
       </section>
 
-      <h2 className="mb-3 font-display text-xl font-semibold">Storage</h2>
+      <h2 className="mb-3 flex items-center gap-2.5 font-display text-xl font-semibold">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+          <Database size={16} />
+        </span>
+        <span className="text-iridescent">Storage</span>
+      </h2>
 
       <motion.form
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         onSubmit={onCreate}
-        className="mb-8 rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5"
+        className="glass glass-hairline mb-8 rounded-3xl p-5"
       >
-        <h2 className="mb-3 font-display text-lg font-semibold">Add backend</h2>
+        <h2 className="mb-3 flex items-center gap-2.5 font-display text-lg font-semibold">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+            <Plus size={15} />
+          </span>
+          Add backend
+        </h2>
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
-            <span className="mb-1 block text-arkive-muted">Name</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Name</span>
             <input
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2"
+              className="input-glass"
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-arkive-muted">Type</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Type</span>
             <select
               value={type}
               onChange={(e) => setType(e.target.value as 's3' | 'nfs')}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2"
+              className="input-glass cursor-pointer [&>option]:bg-arkive-surface"
             >
               <option value="s3">S3-compatible</option>
               <option value="nfs">NFS / local mount</option>
@@ -660,19 +735,20 @@ export function AdminPage() {
               ] as const
             ).map(([key, label]) => (
               <label key={key} className="block text-sm">
-                <span className="mb-1 block text-arkive-muted">{label}</span>
+                <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">{label}</span>
                 <input
                   required={key !== 'region'}
                   type={key.includes('secret') ? 'password' : 'text'}
                   value={String(s3[key])}
                   onChange={(e) => setS3({ ...s3, [key]: e.target.value })}
-                  className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2"
+                  className="input-glass"
                 />
               </label>
             ))}
             <label className="flex items-center gap-2 text-sm text-arkive-muted">
               <input
                 type="checkbox"
+                className="h-4 w-4 accent-arkive-accent"
                 checked={s3.use_ssl}
                 onChange={(e) => setS3({ ...s3, use_ssl: e.target.checked })}
               />
@@ -681,6 +757,7 @@ export function AdminPage() {
             <label className="flex items-center gap-2 text-sm text-arkive-muted">
               <input
                 type="checkbox"
+                className="h-4 w-4 accent-arkive-accent"
                 checked={s3.force_path_style}
                 onChange={(e) => setS3({ ...s3, force_path_style: e.target.checked })}
               />
@@ -689,12 +766,12 @@ export function AdminPage() {
           </div>
         ) : (
           <label className="block text-sm">
-            <span className="mb-1 block text-arkive-muted">Mount path inside API container</span>
+            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Mount path inside API container</span>
             <input
               required
               value={mountPath}
               onChange={(e) => setMountPath(e.target.value)}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 font-mono text-sm"
+              className="input-glass font-mono text-sm"
             />
             <span className="mt-1 block text-xs text-arkive-muted">
               Compose ships a demo volume at <code>/mnt/arkive-nfs</code>. For a real NFS share, mount it into the API service.
@@ -704,7 +781,7 @@ export function AdminPage() {
 
         <button
           type="submit"
-          className="mt-4 rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-4 py-2 text-sm font-semibold text-black"
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-iridescent px-3.5 py-2 text-sm font-semibold text-white shadow-[0_4px_20px_rgba(139,92,246,0.35)] transition hover:brightness-110 hover:shadow-[0_6px_28px_rgba(139,92,246,0.5)] disabled:opacity-50 mt-4"
         >
           Test &amp; save
         </button>
@@ -714,14 +791,16 @@ export function AdminPage() {
         {backends.map((b) => (
           <li
             key={b.id}
-            className="rounded-2xl border border-arkive-border bg-arkive-surface/70 px-4 py-3"
+            className="glass rounded-2xl px-4 py-3 transition hover:border-white/12"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="font-medium">
                   {b.name}{' '}
                   {b.is_default && (
-                    <span className="text-xs text-arkive-amber">(default)</span>
+                    <span className="ml-1 rounded-full bg-arkive-accent/15 px-2 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-arkive-accent/30">
+                      default
+                    </span>
                   )}
                 </div>
                 <div className="text-xs text-arkive-muted">
@@ -737,9 +816,9 @@ export function AdminPage() {
                       .then(() => setMessage(`Test OK: ${b.name}`))
                       .catch((e) => setError(String(e)))
                   }
-                  className="rounded-md border border-arkive-border px-2 py-1 hover:border-arkive-amber/40"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 bg-white/[0.04] px-2.5 py-1 text-xs text-arkive-muted backdrop-blur-md transition hover:border-arkive-accent/50 hover:text-arkive-text disabled:opacity-50"
                 >
-                  Test
+                  <SearchCheck size={12} /> Test
                 </button>
                 {!b.is_default && (
                   <button
@@ -750,9 +829,9 @@ export function AdminPage() {
                         .then(refresh)
                         .catch((e) => setError(String(e)))
                     }
-                    className="rounded-md border border-arkive-border px-2 py-1 hover:border-arkive-amber/40"
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 bg-white/[0.04] px-2.5 py-1 text-xs text-arkive-muted backdrop-blur-md transition hover:border-arkive-accent/50 hover:text-arkive-text disabled:opacity-50"
                   >
-                    Make default
+                    <Star size={12} /> Make default
                   </button>
                 )}
                 {!b.is_default && (
@@ -774,9 +853,9 @@ export function AdminPage() {
                         },
                       })
                     }
-                    className="rounded-md border border-arkive-border px-2 py-1 hover:text-red-300"
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 px-2.5 py-1 text-xs text-arkive-muted transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
                   >
-                    Delete
+                    <Trash2 size={12} /> Delete
                   </button>
                 )}
               </div>
@@ -785,18 +864,23 @@ export function AdminPage() {
         ))}
       </ul>
 
-      <section className="rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
-        <h2 className="mb-3 font-display text-lg font-semibold">Assign workspace backend</h2>
+      <section className="glass glass-hairline rounded-3xl p-5">
+        <h2 className="mb-3 flex items-center gap-2.5 font-display text-lg font-semibold">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+            <HardDrive size={15} />
+          </span>
+          Assign workspace backend
+        </h2>
         <p className="mb-3 text-xs text-arkive-muted">
           By default only the storage pointer changes. Enable copy below to migrate current files, trash,
           and versions to the new store first. Large vaults may take a while.
         </p>
-        <label className="mb-4 flex items-center gap-2 text-sm">
+        <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-arkive-muted">
           <input
             type="checkbox"
             checked={copyOnAssign}
             onChange={(e) => setCopyOnAssign(e.target.checked)}
-            className="h-4 w-4 accent-arkive-amber"
+            className="h-4 w-4 accent-arkive-accent"
           />
           Also copy existing files
         </label>
@@ -826,7 +910,7 @@ export function AdminPage() {
                     .catch((err) => setError(String(err)))
                     .finally(() => setMigratingWs(''));
                 }}
-                className="rounded-lg border border-arkive-border bg-arkive-bg px-2 py-1.5 disabled:opacity-60"
+                className="input-glass !w-auto cursor-pointer !py-1.5 text-sm disabled:opacity-60 [&>option]:bg-arkive-surface"
               >
                 {backends.map((b) => (
                   <option key={b.id} value={b.id}>

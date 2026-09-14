@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { motion } from 'framer-motion';
+import { AlertTriangle, Loader2 } from 'lucide-react';
+import { Button } from './ui/Button';
 
 export type ConfirmDialogProps = {
   title: string;
@@ -40,49 +43,55 @@ export function ConfirmDialog({
 
   const dialog = (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#03040c]/70 p-4 backdrop-blur-md"
       onMouseDown={(e) => {
         // Only backdrop (not the panel) cancels — and only after armed.
         if (!armed || busy) return;
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div
+      <motion.div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-message"
-        className="w-full max-w-md rounded-2xl border border-arkive-border bg-arkive-surface p-5 shadow-xl"
+        initial={{ opacity: 0, scale: 0.94, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+        className="glass-strong glass-hairline w-full max-w-md rounded-3xl p-6 shadow-[0_24px_80px_rgba(3,4,12,0.7)]"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h2 id="confirm-dialog-title" className="font-display text-xl font-bold">
-          {title}
-        </h2>
-        <p id="confirm-dialog-message" className="mt-2 text-sm text-arkive-muted">
-          {message}
-        </p>
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onClose}
-            className="rounded-lg border border-arkive-border px-3 py-2 text-sm disabled:opacity-50"
-          >
+        <div className="flex items-start gap-3.5">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-500/12 text-red-300 ring-1 ring-red-400/25 shadow-[0_0_20px_rgba(239,68,68,0.15)]">
+            <AlertTriangle size={20} />
+          </div>
+          <div>
+            <h2 id="confirm-dialog-title" className="font-display text-xl font-bold tracking-tight">
+              {title}
+            </h2>
+            <p id="confirm-dialog-message" className="mt-1.5 text-sm leading-relaxed text-arkive-muted">
+              {message}
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="glass" onClick={onClose} disabled={busy}>
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="danger"
+            className="font-semibold"
             disabled={busy || !armed}
+            icon={busy ? <Loader2 size={14} className="animate-spin" /> : undefined}
             onClick={() => {
               if (!armed || busy) return;
               onConfirm();
             }}
-            className="rounded-lg border border-red-500/40 bg-red-500/15 px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/25 disabled:opacity-50"
           >
             {busy ? 'Working…' : confirmLabel}
-          </button>
+          </Button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 

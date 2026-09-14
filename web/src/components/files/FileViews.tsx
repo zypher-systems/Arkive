@@ -1,8 +1,19 @@
 import { useRef, type MouseEvent as ReactMouseEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  Eye,
+  FolderOpen,
+  History,
+  Pencil,
+  SearchX,
+  Share2,
+  Trash2,
+} from 'lucide-react';
 import { formatBytes, isPreviewable, type Node } from '../../lib/api';
 import { fileTypeLabel } from './types';
 import { FileThumb } from './FileThumb';
+import { IconButton } from '../ui/Button';
+import { EmptyState } from '../ui/Card';
 
 export type FileViewHandlers = {
   selected: Set<string>;
@@ -24,7 +35,13 @@ export type FileViewHandlers = {
 
 function dropClass(node: Node, dropTargetId: string | null) {
   return node.kind === 'folder' && dropTargetId === node.id
-    ? 'ring-2 ring-arkive-amber/70 bg-arkive-amber/10'
+    ? 'ring-2 ring-inset ring-arkive-accent/80 bg-arkive-accent/12 shadow-[inset_0_0_24px_rgba(139,92,246,0.18)]'
+    : '';
+}
+
+function selectedClass(selected: boolean) {
+  return selected
+    ? 'bg-arkive-accent/10 shadow-[inset_2px_0_0_rgba(139,92,246,0.9),inset_0_0_0_1px_rgba(139,92,246,0.18)]'
     : '';
 }
 
@@ -37,56 +54,56 @@ function rowOpenKey(e: KeyboardEvent, node: Node, open: (n: Node) => void) {
 
 function RowActions({ node, h }: { node: Node; h: FileViewHandlers }) {
   return (
-    <div data-no-row-open className="flex gap-1 text-xs" onMouseDown={(e) => e.stopPropagation()}>
+    <div
+      data-no-row-open
+      className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
       {node.kind === 'file' && isPreviewable(node) && (
-        <button
-          type="button"
-          onClick={() => h.onPreview(node)}
-          className="cursor-pointer rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
-        >
-          Preview
-        </button>
+        <IconButton label="Preview" onClick={() => h.onPreview(node)}>
+          <Eye size={14} />
+        </IconButton>
       )}
       {node.kind === 'file' && (
-        <button
-          type="button"
-          onClick={() => h.onHistory(node)}
-          className="cursor-pointer rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
-        >
-          History
-        </button>
+        <IconButton label="History" onClick={() => h.onHistory(node)}>
+          <History size={14} />
+        </IconButton>
       )}
-      <button
-        type="button"
-        onClick={() => h.onShare(node)}
-        className="cursor-pointer rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
-      >
-        Share
-      </button>
-      <button
-        type="button"
-        onClick={() => h.onRename(node)}
-        className="cursor-pointer rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-arkive-text"
-      >
-        Rename
-      </button>
-      <button
-        type="button"
+      <IconButton label="Share" onClick={() => h.onShare(node)}>
+        <Share2 size={14} />
+      </IconButton>
+      <IconButton label="Rename" onClick={() => h.onRename(node)}>
+        <Pencil size={14} />
+      </IconButton>
+      <IconButton
+        label="Delete"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           h.onDelete(node);
         }}
-        className="cursor-pointer rounded-md px-2 py-1 text-arkive-muted hover:bg-arkive-panel hover:text-red-300"
+        className="hover:!bg-red-500/15 hover:!text-red-300"
       >
-        Delete
-      </button>
+        <Trash2 size={14} />
+      </IconButton>
     </div>
   );
 }
 
 function isRowOpenTarget(target: EventTarget | null) {
   return !(target instanceof Element && target.closest('[data-no-row-open]'));
+}
+
+function EmptyPane({ results }: { results: boolean }) {
+  return results ? (
+    <EmptyState icon={<SearchX size={26} />} title="No matches" hint="Try a different search term." />
+  ) : (
+    <EmptyState
+      icon={<FolderOpen size={26} />}
+      title="This folder is empty"
+      hint="Right-click for New file / New folder, or drop files anywhere to upload."
+    />
+  );
 }
 
 const LIST_ROW_ESTIMATE = 64;
@@ -112,20 +129,16 @@ export function FileListView({
 
   if (nodes.length === 0) {
     return (
-      <ul className="flex min-h-full flex-1 flex-col divide-y divide-arkive-border overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
-        <li className="flex flex-1 items-center justify-center px-4 py-10 text-center text-sm text-arkive-muted">
-          {results
-            ? 'No matches.'
-            : 'This folder is empty. Right-click for New file / New folder, or drop files here.'}
-        </li>
-      </ul>
+      <div className="glass glass-hairline flex min-h-full flex-1 flex-col overflow-hidden rounded-2xl">
+        <EmptyPane results={results} />
+      </div>
     );
   }
 
   return (
     <div
       ref={parentRef}
-      className="min-h-full flex-1 overflow-auto rounded-2xl border border-arkive-border bg-arkive-surface/70"
+      className="glass glass-hairline scroll-slim min-h-full flex-1 overflow-auto rounded-2xl"
     >
       <div
         className="relative w-full"
@@ -155,9 +168,9 @@ export function FileListView({
               }}
               onKeyDown={(e) => rowOpenKey(e, node, h.onOpen)}
               tabIndex={0}
-              className={`absolute left-0 top-0 flex w-full cursor-pointer select-none flex-wrap items-center gap-3 border-b border-arkive-border px-4 py-3 hover:bg-arkive-panel/40 ${
-                h.selected.has(node.id) ? 'bg-arkive-amber/5' : ''
-              } ${dropClass(node, h.dropTargetId)}`}
+              className={`group absolute left-0 top-0 flex w-full cursor-pointer select-none flex-wrap items-center gap-3 border-b border-white/4 px-4 py-3 transition-colors duration-150 hover:bg-white/[0.045] ${selectedClass(
+                h.selected.has(node.id),
+              )} ${dropClass(node, h.dropTargetId)}`}
               style={{ transform: `translateY(${item.start}px)` }}
             >
               {!results && (
@@ -168,7 +181,7 @@ export function FileListView({
                   onChange={() => undefined}
                   onClick={(e) => h.onToggleSelect(node.id, e)}
                   onMouseDown={(e) => e.stopPropagation()}
-                  className="h-4 w-4 cursor-pointer accent-arkive-amber"
+                  className="h-4 w-4 cursor-pointer accent-arkive-accent"
                 />
               )}
               <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
@@ -210,48 +223,35 @@ export function FileDetailsView({
 
   if (nodes.length === 0) {
     return (
-      <div className="min-h-full flex-1 overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-arkive-border text-xs uppercase tracking-wider text-arkive-muted">
-            <tr>
-              {!results && <th className="w-10 px-3 py-2" />}
-              <th className="px-3 py-2 font-medium">Name</th>
-              <th className="hidden px-3 py-2 font-medium sm:table-cell">Size</th>
-              <th className="hidden px-3 py-2 font-medium md:table-cell">Modified</th>
-              <th className="hidden px-3 py-2 font-medium lg:table-cell">Type</th>
-              <th className="px-3 py-2 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="h-48">
-              <td
-                colSpan={6}
-                className="px-4 py-10 text-center align-middle text-sm text-arkive-muted"
-              >
-                {results
-                  ? 'No matches.'
-                  : 'This folder is empty. Right-click for New file / New folder.'}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div className="glass glass-hairline flex min-h-full flex-1 flex-col overflow-hidden rounded-2xl">
+        <div className="border-b border-white/5 text-xs tracking-wider text-arkive-muted uppercase">
+          <div className="flex w-full text-left">
+            {!results && <div className="w-10 shrink-0 px-3 py-2.5" />}
+            <div className="min-w-0 flex-1 px-3 py-2.5 font-medium">Name</div>
+            <div className="hidden w-24 shrink-0 px-3 py-2.5 font-medium sm:block">Size</div>
+            <div className="hidden w-44 shrink-0 px-3 py-2.5 font-medium md:block">Modified</div>
+            <div className="hidden w-20 shrink-0 px-3 py-2.5 font-medium lg:block">Type</div>
+            <div className="w-40 shrink-0 px-3 py-2.5 font-medium" />
+          </div>
+        </div>
+        <EmptyPane results={results} />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-full flex-1 flex-col overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface/70">
-      <div className="border-b border-arkive-border text-xs uppercase tracking-wider text-arkive-muted">
+    <div className="glass glass-hairline flex min-h-full flex-1 flex-col overflow-hidden rounded-2xl">
+      <div className="border-b border-white/6 bg-white/[0.02] text-[11px] font-semibold tracking-[0.12em] text-arkive-muted uppercase">
         <div className="flex w-full text-left">
-          {!results && <div className="w-10 shrink-0 px-3 py-2" />}
-          <div className="min-w-0 flex-1 px-3 py-2 font-medium">Name</div>
-          <div className="hidden w-24 shrink-0 px-3 py-2 font-medium sm:block">Size</div>
-          <div className="hidden w-44 shrink-0 px-3 py-2 font-medium md:block">Modified</div>
-          <div className="hidden w-20 shrink-0 px-3 py-2 font-medium lg:block">Type</div>
-          <div className="w-48 shrink-0 px-3 py-2 font-medium" />
+          {!results && <div className="w-10 shrink-0 px-3 py-2.5" />}
+          <div className="min-w-0 flex-1 px-3 py-2.5">Name</div>
+          <div className="hidden w-24 shrink-0 px-3 py-2.5 sm:block">Size</div>
+          <div className="hidden w-44 shrink-0 px-3 py-2.5 md:block">Modified</div>
+          <div className="hidden w-20 shrink-0 px-3 py-2.5 lg:block">Type</div>
+          <div className="w-40 shrink-0 px-3 py-2.5" />
         </div>
       </div>
-      <div ref={parentRef} className="min-h-0 flex-1 overflow-auto">
+      <div ref={parentRef} className="scroll-slim min-h-0 flex-1 overflow-auto">
         <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
           {virtualizer.getVirtualItems().map((item) => {
             const node = nodes[item.index];
@@ -275,9 +275,9 @@ export function FileDetailsView({
                   }
                   if (isRowOpenTarget(e.target)) h.onOpen(node);
                 }}
-                className={`absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-arkive-border text-sm hover:bg-arkive-panel/40 ${
-                  h.selected.has(node.id) ? 'bg-arkive-amber/5' : ''
-                } ${dropClass(node, h.dropTargetId)}`}
+                className={`group absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-white/4 text-sm transition-colors duration-150 hover:bg-white/[0.045] ${selectedClass(
+                  h.selected.has(node.id),
+                )} ${dropClass(node, h.dropTargetId)}`}
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 {!results && (
@@ -291,7 +291,7 @@ export function FileDetailsView({
                       checked={h.selected.has(node.id)}
                       onChange={() => undefined}
                       onClick={(e) => h.onToggleSelect(node.id, e)}
-                      className="h-4 w-4 cursor-pointer accent-arkive-amber"
+                      className="h-4 w-4 cursor-pointer accent-arkive-accent"
                     />
                   </div>
                 )}
@@ -310,7 +310,7 @@ export function FileDetailsView({
                 <div className="hidden w-20 shrink-0 px-3 py-2 text-arkive-muted lg:block">
                   {fileTypeLabel(node)}
                 </div>
-                <div className="w-48 shrink-0 px-3 py-2 text-right">
+                <div className="flex w-40 shrink-0 items-center justify-end px-3 py-2">
                   <RowActions node={node} h={h} />
                 </div>
               </div>
@@ -343,18 +343,14 @@ export function FileTilesView({
 
   if (nodes.length === 0) {
     return (
-      <div className="flex min-h-full flex-1 flex-col">
-        <p className="flex flex-1 items-center justify-center rounded-2xl border border-arkive-border px-4 py-10 text-center text-sm text-arkive-muted">
-          {results
-            ? 'No matches.'
-            : 'This folder is empty. Right-click for New file / New folder, or drop files here.'}
-        </p>
+      <div className="glass glass-hairline flex min-h-full flex-1 flex-col overflow-hidden rounded-2xl">
+        <EmptyPane results={results} />
       </div>
     );
   }
 
   return (
-    <div ref={parentRef} className="min-h-full flex-1 overflow-auto">
+    <div ref={parentRef} className="scroll-slim min-h-full flex-1 overflow-auto">
       <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
         {virtualizer.getVirtualItems().map((item) => {
           const start = item.index * cols;
@@ -387,8 +383,10 @@ export function FileTilesView({
                   }}
                   onKeyDown={(e) => rowOpenKey(e, node, h.onOpen)}
                   tabIndex={0}
-                  className={`group relative cursor-pointer select-none overflow-hidden rounded-xl border border-arkive-border bg-arkive-surface/70 transition hover:border-arkive-amber/40 ${
-                    h.selected.has(node.id) ? 'border-arkive-amber/50 bg-arkive-amber/5' : ''
+                  className={`group relative cursor-pointer select-none overflow-hidden rounded-2xl border border-white/7 bg-white/[0.03] backdrop-blur-md transition-all duration-200 hover:-translate-y-1 hover:border-white/14 hover:bg-white/[0.06] hover:shadow-[0_16px_40px_rgba(3,4,12,0.55),0_0_24px_rgba(139,92,246,0.12)] ${
+                    h.selected.has(node.id)
+                      ? 'border-arkive-accent/60 bg-arkive-accent/10 shadow-[0_0_0_1px_rgba(139,92,246,0.4),0_0_24px_rgba(139,92,246,0.2)]'
+                      : ''
                   } ${dropClass(node, h.dropTargetId)}`}
                 >
                   {!results && (
@@ -399,21 +397,24 @@ export function FileTilesView({
                       onChange={() => undefined}
                       onClick={(e) => h.onToggleSelect(node.id, e)}
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="absolute left-2 top-2 z-10 h-4 w-4 cursor-pointer accent-arkive-amber"
+                      className="absolute left-2.5 top-2.5 z-10 h-4 w-4 cursor-pointer accent-arkive-accent"
                     />
                   )}
                   <div className="flex w-full flex-col text-left">
                     <div
                       data-drag-thumb
-                      className="aspect-square overflow-hidden bg-arkive-panel/40"
+                      className="aspect-square overflow-hidden bg-gradient-to-b from-white/[0.05] to-transparent"
                     >
-                      <FileThumb node={node} size="lg" />
+                      <div className="h-full w-full transition-transform duration-300 ease-out group-hover:scale-[1.04]">
+                        <FileThumb node={node} size="lg" />
+                      </div>
                     </div>
-                    <div className="truncate px-2 py-2 text-sm font-medium">{node.name}</div>
-                    <div className="px-2 pb-2 text-xs text-arkive-muted">
+                    <div className="truncate px-3 pt-2 text-sm font-medium">{node.name}</div>
+                    <div className="px-3 pb-2.5 pt-0.5 text-xs text-arkive-muted">
                       {node.kind === 'file' ? formatBytes(node.size) : 'Folder'}
                     </div>
                   </div>
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/40 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
                 </div>
               ))}
             </div>

@@ -144,7 +144,7 @@ const OFFICE_STYLE: Record<
     accent: 'currentColor',
   },
   archive: {
-    wrap: 'bg-arkive-panel text-arkive-muted',
+    wrap: 'bg-white/[0.06] text-arkive-muted',
     text: 'text-arkive-muted',
     label: 'ZIP',
     accent: 'currentColor',
@@ -165,7 +165,7 @@ function OfficeBadge({
     <span
       className={`flex flex-col items-center justify-center gap-0.5 ${s.wrap} ${
         dense
-          ? 'h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-arkive-border'
+          ? 'h-9 w-9 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10'
           : 'h-full w-full'
       }`}
     >
@@ -232,10 +232,10 @@ function TextPeek({ node }: { node: Node }) {
 function FolderThumb({ dense }: { dense: boolean }) {
   return (
     <span
-      className={`flex items-center justify-center text-arkive-amber ${
+      className={`flex items-center justify-center ${
         dense
-          ? 'h-9 w-9 shrink-0 rounded-lg border border-arkive-amber/30 bg-arkive-amber/10'
-          : 'h-full w-full bg-gradient-to-b from-arkive-amber/15 to-transparent'
+          ? 'h-9 w-9 shrink-0 rounded-xl bg-gradient-to-br from-arkive-accent/30 to-arkive-accent2/20 text-violet-200 ring-1 ring-white/10 shadow-[0_0_12px_rgba(139,92,246,0.2)]'
+          : 'h-full w-full bg-gradient-to-br from-arkive-accent/16 via-transparent to-arkive-accent2/12 text-violet-200'
       }`}
     >
       <FolderIcon className={dense ? 'h-6 w-6' : 'h-16 w-16 drop-shadow-sm'} />
@@ -253,7 +253,7 @@ type Props = {
 export function FileThumb({ node, size = 'sm', allowContent = true }: Props) {
   const dense = size === 'sm';
   const box = dense
-    ? 'h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-arkive-border'
+    ? 'h-9 w-9 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10'
     : 'h-full w-full';
 
   if (node.kind === 'folder') {
@@ -273,7 +273,7 @@ export function FileThumb({ node, size = 'sm', allowContent = true }: Props) {
 
   if (allowContent && node.id && isImageNode(node)) {
     return (
-      <span className={`block bg-arkive-panel/40 ${box}`}>
+      <span className={`block bg-white/[0.04] ${box}`}>
         <img
           src={thumbUrl(node.id)}
           alt=""
@@ -292,7 +292,7 @@ export function FileThumb({ node, size = 'sm', allowContent = true }: Props) {
 
   if (allowContent && node.id && isVideoNode(node)) {
     return (
-      <span className={`relative block bg-arkive-panel/50 ${box}`}>
+      <span className={`relative block bg-white/[0.05] ${box}`}>
         <video
           src={contentUrl(node.id)}
           muted
@@ -346,7 +346,7 @@ export function FileThumb({ node, size = 'sm', allowContent = true }: Props) {
 
   return (
     <span
-      className={`flex flex-col items-center justify-center gap-0.5 bg-arkive-panel/50 text-arkive-muted ${box}`}
+      className={`flex flex-col items-center justify-center gap-0.5 bg-white/[0.05] text-arkive-muted ${box}`}
     >
       <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} accent="currentColor" />
       <span className={`font-semibold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>
@@ -366,7 +366,7 @@ export function LiveDriveThumb({
 }) {
   const dense = size === 'sm';
   const box = dense
-    ? 'h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-arkive-border'
+    ? 'h-9 w-9 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10'
     : 'h-full w-full';
 
   if (item.kind === 'folder') return <FolderThumb dense={dense} />;
@@ -396,7 +396,7 @@ export function LiveDriveThumb({
   if (isImageName(item.name, item.mime)) {
     return (
       <span
-        className={`flex items-center justify-center bg-arkive-amber/10 text-arkive-amber ${box}`}
+        className={`flex items-center justify-center bg-arkive-accent2/10 text-arkive-accent2 ${box}`}
       >
         <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} accent="currentColor" />
       </span>
@@ -405,7 +405,7 @@ export function LiveDriveThumb({
 
   if (isVideoName(item.name, item.mime)) {
     return (
-      <span className={`flex items-center justify-center bg-arkive-panel text-arkive-muted ${box}`}>
+      <span className={`flex items-center justify-center bg-white/[0.06] text-arkive-muted ${box}`}>
         <VideoIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
       </span>
     );
@@ -421,7 +421,7 @@ export function LiveDriveThumb({
 
   return (
     <span
-      className={`flex flex-col items-center justify-center gap-0.5 bg-arkive-panel/50 text-arkive-muted ${box}`}
+      className={`flex flex-col items-center justify-center gap-0.5 bg-white/[0.05] text-arkive-muted ${box}`}
     >
       <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} accent="currentColor" />
       <span className={`font-semibold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>

@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  AlertCircle,
+  Check,
+  Download,
+  FileText,
+  Loader2,
+  Music4,
+  Pencil,
+  X,
+} from 'lucide-react';
 import { api, contentUrl, downloadUrl, isPreviewable, type Node } from '../lib/api';
+import { Button, IconButton } from './ui/Button';
 import {
   isAudioNode,
   isImageNode,
@@ -143,46 +155,65 @@ export function PreviewModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-[#03040c]/75 p-4 backdrop-blur-md"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) requestClose();
       }}
     >
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-arkive-border bg-arkive-surface shadow-2xl">
-        <div className="flex items-center justify-between gap-3 border-b border-arkive-border px-4 py-3">
-          <div className="min-w-0">
-            <h2 className="truncate font-display text-lg font-bold">
-              {node.name}
-              {dirty ? <span className="ml-2 text-arkive-amber">•</span> : null}
-            </h2>
-            {status && <p className="text-xs text-arkive-muted">{status}</p>}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+        className="glass-strong glass-hairline flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl shadow-[0_24px_80px_rgba(3,4,12,0.7)]"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-white/6 bg-white/[0.02] px-5 py-3.5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+              <FileText size={16} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate font-display text-lg font-bold tracking-tight">
+                {node.name}
+                {dirty ? (
+                  <span className="ml-2 inline-block h-2 w-2 animate-pulse-soft rounded-full bg-arkive-accent2 align-middle shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+                ) : null}
+              </h2>
+              {status && (
+                <p className="flex items-center gap-1 text-xs text-emerald-300">
+                  <Check size={11} /> {status}
+                </p>
+              )}
+            </div>
           </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
             {editable && !editing && (
-              <button
-                type="button"
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<Pencil size={13} />}
                 onClick={() => {
                   setEditing(true);
                   setStatus('');
                   setError('');
                 }}
-                className="rounded-lg border border-arkive-amber/40 bg-arkive-amber/10 px-3 py-1.5 text-sm text-arkive-amber hover:bg-arkive-amber/20"
               >
                 Edit
-              </button>
+              </Button>
             )}
             {editing && (
               <>
-                <button
-                  type="button"
+                <Button
+                  size="sm"
+                  variant="primary"
                   disabled={saving || !dirty}
+                  icon={saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                   onClick={() => void save()}
-                  className="rounded-lg border border-arkive-amber/40 bg-arkive-amber/15 px-3 py-1.5 text-sm text-arkive-amber hover:bg-arkive-amber/25 disabled:opacity-40"
                 >
                   {saving ? 'Saving…' : 'Save'}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  size="sm"
+                  variant="glass"
                   disabled={saving}
                   onClick={() => {
                     if (dirty && !window.confirm('Discard unsaved changes?')) return;
@@ -190,29 +221,29 @@ export function PreviewModal({
                     setDraft(text ?? '');
                     setError('');
                   }}
-                  className="rounded-lg border border-arkive-border px-3 py-1.5 text-sm hover:border-arkive-amber/40"
                 >
                   Cancel
-                </button>
+                </Button>
               </>
             )}
             <a
               href={downloadUrl(node.id)}
-              className="rounded-lg border border-arkive-border px-3 py-1.5 text-sm hover:border-arkive-amber/40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/8 px-2.5 py-1.5 text-xs font-medium text-arkive-muted transition hover:border-arkive-accent/50 hover:text-arkive-text"
             >
-              Download
+              <Download size={13} /> Download
             </a>
-            <button
-              type="button"
-              onClick={requestClose}
-              className="rounded-lg px-3 py-1.5 text-sm text-arkive-muted hover:bg-arkive-panel"
-            >
-              Close
-            </button>
+            <IconButton label="Close" onClick={requestClose}>
+              <X size={16} />
+            </IconButton>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto p-4">
-          {error && <p className="mb-3 text-sm text-red-300">{error}</p>}
+        <div className="scroll-slim min-h-0 flex-1 overflow-auto p-5">
+          {error && (
+            <p className="mb-3 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              <AlertCircle size={14} className="shrink-0" />
+              {error}
+            </p>
+          )}
           {isText && truncated && (
             <p className="mb-3 text-sm text-arkive-muted">
               File is larger than 2 MB — showing a truncated preview. Download to edit outside
@@ -241,8 +272,13 @@ export function PreviewModal({
             />
           )}
           {isAudio && (
-            <div className="flex flex-col items-center justify-center gap-4 py-10">
-              <p className="text-sm text-arkive-muted">Audio preview</p>
+            <div className="flex flex-col items-center justify-center gap-5 py-14">
+              <div className="relative">
+                <div className="absolute inset-0 scale-150 rounded-full bg-arkive-accent/25 blur-2xl" aria-hidden />
+                <div className="glass relative flex h-20 w-20 items-center justify-center rounded-3xl text-arkive-accent2">
+                  <Music4 size={32} />
+                </div>
+              </div>
               <audio src={contentUrl(node.id)} controls className="w-full max-w-lg" />
             </div>
           )}
@@ -254,22 +290,26 @@ export function PreviewModal({
                 setStatus('');
               }}
               spellCheck={false}
-              className="h-[70vh] w-full resize-none rounded-lg border border-arkive-border bg-arkive-bg p-4 font-mono text-xs leading-relaxed text-arkive-text outline-none focus:border-arkive-amber/50"
+              className="scroll-slim h-[70vh] w-full resize-none rounded-2xl border border-white/8 bg-black/30 p-4 font-mono text-xs leading-relaxed text-arkive-text outline-none transition focus:border-arkive-accent/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.15)]"
             />
           )}
           {isText && !editing && text !== null && (
-            <pre className="overflow-auto rounded-lg border border-arkive-border bg-arkive-bg p-4 text-left text-xs leading-relaxed text-arkive-text">
+            <pre className="scroll-slim overflow-auto rounded-2xl border border-white/6 bg-black/25 p-4 text-left text-xs leading-relaxed text-arkive-text">
               {text}
             </pre>
           )}
           {isText && text === null && !error && (
-            <p className="text-sm text-arkive-muted">Loading preview…</p>
+            <div className="space-y-2" aria-hidden>
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="skeleton h-4" style={{ width: `${90 - i * 9}%`, animationDelay: `${i * 0.1}s` }} />
+              ))}
+            </div>
           )}
           {!isImage && !isPdf && !isVideo && !isAudio && !isText && (
-            <p className="text-sm text-arkive-muted">No inline preview for this type.</p>
+            <p className="py-10 text-center text-sm text-arkive-muted">No inline preview for this type.</p>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArkiveLogo } from '../components/ArkiveLogo';
+import {
+  AlertCircle,
+  ArrowUp,
+  ChevronRight,
+  Download,
+  FileDown,
+  FolderOpen,
+  Loader2,
+  Lock,
+} from 'lucide-react';
+import { ArkiveLogo, ArkiveWordmark } from '../components/ArkiveLogo';
+import { Button } from '../components/ui/Button';
 import { api, formatBytes, type Breadcrumb, type Node } from '../lib/api';
 import { FileThumb } from '../components/files/FileThumb';
 import { fileTypeLabel } from '../components/files/types';
@@ -128,56 +139,80 @@ export function PublicSharePage() {
   const atRoot = !parentId || parentId === rootId;
 
   return (
-    <div className="flex min-h-full items-center justify-center px-4 py-10">
+    <div className="relative flex min-h-full items-center justify-center overflow-hidden px-4 py-10">
+      <div
+        className="aurora-blob animate-aurora-c left-1/2 top-[-25vh] h-[60vh] w-[60vh] -translate-x-1/2 bg-[radial-gradient(circle,rgba(139,92,246,0.22),transparent_65%)]"
+        aria-hidden
+      />
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`w-full rounded-2xl border border-arkive-border bg-arkive-surface/90 p-6 ${
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className={`glass-strong glass-hairline relative w-full rounded-3xl p-6 shadow-[0_24px_80px_rgba(3,4,12,0.6)] sm:p-7 ${
           ready && kind === 'folder' ? 'max-w-2xl text-left' : 'max-w-md text-center'
         }`}
       >
-        <div className={`mb-4 flex ${ready && kind === 'folder' ? 'justify-start' : 'justify-center'}`}>
-          <ArkiveLogo size={ready && kind === 'folder' ? 48 : 64} />
+        <div className={`mb-4 flex ${ready && kind === 'folder' ? 'justify-start' : 'flex-col items-center justify-center'}`}>
+          <ArkiveLogo size={ready && kind === 'folder' ? 44 : 72} />
         </div>
-        <h1 className="font-display text-2xl font-bold">Shared from Arkive</h1>
+        <h1 className={`font-display text-2xl font-bold tracking-tight ${ready && kind === 'folder' ? '' : 'mt-4'}`}>
+          Shared from <ArkiveWordmark className="text-2xl" />
+        </h1>
 
         {error && !needsPassword && (
-          <p className="mt-4 text-sm text-red-300">{error}</p>
+          <p className="mt-4 flex items-center justify-center gap-2 text-sm text-red-300">
+            <AlertCircle size={14} className="shrink-0" /> {error}
+          </p>
         )}
 
         {needsPassword && (
           <form onSubmit={onUnlock} className="mt-5 space-y-3 text-left">
-            <p className="text-sm text-arkive-muted">This link is password protected.</p>
+            <p className="flex items-center gap-2 text-sm text-arkive-muted">
+              <Lock size={14} className="text-arkive-accent2" /> This link is password protected.
+            </p>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2.5 outline-none focus:ring-2 focus:ring-arkive-amber/40"
+              className="input-glass"
             />
-            {error && <p className="text-sm text-red-300">{error}</p>}
-            <button
-              type="submit"
-              className="w-full cursor-pointer rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-4 py-2.5 font-semibold text-black"
-            >
+            {error && (
+              <p className="flex items-center gap-2 text-sm text-red-300">
+                <AlertCircle size={14} /> {error}
+              </p>
+            )}
+            <Button type="submit" variant="primary" size="lg" full className="font-semibold" icon={<Lock size={14} />}>
               Unlock
-            </button>
+            </Button>
           </form>
         )}
 
         {ready && kind === 'file' && (
-          <div className="mt-5 text-center">
+          <div className="mt-6 text-center">
+            <div className="relative mx-auto mb-4 w-fit">
+              <div className="absolute inset-0 scale-150 rounded-full bg-arkive-accent/20 blur-2xl" aria-hidden />
+              <div className="glass relative mx-auto flex h-16 w-16 items-center justify-center rounded-3xl text-arkive-accent2">
+                <FileDown size={26} />
+              </div>
+            </div>
             <p className="font-medium">{name}</p>
             <p className="mt-1 text-sm text-arkive-muted">File</p>
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="lg"
+              className="mt-5 font-semibold"
               disabled={busy}
               onClick={() => void downloadFile(undefined, name)}
-              className="mt-5 inline-flex cursor-pointer rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50"
+              icon={busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
             >
               {busy ? 'Preparing…' : 'Download'}
-            </button>
-            {listError && <p className="mt-3 text-sm text-red-300">{listError}</p>}
+            </Button>
+            {listError && (
+              <p className="mt-3 flex items-center justify-center gap-2 text-sm text-red-300">
+                <AlertCircle size={14} /> {listError}
+              </p>
+            )}
           </div>
         )}
 
@@ -185,15 +220,18 @@ export function PublicSharePage() {
           <div className="mt-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="truncate font-medium">{name}</p>
-                <nav className="mt-1 flex flex-wrap items-center gap-1 text-xs text-arkive-muted">
+                <p className="flex items-center gap-2 truncate font-display font-semibold">
+                  <FolderOpen size={16} className="shrink-0 text-arkive-accent2" />
+                  {name}
+                </p>
+                <nav className="mt-1.5 flex flex-wrap items-center gap-0.5 text-xs text-arkive-muted">
                   {breadcrumbs.map((crumb, i) => (
-                    <span key={crumb.id} className="inline-flex items-center gap-1">
-                      {i > 0 && <span>/</span>}
+                    <span key={crumb.id} className="inline-flex items-center gap-0.5">
+                      {i > 0 && <ChevronRight size={11} className="text-arkive-muted/50" />}
                       <button
                         type="button"
-                        className={`cursor-pointer hover:text-arkive-amber ${
-                          i === breadcrumbs.length - 1 ? 'text-arkive-text' : ''
+                        className={`cursor-pointer rounded-md px-1.5 py-0.5 transition hover:bg-white/[0.07] hover:text-arkive-accent2 ${
+                          i === breadcrumbs.length - 1 ? 'font-medium text-arkive-text' : ''
                         }`}
                         onClick={() => void loadFolder(crumb.id, unlockedPass)}
                       >
@@ -205,9 +243,10 @@ export function PublicSharePage() {
               </div>
               <div className="flex shrink-0 gap-2">
                 {!atRoot && (
-                  <button
-                    type="button"
-                    className="cursor-pointer rounded-lg border border-arkive-border px-3 py-1.5 text-sm hover:border-arkive-amber/40"
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    icon={<ArrowUp size={13} />}
                     onClick={() => {
                       const parent =
                         breadcrumbs.length > 1
@@ -217,28 +256,34 @@ export function PublicSharePage() {
                     }}
                   >
                     Up
-                  </button>
+                  </Button>
                 )}
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="font-semibold"
                   disabled={busy}
                   onClick={() => void downloadZip([parentId || rootId])}
-                  className="cursor-pointer rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-1.5 text-sm font-semibold text-black disabled:opacity-50"
+                  icon={busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
                 >
                   {busy ? 'Zipping…' : 'Download folder'}
-                </button>
+                </Button>
               </div>
             </div>
 
-            {listError && <p className="mt-3 text-sm text-red-300">{listError}</p>}
+            {listError && (
+              <p className="mt-3 flex items-center gap-2 text-sm text-red-300">
+                <AlertCircle size={14} /> {listError}
+              </p>
+            )}
 
-            <ul className="mt-4 divide-y divide-arkive-border overflow-hidden rounded-xl border border-arkive-border bg-arkive-bg/50">
+            <ul className="scroll-slim mt-4 divide-y divide-white/4 overflow-hidden rounded-2xl border border-white/7 bg-black/25">
               {nodes.map((node) => (
                 <li key={node.id}>
                   <button
                     type="button"
                     onClick={() => openNode(node)}
-                    className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left hover:bg-arkive-panel/50"
+                    className="group flex w-full cursor-pointer items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-white/[0.05]"
                   >
                     <FileThumb node={node} size="sm" allowContent={false} />
                     <span className="min-w-0 flex-1">
@@ -249,8 +294,12 @@ export function PublicSharePage() {
                           : `${formatBytes(node.size)} · ${fileTypeLabel(node)}`}
                       </span>
                     </span>
-                    <span className="shrink-0 text-xs text-arkive-amber">
-                      {node.kind === 'folder' ? 'Open' : 'Download'}
+                    <span className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-arkive-accent2 opacity-70 transition group-hover:bg-white/[0.07] group-hover:opacity-100">
+                      {node.kind === 'folder' ? (
+                        <>Open <ChevronRight size={12} /></>
+                      ) : (
+                        <><Download size={12} /> Download</>
+                      )}
                     </span>
                   </button>
                 </li>

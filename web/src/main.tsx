@@ -9,6 +9,8 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
+        <div className="aurora-bg" aria-hidden />
+        <div className="grain-overlay" aria-hidden />
         <App />
       </AuthProvider>
     </BrowserRouter>

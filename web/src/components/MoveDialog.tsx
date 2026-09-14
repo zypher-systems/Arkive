@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { AlertCircle, ChevronRight, Folder, FolderInput, Home, Loader2 } from 'lucide-react';
 import { api, type Breadcrumb, type Node, type Workspace } from '../lib/api';
+import { Button } from './ui/Button';
 
 type Props = {
   workspaceId: string;
@@ -65,23 +68,37 @@ export function MoveDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl border border-arkive-border bg-arkive-surface p-5">
-        <h2 className="font-display text-xl font-bold">
-          {effectiveMode === 'copy' ? 'Copy' : 'Move'} {nodes.length} item(s)
-        </h2>
-        <p className="mt-1 text-sm text-arkive-muted">
-          {crossRoot
-            ? 'Cross-root destination — items will be copied.'
-            : 'Choose a destination folder.'}
-        </p>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#03040c]/70 p-4 backdrop-blur-md">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.94, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+        className="glass-strong glass-hairline w-full max-w-md rounded-3xl p-6 shadow-[0_24px_80px_rgba(3,4,12,0.7)]"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+            <FolderInput size={18} />
+          </div>
+          <div>
+            <h2 className="font-display text-xl font-bold tracking-tight">
+              {effectiveMode === 'copy' ? 'Copy' : 'Move'} {nodes.length} item(s)
+            </h2>
+            <p className="text-sm text-arkive-muted">
+              {crossRoot
+                ? 'Cross-root destination — items will be copied.'
+                : 'Choose a destination folder.'}
+            </p>
+          </div>
+        </div>
 
-        <label className="mt-4 block text-sm">
-          <span className="mb-1 block text-arkive-muted">Destination root</span>
+        <label className="mt-5 block text-sm">
+          <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">
+            Destination root
+          </span>
           <select
             value={targetWs}
             onChange={(e) => setTargetWs(e.target.value)}
-            className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2"
+            className="input-glass cursor-pointer [&>option]:bg-arkive-surface"
           >
             {roots.map((w) => (
               <option key={w.id} value={w.id}>
@@ -91,21 +108,21 @@ export function MoveDialog({
           </select>
         </label>
 
-        <nav className="mt-4 flex flex-wrap items-center gap-1 text-sm text-arkive-muted">
+        <nav className="mt-4 flex flex-wrap items-center gap-0.5 text-sm text-arkive-muted">
           <button
             type="button"
             onClick={() => void load(targetWs, null)}
-            className="hover:text-arkive-text"
+            className="flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 transition hover:bg-white/[0.07] hover:text-arkive-text"
           >
-            Root
+            <Home size={13} /> Root
           </button>
           {breadcrumbs.map((b) => (
-            <span key={b.id} className="flex items-center gap-1">
-              <span>/</span>
+            <span key={b.id} className="flex items-center gap-0.5">
+              <ChevronRight size={13} className="text-arkive-muted/50" />
               <button
                 type="button"
                 onClick={() => void load(targetWs, b.id)}
-                className="hover:text-arkive-text"
+                className="cursor-pointer rounded-lg px-2 py-1 transition hover:bg-white/[0.07] hover:text-arkive-text"
               >
                 {b.name}
               </button>
@@ -113,44 +130,47 @@ export function MoveDialog({
           ))}
         </nav>
 
-        <ul className="mt-3 max-h-56 divide-y divide-arkive-border overflow-auto rounded-xl border border-arkive-border">
+        <ul className="scroll-slim mt-3 max-h-56 divide-y divide-white/4 overflow-auto rounded-2xl border border-white/7 bg-black/20">
           {folders.map((f) => (
             <li key={f.id}>
               <button
                 type="button"
                 onClick={() => void load(targetWs, f.id)}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-arkive-panel/50"
+                className="flex w-full cursor-pointer items-center gap-2.5 px-3.5 py-2.5 text-left text-sm transition hover:bg-white/[0.05]"
               >
-                <span className="text-arkive-amber">DIR</span>
-                {f.name}
+                <Folder size={15} className="shrink-0 text-arkive-accent2" />
+                <span className="truncate">{f.name}</span>
+                <ChevronRight size={13} className="ml-auto shrink-0 text-arkive-muted/50" />
               </button>
             </li>
           ))}
           {folders.length === 0 && (
-            <li className="px-3 py-6 text-center text-sm text-arkive-muted">No subfolders here.</li>
+            <li className="px-3 py-8 text-center text-sm text-arkive-muted">No subfolders here.</li>
           )}
         </ul>
 
-        {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+        {error && (
+          <p className="mt-3 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            <AlertCircle size={14} className="shrink-0" />
+            {error}
+          </p>
+        )}
 
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-arkive-border px-3 py-2 text-sm"
-          >
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="glass" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="primary"
+            className="font-semibold"
             disabled={busy}
+            icon={busy ? <Loader2 size={14} className="animate-spin" /> : <FolderInput size={14} />}
             onClick={() => void confirm()}
-            className="rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
           >
             {effectiveMode === 'copy' ? 'Copy here' : 'Move here'}
-          </button>
+          </Button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

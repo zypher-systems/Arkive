@@ -1,7 +1,23 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Cloud,
+  Copy,
+  HardDrive,
+  Info,
+  KeyRound,
+  Link2,
+  Loader2,
+  PlugZap,
+  ShieldCheck,
+  Trash2,
+  UserRound,
+} from 'lucide-react';
 import { api, type StorageConnection, type Workspace } from '../lib/api';
+import { Button } from '../components/ui/Button';
 import { useAuth } from '../lib/auth';
 import { useConfirm } from '../lib/confirm';
 
@@ -195,53 +211,72 @@ export function AccountPage() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-      <h1 className="font-display text-3xl font-bold tracking-tight">Account</h1>
+      <h1 className="font-display text-3xl font-bold tracking-tight">
+        <span className="text-iridescent">Account</span>
+      </h1>
       <p className="mt-1 mb-6 text-sm text-arkive-muted">{user?.email}</p>
 
       <form
         onSubmit={onSubmit}
-        className="mb-8 max-w-lg rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5"
+        className="mb-8 max-w-lg glass glass-hairline rounded-3xl p-5"
       >
+        <h2 className="mb-4 flex items-center gap-2.5 font-display text-lg font-semibold">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+            <UserRound size={15} />
+          </span>
+          Profile
+        </h2>
         <label className="mb-3 block text-sm">
-          <span className="mb-1.5 block text-arkive-muted">Display name</span>
+          <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Display name</span>
           <input
             required
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2.5 outline-none focus:ring-2 focus:ring-arkive-amber/40"
+            className="input-glass"
           />
         </label>
         <label className="mb-2 block text-sm">
-          <span className="mb-1.5 block text-arkive-muted">New password (optional)</span>
+          <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">New password (optional)</span>
           <input
             type="password"
             minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2.5 outline-none focus:ring-2 focus:ring-arkive-amber/40"
+            className="input-glass"
           />
         </label>
         <p className="mb-5 text-xs text-arkive-muted">
           Locked out? Use Forgot password on the sign-in page (requires SMTP under Admin).
         </p>
-        {message && <p className="mb-3 text-sm text-arkive-glow">{message}</p>}
-        {error && <p className="mb-3 text-sm text-red-300">{error}</p>}
+        {message && (
+          <p className="mb-3 flex items-center gap-2 text-sm text-emerald-300">
+            <CheckCircle2 size={14} className="shrink-0" /> {message}
+          </p>
+        )}
+        {error && (
+          <p className="mb-3 flex items-center gap-2 text-sm text-red-300">
+            <AlertCircle size={14} className="shrink-0" /> {error}
+          </p>
+        )}
         {user?.is_instance_admin && (
-          <p className="mb-4 rounded-lg border border-arkive-amber/30 bg-arkive-amber/10 px-3 py-2 text-xs text-arkive-amber">
+          <p className="mb-4 flex items-start gap-2 rounded-xl border border-arkive-accent/30 bg-arkive-accent/10 px-3 py-2.5 text-xs text-violet-200">
+            <ShieldCheck size={14} className="mt-0.5 shrink-0 text-arkive-accent2" />
             Instance admin — approve users and manage storage under Admin.
           </p>
         )}
-        <button
-          type="submit"
-          className="rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-4 py-2 text-sm font-semibold text-black"
-        >
+        <Button type="submit" variant="primary" icon={<CheckCircle2 size={14} />} className="font-semibold">
           Save changes
-        </button>
+        </Button>
       </form>
 
       {gdriveEnabled && (
-        <section className="mb-8 max-w-lg rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
-          <h2 className="font-display text-lg font-semibold">Google Drive</h2>
+        <section className="mb-8 max-w-lg glass glass-hairline rounded-3xl p-5">
+          <h2 className="flex items-center gap-2.5 font-display text-lg font-semibold">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+              <Cloud size={15} />
+            </span>
+            Google Drive
+          </h2>
           <p className="mt-1 mb-4 text-xs text-arkive-muted">
             Connecting Drive adds a <span className="text-arkive-text">Connected</span> root in Files.
             Your personal vault stays on instance storage. Arkive folders, shares, and versions stay in
@@ -250,7 +285,10 @@ export function AccountPage() {
           {gdrive ? (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm">
               <div>
-                <div className="font-medium">Connected</div>
+                <div className="flex items-center gap-1.5 font-medium text-emerald-300">
+                  <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+                  Connected
+                </div>
                 <div className="text-xs text-arkive-muted">{gdrive.account_email || gdrive.name}</div>
                 {driveMount && (
                   <div className="mt-1 text-xs text-arkive-muted">
@@ -278,7 +316,7 @@ export function AccountPage() {
                     },
                   })
                 }
-                className="rounded-md border border-arkive-border px-2 py-1 text-xs hover:text-red-300"
+                className="cursor-pointer rounded-lg border border-white/8 px-2.5 py-1.5 text-xs text-arkive-muted transition hover:border-red-400/50 hover:text-red-300"
               >
                 Disconnect
               </button>
@@ -286,14 +324,14 @@ export function AccountPage() {
           ) : (
             <a
               href="/api/storage/google/start"
-              className="mb-4 inline-flex rounded-lg border border-arkive-border px-3 py-2 text-sm font-medium hover:border-arkive-amber/50"
+              className="mb-4 inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.04] px-3.5 py-2 text-sm font-medium backdrop-blur-md transition hover:border-arkive-accent/60 hover:bg-white/[0.08] hover:shadow-[0_0_18px_rgba(139,92,246,0.2)]"
             >
-              Connect Google Drive
+              <PlugZap size={15} className="text-arkive-accent2" /> Connect Google Drive
             </a>
           )}
 
           {gdrive && personal && (
-            <details className="rounded-lg border border-arkive-border bg-arkive-panel/40 px-3 py-2">
+            <details className="rounded-2xl border border-white/7 bg-white/[0.035] px-3.5 py-2.5 transition hover:border-white/12">
               <summary className="cursor-pointer text-sm font-medium">Advanced — copy storage</summary>
               <p className="mt-2 text-xs text-arkive-muted">
                 Optionally move an entire vault’s blobs between instance storage and Drive. This changes
@@ -311,7 +349,7 @@ export function AccountPage() {
                       'My files now store on Google Drive',
                     )
                   }
-                  className="rounded-md border border-arkive-border px-2 py-1.5 text-left text-xs hover:border-arkive-amber/40 disabled:opacity-50"
+                  className="cursor-pointer rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-left text-xs text-arkive-muted transition hover:border-arkive-accent/50 hover:text-arkive-text disabled:opacity-40 disabled:hover:border-white/8"
                 >
                   {migrating === 'personal-drive'
                     ? 'Copying…'
@@ -328,7 +366,7 @@ export function AccountPage() {
                       'My files now store on instance storage',
                     )
                   }
-                  className="rounded-md border border-arkive-border px-2 py-1.5 text-left text-xs hover:border-arkive-amber/40 disabled:opacity-50"
+                  className="cursor-pointer rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-left text-xs text-arkive-muted transition hover:border-arkive-accent/50 hover:text-arkive-text disabled:opacity-40 disabled:hover:border-white/8"
                 >
                   {migrating === 'personal-default'
                     ? 'Copying…'
@@ -347,7 +385,7 @@ export function AccountPage() {
                           'Drive vault now stores on Google Drive',
                         )
                       }
-                      className="rounded-md border border-arkive-border px-2 py-1.5 text-left text-xs hover:border-arkive-amber/40 disabled:opacity-50"
+                      className="cursor-pointer rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-left text-xs text-arkive-muted transition hover:border-arkive-accent/50 hover:text-arkive-text disabled:opacity-40 disabled:hover:border-white/8"
                     >
                       {migrating === 'mount-drive'
                         ? 'Copying…'
@@ -364,7 +402,7 @@ export function AccountPage() {
                           'Drive vault now stores on instance storage',
                         )
                       }
-                      className="rounded-md border border-arkive-border px-2 py-1.5 text-left text-xs hover:border-arkive-amber/40 disabled:opacity-50"
+                      className="cursor-pointer rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-left text-xs text-arkive-muted transition hover:border-arkive-accent/50 hover:text-arkive-text disabled:opacity-40 disabled:hover:border-white/8"
                     >
                       {migrating === 'mount-default'
                         ? 'Copying…'
@@ -378,48 +416,53 @@ export function AccountPage() {
         </section>
       )}
 
-      <section className="mb-8 max-w-lg rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
-        <h2 className="font-display text-lg font-semibold">Icedrive / Internxt / WebDAV</h2>
+      <section className="mb-8 max-w-lg glass glass-hairline rounded-3xl p-5">
+        <h2 className="flex items-center gap-2.5 font-display text-lg font-semibold">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+            <HardDrive size={15} />
+          </span>
+          Icedrive / Internxt / WebDAV
+        </h2>
         <p className="mt-1 mb-4 text-xs text-arkive-muted">
           Connect a WebDAV endpoint (Icedrive) or Internxt WebDAV bridge as another Connected root.
           Arkive stores opaque blobs there — same vault model as Google Drive.
         </p>
         <div className="space-y-3 text-sm">
           <label className="block">
-            <span className="mb-1 block text-arkive-muted">Provider</span>
+            <span className="mb-1 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Provider</span>
             <select
               value={webdavType}
               onChange={(e) => setWebdavType(e.target.value as 'webdav' | 'internxt')}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2"
+              className="input-glass cursor-pointer [&>option]:bg-arkive-surface"
             >
               <option value="webdav">Icedrive / WebDAV</option>
               <option value="internxt">Internxt (WebDAV)</option>
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-arkive-muted">WebDAV URL</span>
+            <span className="mb-1 block text-xs font-medium tracking-wide text-arkive-muted uppercase">WebDAV URL</span>
             <input
               value={webdavURL}
               onChange={(e) => setWebdavURL(e.target.value)}
               placeholder="https://webdav.icedrive.io/…"
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2"
+              className="input-glass"
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-arkive-muted">Username</span>
+            <span className="mb-1 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Username</span>
             <input
               value={webdavUser}
               onChange={(e) => setWebdavUser(e.target.value)}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2"
+              className="input-glass"
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-arkive-muted">Password / app key</span>
+            <span className="mb-1 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Password / app key</span>
             <input
               type="password"
               value={webdavPass}
               onChange={(e) => setWebdavPass(e.target.value)}
-              className="w-full rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2"
+              className="input-glass"
             />
           </label>
           <button
@@ -439,15 +482,20 @@ export function AccountPage() {
                 })
                 .catch((e) => setError(String(e)))
             }
-            className="rounded-lg border border-arkive-border px-3 py-2 text-sm hover:border-arkive-amber/50"
+            className="cursor-pointer rounded-xl border border-white/8 bg-white/[0.04] px-3.5 py-2 text-sm font-medium transition hover:border-arkive-accent/60 hover:bg-white/[0.08] hover:shadow-[0_0_18px_rgba(139,92,246,0.2)]"
           >
-            Connect
+            <span className="inline-flex items-center gap-2"><PlugZap size={14} className="text-arkive-accent2" /> Connect</span>
           </button>
         </div>
       </section>
 
-      <section className="max-w-lg rounded-2xl border border-arkive-border bg-arkive-surface/70 p-5">
-        <h2 className="font-display text-lg font-semibold">WebDAV mount</h2>
+      <section className="max-w-lg glass glass-hairline rounded-3xl p-5">
+        <h2 className="flex items-center gap-2.5 font-display text-lg font-semibold">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
+            <Link2 size={15} />
+          </span>
+          WebDAV mount
+        </h2>
         <p className="mt-1 mb-4 text-xs text-arkive-muted">
           Mount a workspace as a network drive (HTTP Basic). Prefer an{' '}
           <span className="text-arkive-text">app password</span> below instead of your login
@@ -457,17 +505,19 @@ export function AccountPage() {
           {workspaces.map((ws) => {
             const url = davURL(ws.id);
             return (
-              <li key={ws.id} className="rounded-lg border border-arkive-border bg-arkive-panel/40 px-3 py-2">
+              <li key={ws.id} className="rounded-2xl border border-white/7 bg-white/[0.035] px-3.5 py-2.5 transition hover:border-white/12">
                 <div className="mb-1 text-sm font-medium">{workspaceLabel(ws)}</div>
                 <div className="flex flex-wrap items-center gap-2">
                   <code className="min-w-0 flex-1 break-all text-xs text-arkive-muted">{url}</code>
-                  <button
-                    type="button"
+                  <Button
+                    size="xs"
+                    variant="glass"
+                    icon={copied === ws.id ? <CheckCircle2 size={11} className="text-emerald-300" /> : <Copy size={11} />}
                     onClick={() => void copyDav(ws)}
-                    className="shrink-0 cursor-pointer rounded-md border border-arkive-border px-2 py-1 text-xs hover:border-arkive-amber/40"
+                    className="shrink-0"
                   >
                     {copied === ws.id ? 'Copied' : 'Copy URL'}
-                  </button>
+                  </Button>
                 </div>
               </li>
             );
@@ -477,8 +527,10 @@ export function AccountPage() {
           )}
         </ul>
 
-        <div className="mt-6 border-t border-arkive-border pt-5">
-          <h3 className="text-sm font-semibold">App passwords</h3>
+        <div className="mt-6 border-t border-white/6 pt-5">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <KeyRound size={14} className="text-arkive-accent2" /> App passwords
+          </h3>
           <p className="mt-1 mb-3 text-xs text-arkive-muted">
             Create a token for Finder, rclone, or other WebDAV clients. You can revoke it anytime
             without changing your login password.
@@ -490,27 +542,36 @@ export function AccountPage() {
               onChange={(e) => setTokenName(e.target.value)}
               placeholder="Name (e.g. MacBook)"
               maxLength={80}
-              className="min-w-0 flex-1 rounded-lg border border-arkive-border bg-arkive-bg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-arkive-amber/40"
+              className="input-glass min-w-0 flex-1 text-sm"
             />
-            <button
+            <Button
               type="submit"
+              variant="primary"
               disabled={tokenBusy}
-              className="cursor-pointer rounded-lg bg-gradient-to-r from-arkive-orange to-arkive-amber px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
+              icon={tokenBusy ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+              className="font-semibold"
             >
               {tokenBusy ? 'Creating…' : 'Create'}
-            </button>
+            </Button>
           </form>
 
           {newSecret && (
-            <div className="mb-4 rounded-lg border border-arkive-amber/40 bg-arkive-amber/10 px-3 py-3">
-              <p className="mb-2 text-xs text-arkive-muted">
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 rounded-2xl border border-arkive-accent2/40 bg-arkive-accent2/10 px-4 py-3.5 shadow-[0_0_24px_rgba(34,211,238,0.12)]"
+            >
+              <p className="mb-2 flex items-center gap-1.5 text-xs text-arkive-muted">
+                <Info size={12} className="text-arkive-accent2" />
                 Copy this secret now — it won’t be shown again.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <code className="min-w-0 flex-1 break-all text-xs text-arkive-text">{newSecret}</code>
-                <button
-                  type="button"
-                  className="shrink-0 cursor-pointer rounded-md border border-arkive-border px-2 py-1 text-xs hover:border-arkive-amber/40"
+                <Button
+                  size="xs"
+                  variant="glass"
+                  className="shrink-0"
+                  icon={copied === 'secret' ? <CheckCircle2 size={11} className="text-emerald-300" /> : <Copy size={11} />}
                   onClick={() => {
                     void navigator.clipboard.writeText(newSecret).then(() => {
                       setCopied('secret');
@@ -519,16 +580,16 @@ export function AccountPage() {
                   }}
                 >
                   {copied === 'secret' ? 'Copied' : 'Copy'}
-                </button>
+                </Button>
               </div>
-            </div>
+            </motion.div>
           )}
 
           <ul className="space-y-2">
             {appPasswords.map((p) => (
               <li
                 key={p.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-arkive-border bg-arkive-panel/40 px-3 py-2 text-sm"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/7 bg-white/[0.035] px-3.5 py-2.5 transition hover:border-white/12 text-sm"
               >
                 <div className="min-w-0">
                   <div className="font-medium">{p.name}</div>
@@ -539,13 +600,15 @@ export function AccountPage() {
                       : ' · never used'}
                   </div>
                 </div>
-                <button
-                  type="button"
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  icon={<Trash2 size={12} />}
+                  className="hover:!bg-red-500/12 hover:!text-red-300"
                   onClick={() => void revokeAppPassword(p.id, p.name)}
-                  className="cursor-pointer rounded-md px-2 py-1 text-xs text-red-300 hover:bg-arkive-panel"
                 >
                   Revoke
-                </button>
+                </Button>
               </li>
             ))}
             {appPasswords.length === 0 && (
