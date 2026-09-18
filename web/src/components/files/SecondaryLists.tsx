@@ -7,7 +7,14 @@ import {
   type Node,
   type RecentItem,
 } from '../../lib/api';
-import { ArrowLeft, Cloud, Clock3, Download, Eye, Share2 } from 'lucide-react';
+import {
+  ArrowLeftIcon,
+  CloudIcon,
+  ClockIcon,
+  DownloadIcon,
+  PreviewIcon,
+  ShareIcon,
+} from '../icons';
 import { FileThumb, LiveDriveThumb } from './FileThumb';
 import { fileTypeLabel, hintNode, type FileViewMode } from './types';
 import { EmptyState } from '../ui/Card';
@@ -27,14 +34,14 @@ export function RecentList({
 }) {
   if (items.length === 0) {
     return (
-      <div className="glass glass-hairline overflow-hidden rounded-2xl">
-        <EmptyState icon={<Clock3 size={26} />} title="No recent activity" hint="Files you touch will show up here." />
+      <div className="panel overflow-hidden">
+        <EmptyState icon={<ClockIcon size={18} />} title="No recent activity" hint="Files you touch will show up here." />
       </div>
     );
   }
 
   return (
-    <ul className="glass glass-hairline scroll-slim divide-y divide-white/4 overflow-hidden rounded-2xl">
+    <ul className="panel scroll-slim divide-y divide-line overflow-hidden">
       {items.map((ev) => {
         const name = ev.node_name || ev.action;
         const looksFolder = !name.includes('.') && ev.action.toLowerCase().includes('folder');
@@ -47,15 +54,15 @@ export function RecentList({
           <li key={ev.id}>
             <button
               type="button"
-              className="group flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left text-sm transition-colors duration-150 hover:bg-white/[0.045]"
+              className="group flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm transition-colors duration-150 hover:bg-hover"
               onClick={() => onOpen(ev)}
             >
               <FileThumb node={node} size="sm" allowContent={allowContent} />
               <span className="min-w-0 flex-1 truncate font-medium">
                 {name}
-                <span className="ml-2 text-xs font-normal text-arkive-muted">{ev.action}</span>
+                <span className="ml-2 text-xs font-normal text-muted">{ev.action}</span>
               </span>
-              <span className="shrink-0 text-xs text-arkive-muted">
+              <span className="shrink-0 text-xs text-muted">
                 {new Date(ev.created_at).toLocaleString()}
               </span>
             </button>
@@ -112,7 +119,7 @@ export function LiveDriveList({
 
   return (
     <ul
-      className="glass glass-hairline scroll-slim divide-y divide-white/4 overflow-hidden rounded-2xl"
+      className="panel scroll-slim divide-y divide-line overflow-hidden"
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes(LIVE_DRAG)) {
           e.preventDefault();
@@ -124,20 +131,20 @@ export function LiveDriveList({
       }}
     >
       {parent !== 'root' && (
-        <li className="px-3 py-2 text-sm">
+        <li className="px-2 py-1.5 text-sm">
           <button
             type="button"
-            className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-arkive-accent2 transition hover:bg-white/[0.06]"
+            className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-accent-strong transition hover:bg-hover"
             onClick={onUp}
           >
-            <ArrowLeft size={14} /> Drive root
+            <ArrowLeftIcon size={14} /> Drive root
           </button>
         </li>
       )}
       {items.length === 0 && (
         <li>
           <EmptyState
-            icon={<Cloud size={26} />}
+            icon={<CloudIcon size={18} />}
             title="Nothing here yet"
             hint="Empty, or connect Google Drive in Account. Drop files here to upload."
           />
@@ -161,17 +168,17 @@ export function LiveDriveList({
             if (item.kind === 'folder') folderDrop(e, item.id);
           }}
           onClick={() => onOpen(item)}
-          className={`flex cursor-pointer select-none items-center justify-between gap-3 px-4 py-3 text-sm transition-colors duration-150 hover:bg-white/[0.045] ${
+          className={`flex cursor-pointer select-none items-center justify-between gap-3 px-3 py-2 text-sm transition-colors duration-150 hover:bg-hover ${
             item.kind === 'folder' && dropTargetId === item.id
-              ? 'bg-arkive-accent/12 ring-2 ring-inset ring-arkive-accent/80'
+              ? 'bg-accent-soft shadow-[inset_0_0_0_2px_var(--accent)]'
               : ''
           }`}
         >
-          <div className="flex min-w-0 flex-1 items-center gap-3 text-left font-medium hover:text-arkive-accent2">
+          <div className="flex min-w-0 flex-1 items-center gap-3 text-left font-medium">
             <LiveDriveThumb item={item} size="sm" />
             <span className="truncate">{item.name}</span>
           </div>
-          <span className="shrink-0 text-xs text-arkive-muted">
+          <span className="shrink-0 text-xs text-muted">
             {item.kind === 'folder' ? 'Folder' : formatBytes(item.size)}
           </span>
         </li>
@@ -191,9 +198,9 @@ export function SharedBrowse({
 }) {
   if (nodes.length === 0) {
     return (
-      <div className="glass glass-hairline overflow-hidden rounded-2xl">
+      <div className="panel overflow-hidden">
         <EmptyState
-          icon={<Share2 size={26} />}
+          icon={<ShareIcon size={18} />}
           title="Nothing shared with you yet"
           hint="When teammates share files or folders, they’ll appear here."
         />
@@ -207,20 +214,18 @@ export function SharedBrowse({
         {nodes.map((node) => (
           <li
             key={node.id}
-            className="group cursor-pointer overflow-hidden rounded-2xl border border-white/7 bg-white/[0.03] backdrop-blur-md transition-all duration-200 hover:-translate-y-1 hover:border-white/14 hover:shadow-[0_16px_40px_rgba(3,4,12,0.55),0_0_24px_rgba(139,92,246,0.12)]"
+            className="cursor-pointer overflow-hidden rounded-lg border border-line bg-surface shadow-xs transition-colors hover:border-strong"
           >
             <button
               type="button"
               className="flex w-full cursor-pointer flex-col text-left"
               onClick={() => onOpen(node)}
             >
-              <div className="aspect-square overflow-hidden bg-gradient-to-b from-white/[0.05] to-transparent">
-                <div className="h-full w-full transition-transform duration-300 ease-out group-hover:scale-[1.04]">
-                  <FileThumb node={node} size="lg" />
-                </div>
+              <div className="aspect-square overflow-hidden border-b border-line bg-inset">
+                <FileThumb node={node} size="lg" />
               </div>
               <div className="truncate px-3 pt-2 text-sm font-medium">{node.name}</div>
-              <div className="px-3 pb-2.5 pt-0.5 text-xs text-arkive-muted">
+              <div className="px-3 pb-2.5 pt-0.5 text-xs text-muted">
                 {node.kind === 'file' ? formatBytes(node.size) : 'Folder'}
               </div>
             </button>
@@ -232,21 +237,21 @@ export function SharedBrowse({
 
   if (viewMode === 'details') {
     return (
-      <div className="glass glass-hairline scroll-slim overflow-hidden rounded-2xl">
+      <div className="panel scroll-slim overflow-hidden">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-white/6 bg-white/[0.02] text-[11px] font-semibold uppercase tracking-[0.12em] text-arkive-muted">
+          <thead className="border-b border-line bg-inset text-[11px] font-semibold uppercase tracking-wide text-faint">
             <tr>
-              <th className="px-3 py-2 font-medium">Name</th>
-              <th className="hidden px-3 py-2 font-medium sm:table-cell">Size</th>
-              <th className="hidden px-3 py-2 font-medium md:table-cell">Type</th>
-              <th className="px-3 py-2 font-medium" />
+              <th className="px-3 py-2">Name</th>
+              <th className="hidden px-3 py-2 sm:table-cell">Size</th>
+              <th className="hidden px-3 py-2 md:table-cell">Type</th>
+              <th className="px-3 py-2" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/4">
+          <tbody className="divide-y divide-line">
             {nodes.map((node) => (
               <tr
                 key={node.id}
-                className="group cursor-pointer transition-colors duration-150 hover:bg-white/[0.045]"
+                className="group cursor-pointer transition-colors duration-150 hover:bg-hover"
                 onClick={() => onOpen(node)}
               >
                 <td className="px-3 py-2">
@@ -255,28 +260,28 @@ export function SharedBrowse({
                     <span className="truncate font-medium">{node.name}</span>
                   </div>
                 </td>
-                <td className="hidden px-3 py-2 text-arkive-muted sm:table-cell">
+                <td className="hidden px-3 py-2 text-muted sm:table-cell">
                   {node.kind === 'file' ? formatBytes(node.size) : '—'}
                 </td>
-                <td className="hidden px-3 py-2 text-arkive-muted md:table-cell">
+                <td className="hidden px-3 py-2 text-muted md:table-cell">
                   {fileTypeLabel(node)}
                 </td>
                 <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                   {node.kind === 'file' && (
                     <a
                       href={downloadUrl(node.id)}
-                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-arkive-accent2 transition hover:bg-white/[0.07]"
+                      className="inline-flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs font-medium text-accent-strong transition hover:bg-hover"
                     >
-                      <Download size={13} /> Download
+                      <DownloadIcon size={13} /> Download
                     </a>
                   )}
                   {node.kind === 'file' && isPreviewable(node) && (
                     <button
                       type="button"
-                      className="ml-1 inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-arkive-muted transition hover:bg-white/[0.07] hover:text-arkive-text"
+                      className="ml-1 inline-flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs font-medium text-muted transition hover:bg-hover hover:text-ink"
                       onClick={() => onOpen(node)}
                     >
-                      <Eye size={13} /> Preview
+                      <PreviewIcon size={13} /> Preview
                     </button>
                   )}
                 </td>
@@ -289,18 +294,18 @@ export function SharedBrowse({
   }
 
   return (
-    <ul className="glass glass-hairline scroll-slim divide-y divide-white/4 overflow-hidden rounded-2xl">
+    <ul className="panel scroll-slim divide-y divide-line overflow-hidden">
       {nodes.map((node) => (
         <li
           key={node.id}
-          className="group flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-white/[0.045]"
+          className="group flex cursor-pointer flex-wrap items-center gap-3 px-3 py-2 transition-colors duration-150 hover:bg-hover"
           onClick={() => onOpen(node)}
         >
           <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
             <FileThumb node={node} size="sm" />
             <span className="min-w-0">
-              <span className="block truncate font-medium">{node.name}</span>
-              <span className="text-xs text-arkive-muted">
+              <span className="block truncate text-sm font-medium">{node.name}</span>
+              <span className="text-xs text-muted">
                 {node.kind === 'file' ? formatBytes(node.size) : 'Folder'}
               </span>
             </span>
@@ -308,10 +313,10 @@ export function SharedBrowse({
           {node.kind === 'file' && (
             <a
               href={downloadUrl(node.id)}
-              className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-arkive-accent2 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.07]"
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs font-medium text-accent-strong opacity-0 transition group-hover:opacity-100 hover:bg-hover"
               onClick={(e) => e.stopPropagation()}
             >
-              <Download size={13} /> Download
+              <DownloadIcon size={13} /> Download
             </a>
           )}
         </li>

@@ -22,8 +22,7 @@ TLS terminates at a reverse proxy; Arkive stays HTTP. Examples: [`deploy/Caddyfi
 
 ```bash
 # Strong unique values — production refuses placeholders
-# POSTGRES_PASSWORD, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD,
-# ARKIVE_SESSION_SECRET, ARKIVE_SECRETS_KEY, ARKIVE_PUBLIC_URL
+# POSTGRES_PASSWORD, ARKIVE_SESSION_SECRET, ARKIVE_SECRETS_KEY, ARKIVE_PUBLIC_URL
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
@@ -48,15 +47,15 @@ Arkive is private by default: anyone can create an account, but new signups stay
 | `web`     | Nginx + React SPA (port **3080**)         |
 | `api`     | Go API (chi), migrations on startup       |
 | `postgres`| Metadata (users, workspaces, nodes, ACLs) |
-| `minio`   | S3-compatible blob storage (dev default)  |
-| `nfs_demo`| Demo volume mounted at `/mnt/arkive-nfs`  |
+| `arkive_data` | Default file blobs at `/data/arkive`  |
 
 ## Environment (API)
 
 | Variable | Default / notes |
 |----------|-----------------|
 | `ARKIVE_DATABASE_URL` | Postgres DSN |
-| `ARKIVE_S3_*` | Seeded default MinIO backend |
+| `ARKIVE_DATA_DIR` | Default local folder (`/data/arkive`) when no S3 endpoint is set |
+| `ARKIVE_S3_*` | Optional — if `ARKIVE_S3_ENDPOINT` is set, seed a remote S3 default instead |
 | `ARKIVE_ENV` | `development` (default) or `production` — production refuses default secrets |
 | `ARKIVE_SESSION_SECRET` | Cookie/session material — required strong value when `ARKIVE_ENV=production` |
 | `ARKIVE_SECRETS_KEY` | Encrypts S3 credentials at rest (falls back to session secret; must be strong in production) |
@@ -80,7 +79,7 @@ Arkive is private by default: anyone can create an account, but new signups stay
 - Public share links with optional password + expiry (`/s/:token`)
 - File version history on overwrite (last 10) + share/link activity
 - WebDAV mount per workspace (`/dav/{workspaceID}/`) — official desktop/mobile sync path
-- Instance-admin storage backends: remote S3 + NFS/local mount; per-workspace assignment; background migrate
+- Instance-admin storage backends: local folder + optional remote S3; per-workspace assignment; background migrate
 - Optional Google Drive Connected vault + live Drive browse; Icedrive/Internxt via WebDAV mounts
 - Optional storage quotas (per workspace / user) with Admin controls
 - Server-generated image thumbnails for Files tiles
@@ -136,10 +135,8 @@ Redirect URI to register with your IdP: `{ARKIVE_PUBLIC_URL}/api/auth/oidc/callb
 
 Instance admins can add backends in the UI:
 
-- **S3**: endpoint, keys, bucket, region, SSL, path-style — credentials encrypted in Postgres
-- **NFS**: filesystem path visible to the API container
-
-Compose mounts a writable demo volume at `/mnt/arkive-nfs`. For a real NFS share, bind-mount it into the `api` service (Docker/host networking required) and point the backend at that path.
+- **Local folder**: directory visible inside the API container. Compose mounts a volume at `/data/arkive`. Bind-mount a host path or NFS share over that (or another path) if you want the files on a specific disk.
+- **S3**: optional remote endpoint, keys, bucket, region, SSL, path-style — credentials encrypted in Postgres (Garage, SeaweedFS, or any S3-compatible host)
 
 Workspaces resolve their `BlobStore` from `storage_backend_id` (or the default backend).
 
@@ -213,10 +210,10 @@ Compose named volumes hold durable state:
 | Volume / path | Contents |
 |---------------|----------|
 | `postgres_data` | Users, workspaces, ACLs, share links, metadata |
-| `minio_data` | File blobs (default S3 backend) |
-| NFS / local mounts | Whatever paths you assigned as NFS backends |
+| `arkive_data` | File blobs for the default local folder (`/data/arkive`) |
+| Extra binds | Whatever host/NFS paths you assigned as additional local backends |
 
-Back up Postgres and object storage together for a consistent restore — see [`docs/backup.md`](docs/backup.md). Set `ARKIVE_ENV=production` with strong `ARKIVE_SESSION_SECRET` and `ARKIVE_SECRETS_KEY` (the API refuses to start on default secrets in production). Changing the secrets key invalidates encrypted S3 credentials stored in the DB — re-enter them after rotation. Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP). Soft-deleted trash is auto-purged after the Admin **trash retention** window (default 30 days; `0` disables). Licensed under MIT.
+Back up Postgres and the data directory together for a consistent restore — see [`docs/backup.md`](docs/backup.md). Set `ARKIVE_ENV=production` with strong `ARKIVE_SESSION_SECRET` and `ARKIVE_SECRETS_KEY` (the API refuses to start on default secrets in production). Changing the secrets key invalidates encrypted S3 credentials stored in the DB — re-enter them after rotation. Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP). Soft-deleted trash is auto-purged after the Admin **trash retention** window (default 30 days; `0` disables). Licensed under MIT.
 
 ## Out of scope (for now)
 

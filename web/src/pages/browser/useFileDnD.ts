@@ -12,6 +12,7 @@ function setCompactDragGhost(e: DragEvent, node: Node, count: number) {
 
   const ghost = document.createElement('div');
   ghost.setAttribute('data-arkive-drag-ghost', '1');
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
   Object.assign(ghost.style, {
     position: 'fixed',
     top: '-9999px',
@@ -21,18 +22,17 @@ function setCompactDragGhost(e: DragEvent, node: Node, count: number) {
     gap: '10px',
     padding: '8px 14px 8px 8px',
     maxWidth: '260px',
-    borderRadius: '12px',
-    border: '1px solid rgba(245, 158, 11, 0.4)',
-    background: 'rgba(22, 27, 34, 0.55)',
-    boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
-    color: 'rgba(232, 234, 237, 0.95)',
+    borderRadius: '6px',
+    border: dark ? '1px solid #3d434f' : '1px solid #cfcfc8',
+    background: dark ? '#1c1f25' : '#ffffff',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+    color: dark ? '#e8eaed' : '#1b1d21',
     fontSize: '13px',
     fontWeight: '600',
     lineHeight: '1.2',
-    opacity: '0.7',
+    opacity: '0.95',
     pointerEvents: 'none',
     zIndex: '99999',
-    backdropFilter: 'blur(6px)',
   } as Partial<CSSStyleDeclaration>);
 
   const thumbHost = row.querySelector('[data-drag-thumb]') as HTMLElement | null;
@@ -43,11 +43,10 @@ function setCompactDragGhost(e: DragEvent, node: Node, count: number) {
       width: '36px',
       height: '36px',
       overflow: 'hidden',
-      borderRadius: '8px',
+      borderRadius: '6px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      opacity: '0.9',
     });
     clone.querySelectorAll('img, video').forEach((media) => {
       const el = media as HTMLElement;

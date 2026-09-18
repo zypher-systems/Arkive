@@ -5,45 +5,25 @@
 #
 # Required in .env (no defaults):
 #   POSTGRES_PASSWORD
-#   MINIO_ROOT_USER
-#   MINIO_ROOT_PASSWORD
 #   ARKIVE_SESSION_SECRET
 #   ARKIVE_SECRETS_KEY
 #   ARKIVE_BOOTSTRAP_ADMIN_EMAIL
 #   ARKIVE_PUBLIC_URL          (https://arkive.example.com)
 #
-# Postgres and MinIO ports stay unpublished. Put Caddy/Traefik/nginx in front of
-# the web service (see deploy/).
+# Bind a host directory (or NFS mount) over /data/arkive on api if you do not
+# want the named arkive_data volume. Postgres port stays unpublished. Put
+# Caddy/Traefik/nginx in front of the web service (see deploy/).
 
 services:
   postgres:
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
 
-  minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
-
-  minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\"; do sleep 1; done;
-      mc mb --ignore-existing local/arkive;
-      exit 0;
-      "
-
   api:
     environment:
       ARKIVE_ENV: production
       ARKIVE_DATABASE_URL: postgres://arkive:${POSTGRES_PASSWORD}@postgres:5432/arkive?sslmode=disable
-      ARKIVE_S3_ACCESS_KEY: ${MINIO_ROOT_USER}
-      ARKIVE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      ARKIVE_DATA_DIR: ${ARKIVE_DATA_DIR:-/data/arkive}
       ARKIVE_SESSION_SECRET: ${ARKIVE_SESSION_SECRET:?set ARKIVE_SESSION_SECRET in .env}
       ARKIVE_SECRETS_KEY: ${ARKIVE_SECRETS_KEY:?set ARKIVE_SECRETS_KEY in .env}
       ARKIVE_BOOTSTRAP_ADMIN_EMAIL: ${ARKIVE_BOOTSTRAP_ADMIN_EMAIL:?set ARKIVE_BOOTSTRAP_ADMIN_EMAIL in .env}

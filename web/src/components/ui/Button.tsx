@@ -1,35 +1,26 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
-import { motion } from 'framer-motion';
 
-type Variant = 'primary' | 'glass' | 'ghost' | 'danger' | 'outline';
-type Size = 'xs' | 'sm' | 'md' | 'lg';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Size = 'xs' | 'sm' | 'md';
 
 const base =
-  'relative inline-flex cursor-pointer items-center justify-center gap-2 font-medium ' +
-  'transition-all duration-200 select-none whitespace-nowrap ' +
+  'inline-flex cursor-pointer items-center justify-center gap-2 font-medium whitespace-nowrap ' +
+  'transition-colors duration-150 select-none ' +
   'disabled:pointer-events-none disabled:opacity-50';
 
 const variants: Record<Variant, string> = {
-  primary:
-    'bg-iridescent text-white shadow-[0_4px_20px_rgba(139,92,246,0.35)] ' +
-    'hover:shadow-[0_6px_28px_rgba(139,92,246,0.5),0_0_20px_rgba(34,211,238,0.25)] hover:brightness-110',
-  glass:
-    'glass text-arkive-text hover:border-white/15 hover:bg-white/[0.06] ' +
-    'hover:shadow-[0_8px_28px_rgba(3,4,12,0.5)]',
-  outline:
-    'border border-arkive-border bg-transparent text-arkive-muted ' +
-    'hover:border-arkive-accent/60 hover:text-arkive-text hover:shadow-[0_0_16px_rgba(139,92,246,0.15)]',
-  ghost: 'text-arkive-muted hover:bg-white/[0.06] hover:text-arkive-text',
+  primary: 'bg-primary text-primary-fg hover:opacity-85',
+  secondary:
+    'border border-strong bg-surface text-ink hover:border-faint hover:bg-hover',
+  ghost: 'text-muted hover:bg-hover hover:text-ink',
   danger:
-    'border border-red-500/30 bg-red-500/10 text-red-300 ' +
-    'hover:border-red-400/60 hover:bg-red-500/20 hover:text-red-200 hover:shadow-[0_0_18px_rgba(239,68,68,0.25)]',
+    'border border-danger/50 bg-transparent text-danger hover:border-danger hover:bg-danger-soft',
 };
 
 const sizes: Record<Size, string> = {
-  xs: 'rounded-lg px-2 py-1 text-xs',
-  sm: 'rounded-lg px-2.5 py-1.5 text-xs',
-  md: 'rounded-xl px-3.5 py-2 text-sm',
-  lg: 'rounded-xl px-5 py-2.5 text-sm',
+  xs: 'rounded-md px-2 py-1 text-xs',
+  sm: 'rounded-md px-2.5 py-1.5 text-xs',
+  md: 'rounded-md px-3.5 py-2 text-sm',
 };
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -40,7 +31,7 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 export function Button({
-  variant = 'glass',
+  variant = 'secondary',
   size = 'md',
   icon,
   full,
@@ -49,15 +40,13 @@ export function Button({
   ...rest
 }: ButtonProps) {
   return (
-    <motion.button
-      whileTap={{ scale: 0.97 }}
-      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+    <button
       className={`${base} ${variants[variant]} ${sizes[size]} ${full ? 'w-full' : ''} ${className}`}
-      {...(rest as object)}
+      {...rest}
     >
       {icon}
       {children}
-    </motion.button>
+    </button>
   );
 }
 
@@ -76,17 +65,15 @@ export function IconButton({
   ...rest
 }: IconButtonProps) {
   const pad =
-    size === 'md' ? 'h-9 w-9 rounded-xl' : size === 'xs' ? 'h-6 w-6 rounded-md' : 'h-8 w-8 rounded-lg';
+    size === 'md' ? 'h-8 w-8 rounded-md' : size === 'xs' ? 'h-6 w-6 rounded' : 'h-7 w-7 rounded-md';
   return (
-    <motion.button
-      whileTap={{ scale: 0.92 }}
-      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+    <button
       title={label}
       aria-label={label}
       className={`${base} ${variants[variant]} ${pad} !px-0 ${className}`}
-      {...(rest as object)}
+      {...rest}
     >
       {children}
-    </motion.button>
+    </button>
   );
 }

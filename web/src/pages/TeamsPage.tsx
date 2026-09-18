@@ -1,20 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { motion } from 'framer-motion';
 import {
-  AlertCircle,
-  Check,
-  Copy,
-  KeyRound,
-  Mail,
-  RefreshCw,
-  Send,
-  UserPlus,
-  UserX,
-  Users,
-} from 'lucide-react';
+  CheckIcon,
+  CopyIcon,
+  KeyIcon,
+  MailIcon,
+  RefreshIcon,
+  SendIcon,
+  UserMinusIcon,
+  UserPlusIcon,
+} from '../components/icons';
 import { api, type Workspace, type WorkspaceMember } from '../lib/api';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { Notice } from '../components/ui/Notice';
 import { useAuth } from '../lib/auth';
 import { useConfirm } from '../lib/confirm';
 
@@ -107,34 +105,22 @@ export function TeamsPage() {
   const canManage = current?.role === 'owner' || current?.role === 'admin';
 
   return (
-    <div>
+    <div className="animate-fade-in">
       <div className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">
-          <span className="text-iridescent">Teams</span>
-        </h1>
-        <p className="mt-1 text-sm text-arkive-muted">
+        <h1 className="text-xl font-semibold tracking-tight">Teams</h1>
+        <p className="mt-0.5 text-[13px] text-muted">
           Shared workspaces with invite tokens. Send an email when SMTP is configured.
         </p>
       </div>
 
-      {error && (
-        <p className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
-          <AlertCircle size={15} className="shrink-0" />
-          {error}
-        </p>
-      )}
+      {error && <Notice kind="error" className="mb-4">{error}</Notice>}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <motion.form
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <form
           onSubmit={createTeam}
-          className="glass glass-hairline rounded-3xl p-5"
+          className="panel p-5"
         >
-          <h2 className="mb-3 flex items-center gap-2.5 font-display text-lg font-semibold">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
-              <Users size={15} />
-            </span>
+          <h2 className="mb-3 text-[15px] font-semibold">
             Create team
           </h2>
           <input
@@ -142,24 +128,18 @@ export function TeamsPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Team name"
-            className="input-glass mb-3"
+            className="input-field mb-3"
           />
-          <Button type="submit" variant="primary" icon={<UserPlus size={14} />} className="font-semibold">
+          <Button type="submit" variant="primary" icon={<UserPlusIcon size={14} />}>
             Create
           </Button>
-        </motion.form>
+        </form>
 
-        <motion.form
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
+        <form
           onSubmit={joinTeam}
-          className="glass glass-hairline rounded-3xl p-5"
+          className="panel p-5"
         >
-          <h2 className="mb-3 flex items-center gap-2.5 font-display text-lg font-semibold">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
-              <KeyRound size={15} />
-            </span>
+          <h2 className="mb-3 text-[15px] font-semibold">
             Join with invite
           </h2>
           <input
@@ -167,21 +147,21 @@ export function TeamsPage() {
             value={joinToken}
             onChange={(e) => setJoinToken(e.target.value)}
             placeholder="Invite token"
-            className="input-glass mb-3 font-mono"
+            className="input-field mb-3 font-mono"
           />
-          <Button type="submit" variant="glass" icon={<UserPlus size={14} />}>
+          <Button type="submit" variant="secondary" icon={<UserPlusIcon size={14} />}>
             Join team
           </Button>
-        </motion.form>
+        </form>
       </div>
 
-      <Card className="mt-8 p-5">
+      <Card className="mt-6 p-5">
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <h2 className="font-display text-lg font-semibold">Your teams</h2>
+          <h2 className="text-[15px] font-semibold">Your teams</h2>
           <select
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
-            className="input-glass w-auto cursor-pointer !py-1.5 text-sm [&>option]:bg-arkive-surface"
+            className="input-field w-auto cursor-pointer !py-1.5 text-sm"
           >
             {teams.length === 0 && <option value="">No teams yet</option>}
             {teams.map((t) => (
@@ -194,18 +174,18 @@ export function TeamsPage() {
 
         {current && (
           <>
-            <div className="mb-5 rounded-2xl border border-white/7 bg-black/20 p-4">
-              <p className="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-[0.12em] text-arkive-muted uppercase">
-                <KeyRound size={12} className="text-arkive-accent2" /> Invite token
+            <div className="mb-5 rounded-md border border-line bg-inset p-4">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                <KeyIcon size={12} /> Invite token
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <code className="rounded-xl border border-white/8 bg-black/35 px-3 py-2 font-mono text-xs text-arkive-accent2 shadow-[0_0_14px_rgba(34,211,238,0.12)]">
+                <code className="rounded border border-line bg-surface px-3 py-2 font-mono text-xs text-accent-strong">
                   {inviteToken || '—'}
                 </code>
                 <Button
                   size="xs"
-                  variant="glass"
-                  icon={copied ? <Check size={12} className="text-emerald-300" /> : <Copy size={12} />}
+                  variant="secondary"
+                  icon={copied ? <CheckIcon size={12} className="text-ok" /> : <CopyIcon size={12} />}
                   onClick={() => void copyInvite()}
                 >
                   {copied ? 'Copied' : 'Copy'}
@@ -213,8 +193,8 @@ export function TeamsPage() {
                 {canManage && (
                   <Button
                     size="xs"
-                    variant="glass"
-                    icon={<RefreshCw size={12} />}
+                    variant="secondary"
+                    icon={<RefreshIcon size={12} />}
                     onClick={() => void rotate().catch((e) => setError(String(e)))}
                   >
                     Rotate
@@ -243,30 +223,30 @@ export function TeamsPage() {
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     placeholder="Send invite to email"
-                    className="input-glass min-w-48 flex-1 !py-1.5 text-sm"
+                    className="input-field min-w-48 flex-1 !py-1.5 text-sm"
                   />
-                  <Button type="submit" size="sm" variant="glass" icon={<Send size={12} />}>
+                  <Button type="submit" size="sm" variant="secondary" icon={<SendIcon size={12} />}>
                     Send invite
                   </Button>
                 </form>
               )}
               {inviteInfo && (
-                <p className="mt-2 flex items-center gap-1.5 text-xs text-emerald-300">
-                  <Mail size={12} /> {inviteInfo}
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-ok">
+                  <MailIcon size={12} /> {inviteInfo}
                 </p>
               )}
             </div>
 
-            <ul className="divide-y divide-white/5">
+            <ul className="divide-y divide-line">
               {members.map((m) => (
                 <li key={m.user_id} className="group flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-arkive-accent/40 to-arkive-accent2/30 font-display text-sm font-bold text-white ring-1 ring-white/15">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-hover text-[13px] font-semibold text-muted">
                       {(m.display_name || m.email || '?').trim().charAt(0).toUpperCase()}
                     </span>
                     <div className="min-w-0">
                       <div className="truncate font-medium">{m.display_name}</div>
-                      <div className="truncate text-xs text-arkive-muted">{m.email}</div>
+                      <div className="truncate text-xs text-muted">{m.email}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -279,7 +259,7 @@ export function TeamsPage() {
                             .then(refresh)
                             .catch((err) => setError(String(err)))
                         }
-                        className="cursor-pointer rounded-lg border border-white/8 bg-black/30 px-2 py-1 text-xs text-arkive-muted outline-none transition hover:border-arkive-accent/50 hover:text-arkive-text [&>option]:bg-arkive-surface"
+                        className="input-field w-auto cursor-pointer !py-1 text-xs"
                       >
                         <option value="admin">admin</option>
                         <option value="member">member</option>
@@ -288,8 +268,8 @@ export function TeamsPage() {
                     ) : (
                       <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${
                         m.role === 'owner'
-                          ? 'bg-arkive-accent/15 text-violet-300 ring-arkive-accent/30'
-                          : 'bg-white/6 text-arkive-muted ring-white/10'
+                          ? 'bg-accent-soft text-accent-strong ring-accent/40'
+                          : 'bg-inset text-muted ring-line'
                       }`}>
                         {m.role}
                       </span>
@@ -298,8 +278,8 @@ export function TeamsPage() {
                       <Button
                         size="xs"
                         variant="ghost"
-                        icon={<UserX size={12} />}
-                        className="hover:!bg-red-500/12 hover:!text-red-300"
+                        icon={<UserMinusIcon size={12} />}
+                        className="hover:!bg-danger-soft hover:!text-danger"
                         onClick={() =>
                           ask({
                             title: 'Remove member',

@@ -1,14 +1,14 @@
 import { useRef, type MouseEvent as ReactMouseEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
-  Eye,
-  FolderOpen,
-  History,
-  Pencil,
-  SearchX,
-  Share2,
-  Trash2,
-} from 'lucide-react';
+  FolderOpenIcon,
+  HistoryIcon,
+  PencilIcon,
+  PreviewIcon,
+  SearchIcon,
+  ShareIcon,
+  TrashIcon,
+} from '../icons';
 import { formatBytes, isPreviewable, type Node } from '../../lib/api';
 import { fileTypeLabel } from './types';
 import { FileThumb } from './FileThumb';
@@ -35,13 +35,13 @@ export type FileViewHandlers = {
 
 function dropClass(node: Node, dropTargetId: string | null) {
   return node.kind === 'folder' && dropTargetId === node.id
-    ? 'ring-2 ring-inset ring-arkive-accent/80 bg-arkive-accent/12 shadow-[inset_0_0_24px_rgba(139,92,246,0.18)]'
+    ? 'bg-accent-soft shadow-[inset_0_0_0_2px_var(--accent)]'
     : '';
 }
 
 function selectedClass(selected: boolean) {
   return selected
-    ? 'bg-arkive-accent/10 shadow-[inset_2px_0_0_rgba(139,92,246,0.9),inset_0_0_0_1px_rgba(139,92,246,0.18)]'
+    ? 'bg-accent-soft shadow-[inset_2px_0_0_var(--accent)]'
     : '';
 }
 
@@ -61,19 +61,19 @@ function RowActions({ node, h }: { node: Node; h: FileViewHandlers }) {
     >
       {node.kind === 'file' && isPreviewable(node) && (
         <IconButton label="Preview" onClick={() => h.onPreview(node)}>
-          <Eye size={14} />
+          <PreviewIcon size={14} />
         </IconButton>
       )}
       {node.kind === 'file' && (
         <IconButton label="History" onClick={() => h.onHistory(node)}>
-          <History size={14} />
+          <HistoryIcon size={14} />
         </IconButton>
       )}
       <IconButton label="Share" onClick={() => h.onShare(node)}>
-        <Share2 size={14} />
+        <ShareIcon size={14} />
       </IconButton>
       <IconButton label="Rename" onClick={() => h.onRename(node)}>
-        <Pencil size={14} />
+        <PencilIcon size={14} />
       </IconButton>
       <IconButton
         label="Delete"
@@ -82,9 +82,9 @@ function RowActions({ node, h }: { node: Node; h: FileViewHandlers }) {
           e.stopPropagation();
           h.onDelete(node);
         }}
-        className="hover:!bg-red-500/15 hover:!text-red-300"
+        className="hover:!bg-danger-soft hover:!text-danger"
       >
-        <Trash2 size={14} />
+        <TrashIcon size={14} />
       </IconButton>
     </div>
   );
@@ -96,19 +96,27 @@ function isRowOpenTarget(target: EventTarget | null) {
 
 function EmptyPane({ results }: { results: boolean }) {
   return results ? (
-    <EmptyState icon={<SearchX size={26} />} title="No matches" hint="Try a different search term." />
+    <EmptyState icon={<SearchIcon size={18} />} title="No matches" hint="Try a different search term." />
   ) : (
     <EmptyState
-      icon={<FolderOpen size={26} />}
+      icon={<FolderOpenIcon size={18} />}
       title="This folder is empty"
       hint="Right-click for New file / New folder, or drop files anywhere to upload."
     />
   );
 }
 
-const LIST_ROW_ESTIMATE = 64;
-const DETAILS_ROW_ESTIMATE = 48;
-const TILE_ROW_ESTIMATE = 220;
+const LIST_ROW_ESTIMATE = 60;
+const DETAILS_ROW_ESTIMATE = 44;
+const TILE_ROW_ESTIMATE = 216;
+
+function EmptyShell({ results }: { results: boolean }) {
+  return (
+    <div className="panel flex min-h-full flex-1 flex-col overflow-hidden">
+      <EmptyPane results={results} />
+    </div>
+  );
+}
 
 export function FileListView({
   nodes,
@@ -128,17 +136,13 @@ export function FileListView({
   });
 
   if (nodes.length === 0) {
-    return (
-      <div className="glass glass-hairline flex min-h-full flex-1 flex-col overflow-hidden rounded-2xl">
-        <EmptyPane results={results} />
-      </div>
-    );
+    return <EmptyShell results={results} />;
   }
 
   return (
     <div
       ref={parentRef}
-      className="glass glass-hairline scroll-slim min-h-full flex-1 overflow-auto rounded-2xl"
+      className="panel scroll-slim min-h-full flex-1 overflow-auto"
     >
       <div
         className="relative w-full"
@@ -168,7 +172,7 @@ export function FileListView({
               }}
               onKeyDown={(e) => rowOpenKey(e, node, h.onOpen)}
               tabIndex={0}
-              className={`group absolute left-0 top-0 flex w-full cursor-pointer select-none flex-wrap items-center gap-3 border-b border-white/4 px-4 py-3 transition-colors duration-150 hover:bg-white/[0.045] ${selectedClass(
+              className={`group absolute left-0 top-0 flex w-full cursor-pointer select-none flex-wrap items-center gap-3 border-b border-line px-3 py-2 transition-colors duration-150 last:border-b-0 hover:bg-hover ${selectedClass(
                 h.selected.has(node.id),
               )} ${dropClass(node, h.dropTargetId)}`}
               style={{ transform: `translateY(${item.start}px)` }}
@@ -181,7 +185,7 @@ export function FileListView({
                   onChange={() => undefined}
                   onClick={(e) => h.onToggleSelect(node.id, e)}
                   onMouseDown={(e) => e.stopPropagation()}
-                  className="h-4 w-4 cursor-pointer accent-arkive-accent"
+                  className="cursor-pointer"
                 />
               )}
               <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
@@ -189,8 +193,8 @@ export function FileListView({
                   <FileThumb node={node} size="sm" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate font-medium">{node.name}</span>
-                  <span className="text-xs text-arkive-muted">
+                  <span className="block truncate text-sm font-medium">{node.name}</span>
+                  <span className="text-xs text-muted">
                     {node.kind === 'file' ? formatBytes(node.size) : 'Folder'}
                   </span>
                 </span>
@@ -223,15 +227,15 @@ export function FileDetailsView({
 
   if (nodes.length === 0) {
     return (
-      <div className="glass glass-hairline flex min-h-full flex-1 flex-col overflow-hidden rounded-2xl">
-        <div className="border-b border-white/5 text-xs tracking-wider text-arkive-muted uppercase">
+      <div className="panel flex min-h-full flex-1 flex-col overflow-hidden">
+        <div className="border-b border-line text-[11px] font-semibold tracking-wide text-faint uppercase">
           <div className="flex w-full text-left">
-            {!results && <div className="w-10 shrink-0 px-3 py-2.5" />}
-            <div className="min-w-0 flex-1 px-3 py-2.5 font-medium">Name</div>
-            <div className="hidden w-24 shrink-0 px-3 py-2.5 font-medium sm:block">Size</div>
-            <div className="hidden w-44 shrink-0 px-3 py-2.5 font-medium md:block">Modified</div>
-            <div className="hidden w-20 shrink-0 px-3 py-2.5 font-medium lg:block">Type</div>
-            <div className="w-40 shrink-0 px-3 py-2.5 font-medium" />
+            {!results && <div className="w-9 shrink-0 px-3 py-2" />}
+            <div className="min-w-0 flex-1 px-3 py-2">Name</div>
+            <div className="hidden w-24 shrink-0 px-3 py-2 sm:block">Size</div>
+            <div className="hidden w-44 shrink-0 px-3 py-2 md:block">Modified</div>
+            <div className="hidden w-20 shrink-0 px-3 py-2 lg:block">Type</div>
+            <div className="w-40 shrink-0 px-3 py-2" />
           </div>
         </div>
         <EmptyPane results={results} />
@@ -240,15 +244,15 @@ export function FileDetailsView({
   }
 
   return (
-    <div className="glass glass-hairline flex min-h-full flex-1 flex-col overflow-hidden rounded-2xl">
-      <div className="border-b border-white/6 bg-white/[0.02] text-[11px] font-semibold tracking-[0.12em] text-arkive-muted uppercase">
+    <div className="panel flex min-h-full flex-1 flex-col overflow-hidden">
+      <div className="border-b border-line bg-inset text-[11px] font-semibold tracking-wide text-faint uppercase">
         <div className="flex w-full text-left">
-          {!results && <div className="w-10 shrink-0 px-3 py-2.5" />}
-          <div className="min-w-0 flex-1 px-3 py-2.5">Name</div>
-          <div className="hidden w-24 shrink-0 px-3 py-2.5 sm:block">Size</div>
-          <div className="hidden w-44 shrink-0 px-3 py-2.5 md:block">Modified</div>
-          <div className="hidden w-20 shrink-0 px-3 py-2.5 lg:block">Type</div>
-          <div className="w-40 shrink-0 px-3 py-2.5" />
+          {!results && <div className="w-9 shrink-0 px-3 py-2" />}
+          <div className="min-w-0 flex-1 px-3 py-2">Name</div>
+          <div className="hidden w-24 shrink-0 px-3 py-2 sm:block">Size</div>
+          <div className="hidden w-44 shrink-0 px-3 py-2 md:block">Modified</div>
+          <div className="hidden w-20 shrink-0 px-3 py-2 lg:block">Type</div>
+          <div className="w-40 shrink-0 px-3 py-2" />
         </div>
       </div>
       <div ref={parentRef} className="scroll-slim min-h-0 flex-1 overflow-auto">
@@ -275,14 +279,14 @@ export function FileDetailsView({
                   }
                   if (isRowOpenTarget(e.target)) h.onOpen(node);
                 }}
-                className={`group absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-white/4 text-sm transition-colors duration-150 hover:bg-white/[0.045] ${selectedClass(
+                className={`group absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-line text-sm transition-colors duration-150 last:border-b-0 hover:bg-hover ${selectedClass(
                   h.selected.has(node.id),
                 )} ${dropClass(node, h.dropTargetId)}`}
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 {!results && (
                   <div
-                    className="flex w-10 shrink-0 items-center px-3 py-2"
+                    className="flex w-9 shrink-0 items-center px-3 py-2"
                     data-no-row-open
                     onMouseDown={(e) => e.stopPropagation()}
                   >
@@ -291,7 +295,7 @@ export function FileDetailsView({
                       checked={h.selected.has(node.id)}
                       onChange={() => undefined}
                       onClick={(e) => h.onToggleSelect(node.id, e)}
-                      className="h-4 w-4 cursor-pointer accent-arkive-accent"
+                      className="cursor-pointer"
                     />
                   </div>
                 )}
@@ -301,13 +305,13 @@ export function FileDetailsView({
                   </span>
                   <span className="truncate font-medium">{node.name}</span>
                 </div>
-                <div className="hidden w-24 shrink-0 px-3 py-2 text-arkive-muted sm:block">
+                <div className="hidden w-24 shrink-0 px-3 py-2 text-muted sm:block">
                   {node.kind === 'file' ? formatBytes(node.size) : '—'}
                 </div>
-                <div className="hidden w-44 shrink-0 px-3 py-2 text-arkive-muted md:block">
+                <div className="hidden w-44 shrink-0 px-3 py-2 text-muted md:block">
                   {new Date(node.updated_at).toLocaleString()}
                 </div>
-                <div className="hidden w-20 shrink-0 px-3 py-2 text-arkive-muted lg:block">
+                <div className="hidden w-20 shrink-0 px-3 py-2 text-muted lg:block">
                   {fileTypeLabel(node)}
                 </div>
                 <div className="flex w-40 shrink-0 items-center justify-end px-3 py-2">
@@ -342,11 +346,7 @@ export function FileTilesView({
   });
 
   if (nodes.length === 0) {
-    return (
-      <div className="glass glass-hairline flex min-h-full flex-1 flex-col overflow-hidden rounded-2xl">
-        <EmptyPane results={results} />
-      </div>
-    );
+    return <EmptyShell results={results} />;
   }
 
   return (
@@ -383,9 +383,9 @@ export function FileTilesView({
                   }}
                   onKeyDown={(e) => rowOpenKey(e, node, h.onOpen)}
                   tabIndex={0}
-                  className={`group relative cursor-pointer select-none overflow-hidden rounded-2xl border border-white/7 bg-white/[0.03] backdrop-blur-md transition-all duration-200 hover:-translate-y-1 hover:border-white/14 hover:bg-white/[0.06] hover:shadow-[0_16px_40px_rgba(3,4,12,0.55),0_0_24px_rgba(139,92,246,0.12)] ${
+                  className={`group relative cursor-pointer select-none overflow-hidden rounded-lg border border-line bg-surface shadow-xs transition-colors duration-150 hover:border-strong ${
                     h.selected.has(node.id)
-                      ? 'border-arkive-accent/60 bg-arkive-accent/10 shadow-[0_0_0_1px_rgba(139,92,246,0.4),0_0_24px_rgba(139,92,246,0.2)]'
+                      ? 'border-accent bg-accent-soft shadow-[inset_0_0_0_1px_var(--accent)]'
                       : ''
                   } ${dropClass(node, h.dropTargetId)}`}
                 >
@@ -397,24 +397,21 @@ export function FileTilesView({
                       onChange={() => undefined}
                       onClick={(e) => h.onToggleSelect(node.id, e)}
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="absolute left-2.5 top-2.5 z-10 h-4 w-4 cursor-pointer accent-arkive-accent"
+                      className="absolute left-2.5 top-2.5 z-10 cursor-pointer"
                     />
                   )}
                   <div className="flex w-full flex-col text-left">
                     <div
                       data-drag-thumb
-                      className="aspect-square overflow-hidden bg-gradient-to-b from-white/[0.05] to-transparent"
+                      className="aspect-square overflow-hidden border-b border-line bg-inset"
                     >
-                      <div className="h-full w-full transition-transform duration-300 ease-out group-hover:scale-[1.04]">
-                        <FileThumb node={node} size="lg" />
-                      </div>
+                      <FileThumb node={node} size="lg" />
                     </div>
                     <div className="truncate px-3 pt-2 text-sm font-medium">{node.name}</div>
-                    <div className="px-3 pb-2.5 pt-0.5 text-xs text-arkive-muted">
+                    <div className="px-3 pb-2.5 pt-0.5 text-xs text-muted">
                       {node.kind === 'file' ? formatBytes(node.size) : 'Folder'}
                     </div>
                   </div>
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/40 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
                 </div>
               ))}
             </div>

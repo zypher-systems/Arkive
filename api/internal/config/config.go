@@ -21,6 +21,7 @@ type Config struct {
 	CookieSecure        bool
 	MigrationsDir       string
 	MaxUploadBytes      int64
+	DataDir             string
 	S3Endpoint          string
 	S3AccessKey         string
 	S3SecretKey         string
@@ -55,10 +56,11 @@ func Load() Config {
 		CookieSecure:        getenvBool("ARKIVE_COOKIE_SECURE", false),
 		MigrationsDir:       getenv("ARKIVE_MIGRATIONS_DIR", "migrations"),
 		MaxUploadBytes:      getenvInt64("ARKIVE_MAX_UPLOAD_BYTES", 10*1024*1024*1024),
-		S3Endpoint:          getenv("ARKIVE_S3_ENDPOINT", "localhost:9000"),
-		S3AccessKey:         getenv("ARKIVE_S3_ACCESS_KEY", "arkive"),
-		S3SecretKey:         getenv("ARKIVE_S3_SECRET_KEY", "arkivesecret"),
-		S3Bucket:            getenv("ARKIVE_S3_BUCKET", "arkive"),
+		DataDir:             getenv("ARKIVE_DATA_DIR", "/data/arkive"),
+		S3Endpoint:          strings.TrimSpace(getenv("ARKIVE_S3_ENDPOINT", "")),
+		S3AccessKey:         getenv("ARKIVE_S3_ACCESS_KEY", ""),
+		S3SecretKey:         getenv("ARKIVE_S3_SECRET_KEY", ""),
+		S3Bucket:            getenv("ARKIVE_S3_BUCKET", ""),
 		S3UseSSL:            getenvBool("ARKIVE_S3_USE_SSL", false),
 		S3Region:            getenv("ARKIVE_S3_REGION", "us-east-1"),
 		OIDCIssuer:          strings.TrimSpace(getenv("ARKIVE_OIDC_ISSUER", "")),

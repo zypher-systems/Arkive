@@ -76,8 +76,8 @@ func (h *BackendHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSpace(req.Name)
-	if name == "" || (req.Type != "s3" && req.Type != "nfs" && req.Type != "webdav" && req.Type != "internxt") {
-		httpjson.Error(w, http.StatusBadRequest, "name and type (s3|nfs|webdav|internxt) required")
+	if name == "" || !validBackendType(req.Type) {
+		httpjson.Error(w, http.StatusBadRequest, "name and type (s3|local|nfs|webdav|internxt) required")
 		return
 	}
 	raw, err := h.normalizeConfig(req.Type, req.Config, nil)
@@ -319,7 +319,7 @@ func (h *BackendHandler) normalizeConfig(typ string, incoming json.RawMessage, e
 			cfg.Region = "us-east-1"
 		}
 		return h.App.EncryptAndMarshalS3(cfg)
-	case "nfs":
+	case "nfs", "local":
 		var cfg crypto.NFSConfig
 		if err := json.Unmarshal(incoming, &cfg); err != nil {
 			return nil, err
@@ -355,6 +355,15 @@ func (h *BackendHandler) normalizeConfig(typ string, incoming json.RawMessage, e
 		return crypto.EncryptWebDAVConfig(h.App.Cfg.SecretsKey, cfg)
 	default:
 		return nil, errString("unsupported type")
+	}
+}
+
+func validBackendType(typ string) bool {
+	switch typ {
+	case "s3", "local", "nfs", "webdav", "internxt":
+		return true
+	default:
+		return false
 	}
 }
 

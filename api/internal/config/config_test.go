@@ -2,6 +2,18 @@ package config
 
 import "testing"
 
+func TestLoadDefaultStorageEnv(t *testing.T) {
+	t.Setenv("ARKIVE_S3_ENDPOINT", "")
+	t.Setenv("ARKIVE_DATA_DIR", "")
+	cfg := Load()
+	if cfg.S3Endpoint != "" {
+		t.Fatalf("S3 endpoint should be empty, got %q", cfg.S3Endpoint)
+	}
+	if cfg.DataDir != "/data/arkive" {
+		t.Fatalf("data dir=%q", cfg.DataDir)
+	}
+}
+
 func TestValidateSecretsProduction(t *testing.T) {
 	weak := Config{Env: "production", SessionSecret: DefaultDevSessionSecret, SecretsKey: "ok-key-with-entropy"}
 	if err := weak.ValidateSecrets(); err == nil {

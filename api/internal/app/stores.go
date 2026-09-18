@@ -116,7 +116,7 @@ func (a *App) buildStore(ctx context.Context, backendID uuid.UUID, typ string, r
 			UseSSL:         cfg.UseSSL,
 			ForcePathStyle: cfg.ForcePathStyle,
 		})
-	case "nfs":
+	case "nfs", "local":
 		cfg, err := crypto.ParseNFSConfig(raw)
 		if err != nil {
 			return nil, err
@@ -217,7 +217,7 @@ func (a *App) BackendPublicConfig(typ string, raw []byte) (map[string]any, error
 			return nil, err
 		}
 		return crypto.RedactS3Config(cfg), nil
-	case "nfs":
+	case "nfs", "local":
 		cfg, err := crypto.ParseNFSConfig(raw)
 		if err != nil {
 			return nil, err

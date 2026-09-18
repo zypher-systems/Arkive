@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/arkive/arkive/internal/config"
@@ -28,21 +31,39 @@ func (a *App) SeedDefaultBackend(ctx context.Context) error {
 	if n > 0 {
 		return nil
 	}
-	raw, err := a.EncryptAndMarshalS3(crypto.S3Config{
-		Endpoint:       a.Cfg.S3Endpoint,
-		AccessKey:      a.Cfg.S3AccessKey,
-		SecretKey:      a.Cfg.S3SecretKey,
-		Bucket:         a.Cfg.S3Bucket,
-		Region:         a.Cfg.S3Region,
-		UseSSL:         a.Cfg.S3UseSSL,
-		ForcePathStyle: true,
-	})
+	if strings.TrimSpace(a.Cfg.S3Endpoint) != "" {
+		raw, err := a.EncryptAndMarshalS3(crypto.S3Config{
+			Endpoint:       a.Cfg.S3Endpoint,
+			AccessKey:      a.Cfg.S3AccessKey,
+			SecretKey:      a.Cfg.S3SecretKey,
+			Bucket:         a.Cfg.S3Bucket,
+			Region:         a.Cfg.S3Region,
+			UseSSL:         a.Cfg.S3UseSSL,
+			ForcePathStyle: true,
+		})
+		if err != nil {
+			return err
+		}
+		_, err = a.DB.Exec(ctx, `
+			INSERT INTO storage_backends (name, type, config, is_default)
+			VALUES ('Default S3', 's3', $1::jsonb, TRUE)
+		`, raw)
+		return err
+	}
+	dir := strings.TrimSpace(a.Cfg.DataDir)
+	if dir == "" {
+		dir = "/data/arkive"
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(crypto.NFSConfig{MountPath: dir})
 	if err != nil {
 		return err
 	}
 	_, err = a.DB.Exec(ctx, `
 		INSERT INTO storage_backends (name, type, config, is_default)
-		VALUES ('Default MinIO', 's3', $1::jsonb, TRUE)
+		VALUES ('Default local', 'local', $1::jsonb, TRUE)
 	`, raw)
 	return err
 }

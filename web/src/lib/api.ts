@@ -74,7 +74,7 @@ export type PublicLink = {
 export type StorageBackend = {
   id: string;
   name: string;
-  type: 's3' | 'nfs' | 'gdrive' | 'webdav' | 'internxt';
+  type: 's3' | 'local' | 'nfs' | 'gdrive' | 'webdav' | 'internxt';
   config: Record<string, unknown>;
   is_default: boolean;
   created_at: string;

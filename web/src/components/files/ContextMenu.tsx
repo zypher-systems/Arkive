@@ -1,21 +1,20 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { motion } from 'framer-motion';
 import {
-  Clipboard,
-  ExternalLink,
-  Copy,
-  Download,
-  Eye,
-  FilePlus2,
-  FolderInput,
-  FolderPlus,
-  FolderSymlink,
-  History,
-  Pencil,
-  Share2,
-  Trash2,
-  Upload,
-} from 'lucide-react';
+  CopyIcon,
+  DownloadIcon,
+  FilePlusIcon,
+  FolderCopyIcon,
+  FolderMoveIcon,
+  FolderPlusIcon,
+  HistoryIcon,
+  OpenIcon,
+  PasteIcon,
+  PencilIcon,
+  PreviewIcon,
+  ShareIcon,
+  TrashIcon,
+  UploadIcon,
+} from '../icons';
 import { downloadUrl, isPreviewable, type Node } from '../../lib/api';
 import { isTextNode, type ContextMenuState } from './types';
 
@@ -54,21 +53,21 @@ function Item({
   return (
     <button
       type="button"
-      className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors ${
+      className={`flex w-full cursor-pointer items-center gap-2.5 rounded px-2.5 py-1.5 text-left text-[13px] transition-colors ${
         danger
-          ? 'text-red-300/90 hover:bg-red-500/12 hover:text-red-200'
-          : 'text-arkive-text/90 hover:bg-white/[0.07] hover:text-white'
+          ? 'text-danger hover:bg-danger-soft'
+          : 'text-ink hover:bg-hover'
       }`}
       onClick={onClick}
     >
-      <span className={`shrink-0 ${danger ? '' : 'text-arkive-muted'}`}>{icon}</span>
+      <span className={`shrink-0 ${danger ? '' : 'text-muted'}`}>{icon}</span>
       {label}
     </button>
   );
 }
 
 function Divider() {
-  return <div className="my-1.5 border-t border-white/6" />;
+  return <div className="my-1 border-t border-line" />;
 }
 
 export function ContextMenu({
@@ -117,13 +116,10 @@ export function ContextMenu({
   };
 
   return (
-    <motion.div
+    <div
       ref={ref}
       style={style}
-      initial={{ opacity: 0, scale: 0.94, y: -4 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ type: 'spring', stiffness: 480, damping: 30 }}
-      className="glass-strong glass-hairline fixed z-[80] min-w-52 origin-top-left overflow-hidden rounded-2xl p-1.5 shadow-[0_20px_60px_rgba(3,4,12,0.7)]"
+      className="animate-fade-in fixed z-[80] min-w-52 origin-top-left rounded-md border border-line bg-surface p-1 shadow-md"
       onContextMenu={(e) => e.preventDefault()}
     >
       {menu.kind === 'pane' ? (
@@ -132,7 +128,7 @@ export function ContextMenu({
             <>
               <Item
                 label="New folder"
-                icon={<FolderPlus size={15} />}
+                icon={<FolderPlusIcon size={14} />}
                 onClick={() => {
                   onNewFolder();
                   onClose();
@@ -141,7 +137,7 @@ export function ContextMenu({
               {onNewFile && (
                 <Item
                   label="New file"
-                  icon={<FilePlus2 size={15} />}
+                  icon={<FilePlusIcon size={14} />}
                   onClick={() => {
                     onNewFile();
                     onClose();
@@ -153,7 +149,7 @@ export function ContextMenu({
           {canWrite && (
             <Item
               label="Upload"
-              icon={<Upload size={15} />}
+              icon={<UploadIcon size={14} />}
               onClick={() => {
                 onUpload();
                 onClose();
@@ -163,7 +159,7 @@ export function ContextMenu({
           {canWrite && canPaste && onPaste && (
             <Item
               label="Paste"
-              icon={<Clipboard size={15} />}
+              icon={<PasteIcon size={14} />}
               onClick={() => {
                 onPaste();
                 onClose();
@@ -175,7 +171,7 @@ export function ContextMenu({
         <>
           <Item
             label="Open"
-            icon={<ExternalLink size={15} />}
+            icon={<OpenIcon size={14} />}
             onClick={() => {
               onOpen(menu.node);
               onClose();
@@ -184,7 +180,7 @@ export function ContextMenu({
           {isPreviewable(menu.node) && (
             <Item
               label="Preview"
-              icon={<Eye size={15} />}
+              icon={<PreviewIcon size={14} />}
               onClick={() => {
                 onPreview(menu.node);
                 onClose();
@@ -194,7 +190,7 @@ export function ContextMenu({
           {canWrite && onEdit && isTextNode(menu.node) && (
             <Item
               label="Edit"
-              icon={<Pencil size={15} />}
+              icon={<PencilIcon size={14} />}
               onClick={() => {
                 onEdit(menu.node);
                 onClose();
@@ -204,18 +200,18 @@ export function ContextMenu({
           {menu.node.kind === 'file' && (
             <a
               href={downloadUrl(menu.node.id)}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm text-arkive-text/90 transition-colors hover:bg-white/[0.07] hover:text-white"
+              className="flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-left text-[13px] text-ink transition-colors hover:bg-hover"
               onClick={onClose}
             >
-              <span className="shrink-0 text-arkive-muted">
-                <Download size={15} />
+              <span className="shrink-0 text-muted">
+                <DownloadIcon size={14} />
               </span>
               Download
             </a>
           )}
           <Item
             label="Share"
-            icon={<Share2 size={15} />}
+            icon={<ShareIcon size={14} />}
             onClick={() => {
               onShare(menu.node);
               onClose();
@@ -224,7 +220,7 @@ export function ContextMenu({
           {menu.node.kind === 'file' && (
             <Item
               label="History"
-              icon={<History size={15} />}
+              icon={<HistoryIcon size={14} />}
               onClick={() => {
                 onHistory(menu.node);
                 onClose();
@@ -236,7 +232,7 @@ export function ContextMenu({
               <Divider />
               <Item
                 label="Rename"
-                icon={<Pencil size={15} />}
+                icon={<PencilIcon size={14} />}
                 onClick={() => {
                   onRename(menu.node);
                   onClose();
@@ -244,7 +240,7 @@ export function ContextMenu({
               />
               <Item
                 label="Move"
-                icon={<FolderInput size={15} />}
+                icon={<FolderMoveIcon size={14} />}
                 onClick={() => {
                   onMove(menu.node);
                   onClose();
@@ -254,7 +250,7 @@ export function ContextMenu({
           )}
           <Item
             label="Copy"
-            icon={<Copy size={15} />}
+            icon={<CopyIcon size={14} />}
             onClick={() => {
               onCopy(menu.node);
               onClose();
@@ -263,7 +259,7 @@ export function ContextMenu({
           {canWrite && (
             <Item
               label="Copy to…"
-              icon={<FolderSymlink size={15} />}
+              icon={<FolderCopyIcon size={14} />}
               onClick={() => {
                 onCopyTo(menu.node);
                 onClose();
@@ -275,7 +271,7 @@ export function ContextMenu({
               <Divider />
               <Item
                 label="Move to trash"
-                icon={<Trash2 size={15} />}
+                icon={<TrashIcon size={14} />}
                 danger
                 onClick={() => {
                   onTrash(menu.node);
@@ -286,6 +282,6 @@ export function ContextMenu({
           )}
         </>
       )}
-    </motion.div>
+    </div>
   );
 }

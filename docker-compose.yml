@@ -13,38 +13,13 @@ services:
       timeout: 5s
       retries: 10
 
-  minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: arkive
-      MINIO_ROOT_PASSWORD: arkivesecret
-    volumes:
-      - minio_data:/data
-
-  minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-    depends_on:
-      minio:
-        condition: service_started
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set local http://minio:9000 arkive arkivesecret; do sleep 1; done;
-      mc mb --ignore-existing local/arkive;
-      exit 0;
-      "
-
   api:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
     environment:
       ARKIVE_DATABASE_URL: postgres://arkive:arkive@postgres:5432/arkive?sslmode=disable
-      ARKIVE_S3_ENDPOINT: minio:9000
-      ARKIVE_S3_ACCESS_KEY: arkive
-      ARKIVE_S3_SECRET_KEY: arkivesecret
-      ARKIVE_S3_BUCKET: arkive
-      ARKIVE_S3_USE_SSL: "false"
+      ARKIVE_DATA_DIR: /data/arkive
       ARKIVE_SESSION_SECRET: ${ARKIVE_SESSION_SECRET:-change-me-in-production-use-long-random-string}
       ARKIVE_SECRETS_KEY: ${ARKIVE_SECRETS_KEY:-change-me-in-production-use-long-random-string}
       ARKIVE_BOOTSTRAP_ADMIN_EMAIL: ${ARKIVE_BOOTSTRAP_ADMIN_EMAIL:-admin@arkive.local}
@@ -61,14 +36,18 @@ services:
       ARKIVE_GOOGLE_CLIENT_ID: ${ARKIVE_GOOGLE_CLIENT_ID:-}
       ARKIVE_GOOGLE_CLIENT_SECRET: ${ARKIVE_GOOGLE_CLIENT_SECRET:-}
       ARKIVE_GOOGLE_REDIRECT_URL: ${ARKIVE_GOOGLE_REDIRECT_URL:-http://localhost:3080/api/auth/google/drive/callback}
+      # Optional remote S3 seed (Garage, SeaweedFS, …). Empty = local folder default.
+      ARKIVE_S3_ENDPOINT: ${ARKIVE_S3_ENDPOINT:-}
+      ARKIVE_S3_ACCESS_KEY: ${ARKIVE_S3_ACCESS_KEY:-}
+      ARKIVE_S3_SECRET_KEY: ${ARKIVE_S3_SECRET_KEY:-}
+      ARKIVE_S3_BUCKET: ${ARKIVE_S3_BUCKET:-}
+      ARKIVE_S3_USE_SSL: ${ARKIVE_S3_USE_SSL:-false}
 
     volumes:
-      - nfs_demo:/mnt/arkive-nfs
+      - arkive_data:/data/arkive
     depends_on:
       postgres:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/ready"]
       interval: 5s
@@ -93,5 +72,4 @@ services:
 
 volumes:
   postgres_data:
-  minio_data:
-  nfs_demo:
+  arkive_data:

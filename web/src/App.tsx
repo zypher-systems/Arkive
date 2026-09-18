@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { SpinnerIcon } from './components/icons';
 import { useAuth } from './lib/auth';
 import { LoginPage } from './pages/LoginPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -11,14 +13,23 @@ import { PublicSharePage } from './pages/PublicSharePage';
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    if (!loading) return;
+    setTimedOut(false);
+    const t = window.setTimeout(() => setTimedOut(true), 12000);
+    return () => window.clearTimeout(t);
+  }, [loading]);
   if (loading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4">
-        <div className="relative h-12 w-12">
-          <div className="absolute inset-0 rounded-full border-2 border-arkive-border" />
-          <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-arkive-accent border-r-arkive-accent2" />
-        </div>
-        <p className="text-sm text-arkive-muted">Opening vault…</p>
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <SpinnerIcon size={22} className="animate-spin text-muted" />
+        <p className="text-sm text-muted">Loading…</p>
+        {timedOut && (
+          <p className="max-w-sm px-4 text-center text-xs text-faint">
+            Still loading — the API may be unreachable. Check that the server is up and reload.
+          </p>
+        )}
       </div>
     );
   }

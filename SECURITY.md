@@ -20,7 +20,7 @@ We will acknowledge the report and work on a fix before any public disclosure.
 
 Arkive is self-hosted. A few things are trusted by design:
 
-- **Instance admins** can add S3/NFS/WebDAV backends and reach those URLs from the API container. Treat admin as a high-privilege role.
+- **Instance admins** can add local-folder, S3, and WebDAV backends and reach those URLs from the API container. Treat admin as a high-privilege role.
 - **Production** must use `docker-compose.prod.yml` (or equivalent). The base compose file is for local development and uses weak default secrets. The API refuses those defaults when `ARKIVE_ENV=production`.
 - **TLS** belongs on an outer reverse proxy. Set `ARKIVE_PUBLIC_URL` to the public HTTPS origin and `ARKIVE_COOKIE_SECURE=true`.
 - **`X-Forwarded-For`** must be **replaced** (not appended) by the proxy in front of Arkive. The default nginx container already does this. Do not publish the API port directly to the internet.

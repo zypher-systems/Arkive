@@ -1,14 +1,14 @@
 import {
-  FilePlus2,
-  FolderPlus,
-  LayoutGrid,
-  List,
-  Rows3,
-  Search,
-  Trash2,
-  UploadCloud,
-  X,
-} from 'lucide-react';
+  CloseIcon,
+  DetailsViewIcon,
+  FilePlusIcon,
+  FolderPlusIcon,
+  ListViewIcon,
+  SearchIcon,
+  TilesViewIcon,
+  TrashIcon,
+  UploadIcon,
+} from '../icons';
 import { Button, IconButton } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Segmented } from '../ui/Segmented';
@@ -60,14 +60,12 @@ export function FileToolbar({
   return (
     <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        <h1 className="font-display text-3xl font-bold tracking-tight">
-          <span className="text-iridescent">{title}</span>
-        </h1>
-        <p className="mt-1 text-sm text-arkive-muted">{subtitle}</p>
+        <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
+        <p className="mt-0.5 text-[13px] text-muted">{subtitle}</p>
         {browsing && rootBytes != null && (
-          <p className="mt-1 text-xs text-arkive-muted">
+          <p className="mt-0.5 text-xs text-muted">
             This root:{' '}
-            <span className="font-medium text-arkive-text">{formatBytes(rootBytes)}</span>
+            <span className="font-medium text-ink">{formatBytes(rootBytes)}</span>
             {rootQuota != null && rootQuota > 0 && (
               <span> / {formatBytes(rootQuota)}</span>
             )}
@@ -77,14 +75,13 @@ export function FileToolbar({
       {modes && (
         <div className="flex flex-wrap items-center gap-2">
           <Segmented
-            layoutId="file-view-mode"
             size="sm"
             value={viewMode}
             onChange={onViewMode}
             items={[
-              { value: 'list', icon: <List size={14} />, title: 'List view' },
-              { value: 'details', icon: <Rows3 size={14} />, title: 'Details view' },
-              { value: 'tiles', icon: <LayoutGrid size={14} />, title: 'Tiles view' },
+              { value: 'list', icon: <ListViewIcon size={14} />, title: 'List view' },
+              { value: 'details', icon: <DetailsViewIcon size={14} />, title: 'Details view' },
+              { value: 'tiles', icon: <TilesViewIcon size={14} />, title: 'Tiles view' },
             ]}
           />
           {browsing && (
@@ -94,7 +91,7 @@ export function FileToolbar({
                   value={query}
                   onChange={(e) => onQuery(e.target.value)}
                   placeholder="Search files…"
-                  icon={<Search size={14} />}
+                  icon={<SearchIcon size={14} />}
                   className="w-40 sm:w-52"
                 />
                 {query && (
@@ -102,38 +99,33 @@ export function FileToolbar({
                     label="Clear search"
                     size="xs"
                     onClick={() => onQuery('')}
-                    className="absolute top-1/2 right-2 -translate-y-1/2"
+                    className="absolute top-1/2 right-1.5 -translate-y-1/2"
                   >
-                    <X size={12} />
+                    <CloseIcon size={12} />
                   </IconButton>
                 )}
               </div>
-              <Button size="sm" variant="glass" onClick={onNewFolder} icon={<FolderPlus size={14} />}>
+              <Button size="sm" variant="secondary" onClick={onNewFolder} icon={<FolderPlusIcon size={14} />}>
                 <span className="hidden sm:inline">New folder</span>
               </Button>
               {onNewFile && (
-                <Button size="sm" variant="glass" onClick={onNewFile} icon={<FilePlus2 size={14} />}>
+                <Button size="sm" variant="secondary" onClick={onNewFile} icon={<FilePlusIcon size={14} />}>
                   <span className="hidden sm:inline">New file</span>
                 </Button>
               )}
-              <Button size="sm" variant="primary" onClick={onUpload} icon={<UploadCloud size={14} />} className="font-semibold">
+              <Button size="sm" variant="primary" onClick={onUpload} icon={<UploadIcon size={14} />}>
                 Upload
               </Button>
               {!hideTrash && (
                 <Button
                   size="sm"
-                  variant={showTrash ? 'primary' : 'outline'}
+                  variant={showTrash ? 'primary' : 'secondary'}
                   onClick={onToggleTrash}
-                  icon={<Trash2 size={14} />}
-                  className={showTrash ? '' : ''}
+                  icon={<TrashIcon size={14} />}
                 >
                   <span className="hidden sm:inline">Trash</span>
                   {trashCount > 0 && (
-                    <span
-                      className={`rounded-full px-1.5 text-[10px] font-bold ${
-                        showTrash ? 'bg-black/25 text-white' : 'bg-white/8 text-arkive-muted'
-                      }`}
-                    >
+                    <span className="rounded-full bg-hover px-1.5 text-[10px] font-bold text-muted ring-1 ring-line">
                       {trashCount}
                     </span>
                   )}

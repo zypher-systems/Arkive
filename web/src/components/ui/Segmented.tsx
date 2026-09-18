@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 
 export type SegmentItem<T extends string> = {
@@ -12,21 +11,19 @@ export function Segmented<T extends string>({
   items,
   value,
   onChange,
-  layoutId,
   size = 'md',
   className = '',
 }: {
   items: SegmentItem<T>[];
   value: T;
   onChange: (v: T) => void;
-  layoutId: string;
   size?: 'sm' | 'md';
   className?: string;
 }) {
   const pad = size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3.5 py-1.5 text-sm';
   return (
     <div
-      className={`inline-flex items-center gap-0.5 rounded-xl border border-white/8 bg-[#0a0c16]/70 p-1 backdrop-blur-md ${className}`}
+      className={`inline-flex items-center gap-0.5 rounded-md border border-line bg-inset p-0.5 ${className}`}
       role="tablist"
     >
       {items.map((item) => {
@@ -39,18 +36,13 @@ export function Segmented<T extends string>({
             aria-selected={active}
             title={item.title}
             onClick={() => onChange(item.value)}
-            className={`relative cursor-pointer rounded-lg font-medium transition-colors duration-200 ${pad} ${
-              active ? 'text-white' : 'text-arkive-muted hover:text-arkive-text'
+            className={`cursor-pointer rounded-[5px] font-medium transition-colors duration-150 ${pad} ${
+              active
+                ? 'border border-line bg-surface text-ink shadow-xs'
+                : 'border border-transparent text-muted hover:text-ink'
             }`}
           >
-            {active && (
-              <motion.span
-                layoutId={layoutId}
-                className="absolute inset-0 rounded-lg bg-gradient-to-br from-arkive-accent/35 to-arkive-accent2/25 shadow-[0_0_16px_rgba(139,92,246,0.35)] ring-1 ring-white/15"
-                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-              />
-            )}
-            <span className="relative flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5">
               {item.icon}
               {item.label}
             </span>

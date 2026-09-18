@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
-  AlertCircle,
-  Archive,
-  ChevronRight,
-  Copy,
-  FolderInput,
-  Home,
-  RotateCcw,
-  Search,
-  Trash2,
-  UploadCloud,
-  X,
-} from 'lucide-react';
+  AlertIcon,
+  ArchiveIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  CopyIcon,
+  FolderMoveIcon,
+  HomeIcon,
+  RestoreIcon,
+  SearchIcon,
+  TrashIcon,
+  UploadIcon,
+} from '../components/icons';
 import { Button, IconButton } from '../components/ui/Button';
 import {
   api,
@@ -525,25 +524,14 @@ export function BrowserPage() {
       onDrop={onRootDrop}
       className="relative flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch"
     >
-      <AnimatePresence>
-        {dragging && browsing && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-arkive-accent/70 bg-arkive-accent/10 backdrop-blur-sm"
-          >
-            <motion.div
-              animate={{ y: [0, -8, 0] }}
-              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-              className="flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-arkive-accent/40 to-arkive-accent2/30 text-white shadow-[0_0_40px_rgba(139,92,246,0.5)] ring-1 ring-white/20"
-            >
-              <UploadCloud size={30} />
-            </motion.div>
-            <p className="font-display text-lg font-semibold text-white">Drop files to upload</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {dragging && browsing && (
+        <div className="animate-fade-in pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-accent bg-surface/95">
+          <div className="flex h-12 w-12 items-center justify-center rounded-md border border-line bg-inset text-accent-strong">
+            <UploadIcon size={22} />
+          </div>
+          <p className="text-[15px] font-semibold text-ink">Drop files to upload</p>
+        </div>
+      )}
 
       <FilesSidebar
         personal={personal}
@@ -684,64 +672,56 @@ export function BrowserPage() {
           />
         ) : (
           <>
-            <AnimatePresence>
-              {selected.size > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  className="glass glass-hairline mb-4 flex flex-wrap items-center gap-1.5 rounded-2xl px-3 py-2 text-sm shadow-[0_8px_32px_rgba(3,4,12,0.5)]"
-                >
-                  <span className="mr-1 flex items-center gap-2 font-medium text-arkive-text">
-                    <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-iridescent px-1.5 text-[11px] font-bold text-white shadow-[0_0_12px_rgba(139,92,246,0.5)]">
-                      {selected.size}
-                    </span>
-                    selected
+            {selected.size > 0 && (
+              <div className="animate-fade-in panel mb-4 flex flex-wrap items-center gap-1.5 px-3 py-2 text-sm">
+                <span className="mr-1 flex items-center gap-2 font-medium text-ink">
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-fg">
+                    {selected.size}
                   </span>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    icon={<FolderInput size={13} />}
-                    onClick={() => {
-                      setMoveMode('move');
-                      setShowMove(true);
-                    }}
-                  >
-                    Move
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    icon={<Copy size={13} />}
-                    onClick={() => {
-                      setMoveMode('copy');
-                      setShowMove(true);
-                    }}
-                  >
-                    Copy to…
-                  </Button>
-                  <Button size="xs" variant="ghost" icon={<Archive size={13} />} onClick={() => void bulkZip()}>
-                    Download zip
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    icon={<Trash2 size={13} />}
-                    className="hover:!bg-red-500/12 hover:!text-red-300"
-                    onClick={() => bulkDelete()}
-                  >
-                    Trash
-                  </Button>
-                  <IconButton label="Clear selection" size="xs" className="ml-auto" onClick={() => setSelected(new Set())}>
-                    <X size={13} />
-                  </IconButton>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  selected
+                </span>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  icon={<FolderMoveIcon size={13} />}
+                  onClick={() => {
+                    setMoveMode('move');
+                    setShowMove(true);
+                  }}
+                >
+                  Move
+                </Button>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  icon={<CopyIcon size={13} />}
+                  onClick={() => {
+                    setMoveMode('copy');
+                    setShowMove(true);
+                  }}
+                >
+                  Copy to…
+                </Button>
+                <Button size="xs" variant="ghost" icon={<ArchiveIcon size={13} />} onClick={() => void bulkZip()}>
+                  Download zip
+                </Button>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  icon={<TrashIcon size={13} />}
+                  className="hover:!bg-danger-soft hover:!text-danger"
+                  onClick={() => bulkDelete()}
+                >
+                  Trash
+                </Button>
+                <IconButton label="Clear selection" size="xs" className="ml-auto" onClick={() => setSelected(new Set())}>
+                  <CloseIcon size={13} />
+                </IconButton>
+              </div>
+            )}
 
             {!results && (
-              <nav className="mb-4 flex flex-wrap items-center gap-0.5 text-sm text-arkive-muted">
+              <nav className="mb-4 flex flex-wrap items-center gap-0.5 text-sm text-muted">
                 <button
                   type="button"
                   onClick={() => setParentId(null)}
@@ -754,15 +734,15 @@ export function BrowserPage() {
                     setDropTargetId((c) => (c === '__root__' ? null : c))
                   }
                   onDrop={(e) => void onDropOnBreadcrumb(e, null)}
-                  className={`flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 transition hover:bg-white/[0.07] hover:text-arkive-text ${
-                    dropTargetId === '__root__' ? 'bg-arkive-accent/15 ring-2 ring-arkive-accent/70' : ''
+                  className={`flex cursor-pointer items-center gap-1 rounded px-2 py-1 transition hover:bg-hover hover:text-ink ${
+                    dropTargetId === '__root__' ? 'bg-accent-soft shadow-[inset_0_0_0_2px_var(--accent)]' : ''
                   }`}
                 >
-                  <Home size={13} /> Root
+                  <HomeIcon size={13} /> Root
                 </button>
                 {breadcrumbs.map((b, i) => (
                   <span key={b.id} className="flex items-center gap-0.5">
-                    <ChevronRight size={13} className="text-arkive-muted/50" />
+                    <ChevronRightIcon size={13} className="text-faint" />
                     <button
                       type="button"
                       onClick={() => setParentId(b.id)}
@@ -775,11 +755,11 @@ export function BrowserPage() {
                         setDropTargetId((c) => (c === b.id ? null : c))
                       }
                       onDrop={(e) => void onDropOnBreadcrumb(e, b.id)}
-                      className={`cursor-pointer rounded-lg px-2 py-1 transition hover:bg-white/[0.07] hover:text-arkive-text ${
+                      className={`cursor-pointer rounded px-2 py-1 transition hover:bg-hover hover:text-ink ${
                         dropTargetId === b.id
-                          ? 'bg-arkive-accent/15 ring-2 ring-arkive-accent/70'
+                          ? 'bg-accent-soft shadow-[inset_0_0_0_2px_var(--accent)]'
                           : i === breadcrumbs.length - 1
-                            ? 'font-medium text-arkive-text'
+                            ? 'font-medium text-ink'
                             : ''
                       }`}
                     >
@@ -791,12 +771,12 @@ export function BrowserPage() {
             )}
 
             {results && (
-              <p className="mb-3 flex items-center gap-1.5 text-sm text-arkive-muted">
-                <Search size={14} className="text-arkive-accent2" />
-                Results for <span className="font-medium text-arkive-text">“{query}”</span>
+              <p className="mb-3 flex items-center gap-1.5 text-sm text-muted">
+                <SearchIcon size={14} />
+                Results for <span className="font-medium text-ink">“{query}”</span>
                 <button
                   type="button"
-                  className="ml-1 cursor-pointer rounded-md px-1.5 py-0.5 text-xs text-arkive-accent2 transition hover:bg-white/[0.07]"
+                  className="ml-1 cursor-pointer rounded px-1.5 py-0.5 text-xs text-accent-strong transition hover:bg-hover"
                   onClick={() => setQuery('')}
                 >
                   clear ✕
@@ -805,39 +785,28 @@ export function BrowserPage() {
             )}
 
             {uploadPct !== null && (
-              <div className="glass glass-hairline mb-4 overflow-hidden rounded-2xl px-4 py-3">
+              <div className="panel mb-4 overflow-hidden px-4 py-3">
                 <div className="mb-2 flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-2 font-medium text-arkive-text">
-                    <motion.span
-                      animate={{ y: [0, -3, 0] }}
-                      transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-                      className="text-arkive-accent2"
-                    >
-                      <UploadCloud size={15} />
-                    </motion.span>
+                  <span className="flex items-center gap-2 font-medium text-ink">
+                    <UploadIcon size={14} className="text-accent-strong" />
                     Uploading…
                   </span>
-                  <span className="font-display font-semibold text-arkive-accent2">{uploadPct}%</span>
+                  <span className="font-semibold text-accent-strong">{uploadPct}%</span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/6">
-                  <motion.div
-                    className="bg-iridescent h-full rounded-full shadow-[0_0_12px_rgba(139,92,246,0.7)]"
-                    animate={{ width: `${uploadPct}%` }}
-                    transition={{ ease: 'easeOut', duration: 0.25 }}
+                <div className="h-1.5 overflow-hidden rounded-full bg-hover">
+                  <div
+                    className="h-full rounded-full bg-accent transition-[width] duration-200 ease-out"
+                    style={{ width: `${uploadPct}%` }}
                   />
                 </div>
               </div>
             )}
 
             {error && (
-              <motion.p
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-300"
-              >
-                <AlertCircle size={15} className="shrink-0" />
+              <p className="mb-4 flex items-center gap-2 rounded-md border border-danger/40 bg-danger-soft px-3 py-2.5 text-sm text-danger">
+                <AlertIcon size={15} className="shrink-0" />
                 {error}
-              </motion.p>
+              </p>
             )}
 
             <div
@@ -855,11 +824,11 @@ export function BrowserPage() {
               }}
             >
               {loading && (
-                <div className="mb-3 space-y-2 px-1" aria-hidden>
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <div key={i} className="skeleton h-12" style={{ animationDelay: `${i * 0.12}s` }} />
-                  ))}
-                </div>
+              <div className="mb-3 space-y-2" aria-hidden>
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div key={i} className="skeleton h-11" />
+                ))}
+              </div>
               )}
               <div className={loading ? 'pointer-events-none opacity-40' : undefined}>
               {viewMode === 'details' ? (
@@ -873,16 +842,11 @@ export function BrowserPage() {
             </div>
 
             {showTrash && (
-              <motion.section
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-                className="mt-8"
-              >
+              <section className="animate-fade-in mt-8">
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500/12 text-red-300 ring-1 ring-red-400/20">
-                      <Trash2 size={15} />
+                  <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-danger-soft text-danger">
+                      <TrashIcon size={14} />
                     </span>
                     Trash
                   </h2>
@@ -890,7 +854,7 @@ export function BrowserPage() {
                     <Button
                       size="xs"
                       variant="danger"
-                      icon={<Trash2 size={12} />}
+                      icon={<TrashIcon size={12} />}
                       onClick={() =>
                         ask({
                           title: 'Empty trash',
@@ -913,28 +877,28 @@ export function BrowserPage() {
                     </Button>
                   )}
                 </div>
-                <ul className="glass glass-hairline divide-y divide-white/4 overflow-hidden rounded-2xl">
+                <ul className="panel divide-y divide-line overflow-hidden">
                   {trash.length === 0 && (
-                    <li className="px-4 py-8 text-center text-sm text-arkive-muted">Trash is empty — nothing to rescue.</li>
+                    <li className="px-4 py-8 text-center text-sm text-muted">Trash is empty — nothing to rescue.</li>
                   )}
                   {trash.map((node) => (
                     <li
                       key={node.id}
-                      className="group flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm transition-colors hover:bg-white/[0.03]"
+                      className="group flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm transition-colors hover:bg-hover"
                     >
                       <span className="min-w-0 truncate">
-                        <span className="font-medium text-arkive-text/90">{node.name}</span>{' '}
-                        <span className="text-xs text-arkive-muted">({node.kind})</span>
+                        <span className="font-medium text-ink/90">{node.name}</span>{' '}
+                        <span className="text-xs text-muted">({node.kind})</span>
                       </span>
                       <div className="flex gap-1.5 text-xs">
-                        <Button size="xs" variant="ghost" icon={<RotateCcw size={12} />} onClick={() => void restoreNode(node)}>
+                        <Button size="xs" variant="ghost" icon={<RestoreIcon size={12} />} onClick={() => void restoreNode(node)}>
                           Restore
                         </Button>
                         <Button
                           size="xs"
                           variant="ghost"
-                          icon={<Trash2 size={12} />}
-                          className="hover:!bg-red-500/12 hover:!text-red-300"
+                          icon={<TrashIcon size={12} />}
+                          className="hover:!bg-danger-soft hover:!text-danger"
                           onClick={(e: ReactMouseEvent) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -947,14 +911,14 @@ export function BrowserPage() {
                     </li>
                   ))}
                 </ul>
-              </motion.section>
+              </section>
             )}
           </>
         )}
 
         {error && view?.kind === 'shared' && (
-          <p className="mt-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
-            <AlertCircle size={15} className="shrink-0" />
+          <p className="mt-4 flex items-center gap-2 rounded-md border border-danger/40 bg-danger-soft px-3 py-2.5 text-sm text-danger">
+            <AlertIcon size={15} className="shrink-0" />
             {error}
           </p>
         )}

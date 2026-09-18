@@ -44,6 +44,8 @@ func newTestEnv(t *testing.T) *testEnv {
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
+	cfg.S3Endpoint = ""
+	cfg.DataDir = t.TempDir()
 	cfg.BootstrapAdminEmail = fmt.Sprintf("admin-%d@test.local", time.Now().UnixNano())
 	cfg.MigrationsDir = filepath.Join("..", "..", "migrations")
 

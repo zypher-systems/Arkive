@@ -1,24 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import {
-  AlertCircle,
-  CheckCircle2,
-  Cloud,
-  Database,
-  Gauge,
-  HardDrive,
-  Mail,
-  Plus,
-  SearchCheck,
-  ShieldCheck,
-  Star,
-  Trash2,
-  UserCheck,
-  UserX,
-  Users,
-} from 'lucide-react';
+  AdminIcon,
+  CheckCircleIcon,
+  SearchIcon,
+  StarIcon,
+  TrashIcon,
+  UserCheckIcon,
+  UserMinusIcon,
+} from '../components/icons';
 import { api, type StorageBackend, type User, type Workspace } from '../lib/api';
+import { Button } from '../components/ui/Button';
+import { Notice } from '../components/ui/Notice';
 import { useAuth } from '../lib/auth';
 import { useConfirm } from '../lib/confirm';
 
@@ -29,7 +22,7 @@ export function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [type, setType] = useState<'s3' | 'nfs'>('s3');
+  const [type, setType] = useState<'s3' | 'local'>('local');
   const [name, setName] = useState('');
   const [s3, setS3] = useState({
     endpoint: '',
@@ -40,7 +33,7 @@ export function AdminPage() {
     use_ssl: false,
     force_path_style: true,
   });
-  const [mountPath, setMountPath] = useState('/mnt/arkive-nfs');
+  const [mountPath, setMountPath] = useState('/data/arkive');
   const [google, setGoogle] = useState({
     enabled: false,
     client_id: '',
@@ -147,85 +140,78 @@ export function AdminPage() {
   }
 
   return (
-    <div>
+    <div className="animate-fade-in">
       <div className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">
-          <span className="text-iridescent">Admin</span>
+        <h1 className="text-xl font-semibold tracking-tight">
+          Admin
         </h1>
-        <p className="mt-1 text-sm text-arkive-muted">
+        <p className="mt-0.5 text-[13px] text-muted">
           Approve signups and manage storage backends for this instance.
         </p>
       </div>
 
-      {error && (
-        <p className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
-          <AlertCircle size={15} className="shrink-0" />
-          {error}
-        </p>
-      )}
+      {error && <Notice kind="error" className="mb-4">{error}</Notice>}
       {message && (
-        <p className="mb-4 flex items-center gap-2 text-sm text-emerald-300">
-          <CheckCircle2 size={15} className="shrink-0" /> {message}
+        <p className="mb-4 flex items-center gap-2 text-sm text-ok">
+          <CheckCircleIcon size={15} className="shrink-0" /> {message}
         </p>
       )}
 
-      <section className="glass glass-hairline mb-8 rounded-3xl p-5">
-        <h2 className="mb-1 flex items-center gap-2.5 font-display text-lg font-semibold">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
-            <Cloud size={15} />
-          </span>
+      <section className="panel mb-6 p-5">
+        <h2 className="mb-1 text-[15px] font-semibold">
           Google Drive OAuth
         </h2>
-        <p className="mb-3 text-xs text-arkive-muted">
+        <p className="mb-3 text-xs text-muted">
           Instance-wide Google Cloud web client so users can connect Drive under Account. Redirect URI must
           be allowlisted in Google Cloud Console (default ends with{' '}
           <code>/api/auth/google/drive/callback</code>).
         </p>
-        <p className="mb-4 text-xs text-arkive-muted">
+        <p className="mb-4 text-xs text-muted">
           Status:{' '}
-          <span className="text-arkive-text">
+          <span className="text-ink">
             {google.enabled ? 'enabled' : 'disabled'}
           </span>
           {' · '}
-          source <span className="text-arkive-text">{google.source}</span>
+          source <span className="text-ink">{google.source}</span>
           {google.source === 'env' && (
             <span> — env vars override DB; clear ARKIVE_GOOGLE_* to use values saved here.</span>
           )}
         </p>
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm sm:col-span-2">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Client ID</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Client ID</span>
             <input
               value={googleClientID}
               onChange={(e) => setGoogleClientID(e.target.value)}
               disabled={google.source === 'env'}
-              className="input-glass font-mono text-xs disabled:opacity-60"
+              className="input-field font-mono text-xs"
             />
           </label>
           <label className="block text-sm sm:col-span-2">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Client secret</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Client secret</span>
             <input
               type="password"
               value={googleSecret}
               onChange={(e) => setGoogleSecret(e.target.value)}
               disabled={google.source === 'env'}
               placeholder={google.has_secret ? 'unchanged' : ''}
-              className="input-glass font-mono text-xs disabled:opacity-60"
+              className="input-field font-mono text-xs"
             />
           </label>
           <label className="block text-sm sm:col-span-2">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Redirect URL (optional override)</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Redirect URL (optional override)</span>
             <input
               value={googleRedirect}
               onChange={(e) => setGoogleRedirect(e.target.value)}
               disabled={google.source === 'env'}
-              className="input-glass font-mono text-xs disabled:opacity-60"
+              className="input-field font-mono text-xs"
             />
           </label>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant="primary"
             disabled={google.source === 'env'}
             onClick={() =>
               void api
@@ -241,12 +227,12 @@ export function AdminPage() {
                 })
                 .catch((e) => setError(String(e)))
             }
-            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-iridescent px-3 py-1.5 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(139,92,246,0.35)] transition hover:brightness-110 disabled:opacity-50"
           >
             Save
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
             disabled={google.source === 'env'}
             onClick={() =>
               void api
@@ -260,76 +246,73 @@ export function AdminPage() {
                 })
                 .catch((e) => setError(String(e)))
             }
-            className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 px-2.5 py-1 text-xs text-arkive-muted transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50 !px-3 !py-1.5 !text-sm"
           >
             Clear DB settings
-          </button>
+          </Button>
         </div>
       </section>
 
-      <section className="glass glass-hairline mb-8 rounded-3xl p-5">
-        <h2 className="mb-1 flex items-center gap-2.5 font-display text-lg font-semibold">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
-            <Mail size={15} />
-          </span>
+      <section className="panel mb-6 p-5">
+        <h2 className="mb-1 text-[15px] font-semibold">
           SMTP (signup email)
         </h2>
-        <p className="mb-3 text-xs text-arkive-muted">
+        <p className="mb-3 text-xs text-muted">
           Optional. When configured, approve/reject sends a short email. Env{' '}
           <code>ARKIVE_SMTP_*</code> overrides DB. Source: {smtp.source}.
         </p>
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Host</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Host</span>
             <input
               value={smtpHost}
               onChange={(e) => setSmtpHost(e.target.value)}
               disabled={smtp.source === 'env'}
-              className="input-glass text-sm disabled:opacity-60"
+              className="input-field text-sm"
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Port</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Port</span>
             <input
               value={smtpPort}
               onChange={(e) => setSmtpPort(e.target.value)}
               disabled={smtp.source === 'env'}
-              className="input-glass text-sm disabled:opacity-60"
+              className="input-field text-sm"
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Username</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Username</span>
             <input
               value={smtpUser}
               onChange={(e) => setSmtpUser(e.target.value)}
               disabled={smtp.source === 'env'}
-              className="input-glass text-sm disabled:opacity-60"
+              className="input-field text-sm"
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Password</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Password</span>
             <input
               type="password"
               value={smtpPass}
               onChange={(e) => setSmtpPass(e.target.value)}
               disabled={smtp.source === 'env'}
               placeholder={smtp.has_password ? 'unchanged' : ''}
-              className="input-glass text-sm disabled:opacity-60"
+              className="input-field text-sm"
             />
           </label>
           <label className="block text-sm sm:col-span-2">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">From address</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">From address</span>
             <input
               value={smtpFrom}
               onChange={(e) => setSmtpFrom(e.target.value)}
               disabled={smtp.source === 'env'}
-              className="input-glass text-sm disabled:opacity-60"
+              className="input-field text-sm"
             />
           </label>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant="primary"
             disabled={smtp.source === 'env'}
             onClick={() =>
               void api
@@ -347,12 +330,12 @@ export function AdminPage() {
                 })
                 .catch((e) => setError(String(e)))
             }
-            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-iridescent px-3 py-1.5 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(139,92,246,0.35)] transition hover:brightness-110 disabled:opacity-50"
           >
             Save SMTP
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
             disabled={smtp.source === 'env'}
             onClick={() =>
               void api
@@ -366,37 +349,34 @@ export function AdminPage() {
                 })
                 .catch((e) => setError(String(e)))
             }
-            className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 px-2.5 py-1 text-xs text-arkive-muted transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50 !px-3 !py-1.5 !text-sm"
           >
             Clear
-          </button>
+          </Button>
         </div>
       </section>
 
-      <section className="glass glass-hairline mb-8 rounded-3xl p-5">
-        <h2 className="mb-1 flex items-center gap-2.5 font-display text-lg font-semibold">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
-            <Gauge size={15} />
-          </span>
+      <section className="panel mb-6 p-5">
+        <h2 className="mb-1 text-[15px] font-semibold">
           Quotas &amp; search
         </h2>
-        <p className="mb-3 text-xs text-arkive-muted">
+        <p className="mb-3 text-xs text-muted">
           Default workspace quota (GB). Empty = unlimited. Personal workspaces also inherit the
           owner’s user quota when set. Auto-purge permanently deletes trash older than N days (0 =
           disable).
         </p>
         <div className="mb-4 flex flex-wrap items-end gap-2">
           <label className="block text-sm">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Default quota (GB)</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Default quota (GB)</span>
             <input
               value={defaultQuotaGB}
               onChange={(e) => setDefaultQuotaGB(e.target.value)}
               placeholder="unlimited"
-              className="input-glass w-40 text-sm"
+              className="input-field w-40 text-sm"
             />
           </label>
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant="primary"
             onClick={() => {
               const gb = Number(defaultQuotaGB);
               const bytes =
@@ -408,22 +388,22 @@ export function AdminPage() {
                 .then(() => setMessage('Default quota saved'))
                 .catch((e) => setError(String(e)));
             }}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-iridescent px-3.5 py-2 text-sm font-semibold text-white shadow-[0_4px_20px_rgba(139,92,246,0.35)] transition hover:brightness-110 hover:shadow-[0_6px_28px_rgba(139,92,246,0.5)] disabled:opacity-50"
           >
             Save default
-          </button>
+          </Button>
           <label className="block text-sm">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Auto-purge trash after N days</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Auto-purge trash after N days</span>
             <input
               type="number"
               min={0}
               value={trashRetentionDays}
               onChange={(e) => setTrashRetentionDays(e.target.value)}
-              className="input-glass w-40 text-sm"
+              className="input-field w-40 text-sm"
             />
           </label>
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={() => {
               const days = Number(trashRetentionDays);
               if (!Number.isFinite(days) || days < 0 || !Number.isInteger(days)) {
@@ -435,12 +415,12 @@ export function AdminPage() {
                 .then(() => setMessage(`Trash retention saved (${days === 0 ? 'disabled' : `${days} days`})`))
                 .catch((e) => setError(String(e)));
             }}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-white/8 bg-white/[0.04] px-3.5 py-2 text-sm text-arkive-text backdrop-blur-md transition hover:border-white/16 hover:bg-white/[0.08] disabled:opacity-50"
           >
             Save retention
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={() =>
               void api
                 .reindexSearch()
@@ -452,20 +432,19 @@ export function AdminPage() {
                 )
                 .catch((e) => setError(String(e)))
             }
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-white/8 bg-white/[0.04] px-3.5 py-2 text-sm text-arkive-text backdrop-blur-md transition hover:border-white/16 hover:bg-white/[0.08] disabled:opacity-50"
           >
             Reindex search
-          </button>
+          </Button>
         </div>
         <ul className="space-y-2 text-sm">
           {others.map((u) => (
             <li
               key={u.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/7 bg-white/[0.03] px-3.5 py-2.5 transition hover:border-white/12"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-inset px-3.5 py-2.5 transition hover:border-strong"
             >
               <span className="truncate">
                 {u.display_name}{' '}
-                <span className="text-arkive-muted">({u.email})</span>
+                <span className="text-muted">({u.email})</span>
               </span>
               <span className="flex items-center gap-2 text-xs">
                 <input
@@ -474,11 +453,11 @@ export function AdminPage() {
                   placeholder="GB"
                   value={quotaDraft[u.id] ?? ''}
                   onChange={(e) => setQuotaDraft((d) => ({ ...d, [u.id]: e.target.value }))}
-                  className="input-glass w-20 !rounded-lg !px-2 !py-1 text-xs"
+                  className="input-field w-20 !px-2 !py-1 text-xs"
                 />
                 <button
                   type="button"
-                  className="cursor-pointer rounded-lg px-2 py-1 font-medium text-arkive-accent2 transition hover:bg-white/[0.07]"
+                  className="cursor-pointer rounded px-2 py-1 font-medium text-accent-strong transition hover:bg-hover"
                   onClick={() => {
                     const raw = (quotaDraft[u.id] ?? '').trim();
                     const gb = Number(raw);
@@ -499,20 +478,16 @@ export function AdminPage() {
         </ul>
       </section>
 
-      <section className="glass glass-hairline mb-8 rounded-3xl p-5">
-        <h2 className="mb-1 flex items-center gap-2.5 font-display text-lg font-semibold">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
-            <Users size={15} />
-          </span>
+      <section className="panel mb-6 p-5">
+        <h2 className="mb-1 text-[15px] font-semibold">
           Users
         </h2>
-        <p className="mb-4 text-xs text-arkive-muted">
+        <p className="mb-4 text-xs text-muted">
           New registrations stay pending until approved. Rejected and disabled accounts cannot sign in.
         </p>
-        <label className="mb-4 flex cursor-pointer items-center gap-2.5 rounded-xl border border-white/7 bg-white/[0.03] px-3.5 py-2.5 text-sm transition hover:border-white/12">
+        <label className="mb-4 flex cursor-pointer items-center gap-2.5 rounded-md border border-line bg-inset px-3.5 py-2.5 text-sm transition hover:border-strong">
           <input
             type="checkbox"
-            className="h-4 w-4 accent-arkive-accent"
             checked={registrationOpen}
             onChange={(e) => {
               const open = e.target.checked;
@@ -526,23 +501,24 @@ export function AdminPage() {
           Allow public registration
         </label>
         {pending.length === 0 ? (
-          <p className="mb-4 text-sm text-arkive-muted">No pending signups.</p>
+          <p className="mb-4 text-sm text-muted">No pending signups.</p>
         ) : (
           <ul className="mb-4 space-y-2">
             {pending.map((u) => (
               <li
                 key={u.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-arkive-accent/35 bg-gradient-to-r from-arkive-accent/12 to-arkive-accent2/6 px-4 py-3 text-sm shadow-[0_0_24px_rgba(139,92,246,0.1)]"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/40 bg-accent-soft px-4 py-3 text-sm"
               >
                 <div>
                   <div className="font-medium">{u.display_name}</div>
-                  <div className="text-xs text-arkive-muted">
+                  <div className="text-xs text-muted">
                     {u.email} · requested {new Date(u.created_at).toLocaleString()}
                   </div>
                 </div>
                 <div className="flex gap-2 text-xs">
-                  <button
-                    type="button"
+                  <Button
+                    size="xs"
+                    variant="primary"
                     onClick={() =>
                       void api
                         .approveUser(u.id)
@@ -550,12 +526,13 @@ export function AdminPage() {
                         .then(() => setMessage(`Approved ${u.email}`))
                         .catch((e) => setError(String(e)))
                     }
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-iridescent px-3 py-1.5 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(139,92,246,0.35)] transition hover:brightness-110 disabled:opacity-50 !px-2.5 !py-1 !text-xs"
+                    icon={<UserCheckIcon size={12} />}
                   >
-                    <UserCheck size={12} /> Approve
-                  </button>
-                  <button
-                    type="button"
+                    Approve
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="secondary"
                     onClick={() =>
                       ask({
                         title: 'Reject signup',
@@ -573,41 +550,41 @@ export function AdminPage() {
                         },
                       })
                     }
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 px-2.5 py-1 text-xs text-arkive-muted transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+                    icon={<UserMinusIcon size={12} />}
                   >
-                    <UserX size={12} /> Reject
-                  </button>
+                    Reject
+                  </Button>
                 </div>
               </li>
             ))}
           </ul>
         )}
         {others.length > 0 && (
-          <ul className="space-y-1 text-sm text-arkive-muted">
+          <ul className="space-y-1 text-sm text-muted">
             {others.map((u) => (
               <li
                 key={u.id}
-                className="flex flex-wrap items-center gap-2 rounded-xl px-2.5 py-2 transition hover:bg-white/[0.04]"
+                className="flex flex-wrap items-center gap-2 rounded-md px-2.5 py-2 transition hover:bg-hover"
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-arkive-accent/40 to-arkive-accent2/30 text-[11px] font-bold text-white ring-1 ring-white/15">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-semibold text-muted">
                   {(u.display_name || u.email || '?').trim().charAt(0).toUpperCase()}
                 </span>
-                <span className="text-arkive-text">{u.display_name}</span>
+                <span className="text-ink">{u.display_name}</span>
                 <span>{u.email}</span>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 capitalize ${
                     u.status === 'active'
-                      ? 'bg-emerald-500/12 text-emerald-300 ring-emerald-400/30'
+                      ? 'bg-ok-soft text-ok ring-ok/40'
                       : u.status === 'rejected'
-                        ? 'bg-red-500/12 text-red-300 ring-red-400/30'
-                        : 'bg-amber-500/12 text-amber-300 ring-amber-400/30'
+                        ? 'bg-danger-soft text-danger ring-danger/40'
+                        : 'bg-accent-soft text-accent-strong ring-accent/40'
                   }`}
                 >
                   {u.status}
                 </span>
                 {u.is_instance_admin && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-arkive-accent/15 px-2 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-arkive-accent/30">
-                    <ShieldCheck size={10} /> admin
+                  <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/40">
+                    <AdminIcon size={10} /> admin
                   </span>
                 )}
                 {u.id !== user?.id && (
@@ -615,7 +592,7 @@ export function AdminPage() {
                     {u.status === 'active' && (
                       <button
                         type="button"
-                        className="cursor-pointer rounded-md px-1.5 py-0.5 transition hover:bg-white/[0.07] hover:text-arkive-accent2"
+                        className="cursor-pointer rounded px-1.5 py-0.5 transition hover:bg-hover hover:text-accent-strong"
                         onClick={() =>
                           void api
                             .disableUser(u.id)
@@ -630,7 +607,7 @@ export function AdminPage() {
                     {u.status === 'disabled' && (
                       <button
                         type="button"
-                        className="cursor-pointer rounded-md px-1.5 py-0.5 transition hover:bg-white/[0.07] hover:text-arkive-accent2"
+                        className="cursor-pointer rounded px-1.5 py-0.5 transition hover:bg-hover hover:text-accent-strong"
                         onClick={() =>
                           void api
                             .approveUser(u.id)
@@ -644,7 +621,7 @@ export function AdminPage() {
                     )}
                     <button
                       type="button"
-                      className="cursor-pointer rounded-md px-1.5 py-0.5 transition hover:bg-white/[0.07] hover:text-arkive-accent2"
+                      className="cursor-pointer rounded px-1.5 py-0.5 transition hover:bg-hover hover:text-accent-strong"
                       onClick={() =>
                         void api
                           .setInstanceAdmin(u.id, !u.is_instance_admin)
@@ -657,7 +634,7 @@ export function AdminPage() {
                     </button>
                     <button
                       type="button"
-                      className="cursor-pointer rounded-md px-1.5 py-0.5 transition hover:bg-red-500/12 hover:text-red-300"
+                      className="cursor-pointer rounded px-1.5 py-0.5 transition hover:bg-danger-soft hover:text-danger"
                       onClick={() =>
                         ask({
                           title: 'Delete user',
@@ -681,44 +658,36 @@ export function AdminPage() {
         )}
       </section>
 
-      <h2 className="mb-3 flex items-center gap-2.5 font-display text-xl font-semibold">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
-          <Database size={16} />
-        </span>
-        <span className="text-iridescent">Storage</span>
+      <h2 className="mb-3 text-[17px] font-semibold">
+        Storage
       </h2>
 
-      <motion.form
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
+      <form
         onSubmit={onCreate}
-        className="glass glass-hairline mb-8 rounded-3xl p-5"
+        className="panel mb-6 p-5"
       >
-        <h2 className="mb-3 flex items-center gap-2.5 font-display text-lg font-semibold">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
-            <Plus size={15} />
-          </span>
+        <h2 className="mb-3 text-[15px] font-semibold">
           Add backend
         </h2>
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Name</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Name</span>
             <input
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="input-glass"
+              className="input-field"
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Type</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Type</span>
             <select
               value={type}
-              onChange={(e) => setType(e.target.value as 's3' | 'nfs')}
-              className="input-glass cursor-pointer [&>option]:bg-arkive-surface"
+              onChange={(e) => setType(e.target.value as 's3' | 'local')}
+              className="input-field cursor-pointer"
             >
+              <option value="local">Local folder</option>
               <option value="s3">S3-compatible</option>
-              <option value="nfs">NFS / local mount</option>
             </select>
           </label>
         </div>
@@ -735,108 +704,111 @@ export function AdminPage() {
               ] as const
             ).map(([key, label]) => (
               <label key={key} className="block text-sm">
-                <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">{label}</span>
+                <span className="mb-1.5 block text-xs font-medium text-muted">{label}</span>
                 <input
                   required={key !== 'region'}
                   type={key.includes('secret') ? 'password' : 'text'}
                   value={String(s3[key])}
                   onChange={(e) => setS3({ ...s3, [key]: e.target.value })}
-                  className="input-glass"
+                  className="input-field"
                 />
               </label>
             ))}
-            <label className="flex items-center gap-2 text-sm text-arkive-muted">
+            <label className="flex items-center gap-2 text-sm text-muted">
               <input
                 type="checkbox"
-                className="h-4 w-4 accent-arkive-accent"
                 checked={s3.use_ssl}
                 onChange={(e) => setS3({ ...s3, use_ssl: e.target.checked })}
               />
               Use SSL
             </label>
-            <label className="flex items-center gap-2 text-sm text-arkive-muted">
+            <label className="flex items-center gap-2 text-sm text-muted">
               <input
                 type="checkbox"
-                className="h-4 w-4 accent-arkive-accent"
                 checked={s3.force_path_style}
                 onChange={(e) => setS3({ ...s3, force_path_style: e.target.checked })}
               />
-              Path-style (MinIO)
+              Path-style addressing
             </label>
           </div>
         ) : (
           <label className="block text-sm">
-            <span className="mb-1.5 block text-xs font-medium tracking-wide text-arkive-muted uppercase">Mount path inside API container</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted">Path inside the API container</span>
             <input
               required
               value={mountPath}
               onChange={(e) => setMountPath(e.target.value)}
-              className="input-glass font-mono text-sm"
+              className="input-field font-mono text-sm"
             />
-            <span className="mt-1 block text-xs text-arkive-muted">
-              Compose ships a demo volume at <code>/mnt/arkive-nfs</code>. For a real NFS share, mount it into the API service.
+            <span className="mt-1 block text-xs text-muted">
+              Directory visible inside the API container. Bind-mount a host path or an NFS mount, then enter that path. Compose defaults to <code>/data/arkive</code>.
             </span>
           </label>
         )}
 
-        <button
+        <Button
           type="submit"
-          className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-iridescent px-3.5 py-2 text-sm font-semibold text-white shadow-[0_4px_20px_rgba(139,92,246,0.35)] transition hover:brightness-110 hover:shadow-[0_6px_28px_rgba(139,92,246,0.5)] disabled:opacity-50 mt-4"
+          size="sm"
+          variant="primary"
+          className="mt-4"
         >
           Test &amp; save
-        </button>
-      </motion.form>
+        </Button>
+      </form>
 
-      <ul className="mb-8 space-y-3">
+      <ul className="mb-6 space-y-3">
         {backends.map((b) => (
           <li
             key={b.id}
-            className="glass rounded-2xl px-4 py-3 transition hover:border-white/12"
+            className="panel px-4 py-3 transition hover:border-strong"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="font-medium">
                   {b.name}{' '}
                   {b.is_default && (
-                    <span className="ml-1 rounded-full bg-arkive-accent/15 px-2 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-arkive-accent/30">
+                    <span className="ml-1 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/40">
                       default
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-arkive-muted">
+                <div className="font-mono text-xs text-muted">
                   {b.type} · {JSON.stringify(b.config)}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 text-xs">
-                <button
-                  type="button"
+                <Button
+                  size="xs"
+                  variant="secondary"
                   onClick={() =>
                     void api
                       .testBackend(b.id)
                       .then(() => setMessage(`Test OK: ${b.name}`))
                       .catch((e) => setError(String(e)))
                   }
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 bg-white/[0.04] px-2.5 py-1 text-xs text-arkive-muted backdrop-blur-md transition hover:border-arkive-accent/50 hover:text-arkive-text disabled:opacity-50"
+                  icon={<SearchIcon size={12} />}
                 >
-                  <SearchCheck size={12} /> Test
-                </button>
+                  Test
+                </Button>
                 {!b.is_default && (
-                  <button
-                    type="button"
+                  <Button
+                    size="xs"
+                    variant="secondary"
                     onClick={() =>
                       void api
                         .setDefaultBackend(b.id)
                         .then(refresh)
                         .catch((e) => setError(String(e)))
                     }
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 bg-white/[0.04] px-2.5 py-1 text-xs text-arkive-muted backdrop-blur-md transition hover:border-arkive-accent/50 hover:text-arkive-text disabled:opacity-50"
+                    icon={<StarIcon size={12} />}
                   >
-                    <Star size={12} /> Make default
-                  </button>
+                    Make default
+                  </Button>
                 )}
                 {!b.is_default && (
-                  <button
-                    type="button"
+                  <Button
+                    size="xs"
+                    variant="secondary"
                     onClick={() =>
                       ask({
                         title: 'Delete storage backend',
@@ -853,10 +825,11 @@ export function AdminPage() {
                         },
                       })
                     }
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/8 px-2.5 py-1 text-xs text-arkive-muted transition hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+                    icon={<TrashIcon size={12} />}
+                    className="hover:!border-danger/60 hover:!text-danger"
                   >
-                    <Trash2 size={12} /> Delete
-                  </button>
+                    Delete
+                  </Button>
                 )}
               </div>
             </div>
@@ -864,23 +837,19 @@ export function AdminPage() {
         ))}
       </ul>
 
-      <section className="glass glass-hairline rounded-3xl p-5">
-        <h2 className="mb-3 flex items-center gap-2.5 font-display text-lg font-semibold">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-arkive-accent/25 to-arkive-accent2/20 text-arkive-accent2 ring-1 ring-white/10">
-            <HardDrive size={15} />
-          </span>
+      <section className="panel p-5">
+        <h2 className="mb-3 text-[15px] font-semibold">
           Assign workspace backend
         </h2>
-        <p className="mb-3 text-xs text-arkive-muted">
+        <p className="mb-3 text-xs text-muted">
           By default only the storage pointer changes. Enable copy below to migrate current files, trash,
           and versions to the new store first. Large vaults may take a while.
         </p>
-        <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-arkive-muted">
+        <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"
             checked={copyOnAssign}
             onChange={(e) => setCopyOnAssign(e.target.checked)}
-            className="h-4 w-4 accent-arkive-accent"
           />
           Also copy existing files
         </label>
@@ -910,7 +879,7 @@ export function AdminPage() {
                     .catch((err) => setError(String(err)))
                     .finally(() => setMigratingWs(''));
                 }}
-                className="input-glass !w-auto cursor-pointer !py-1.5 text-sm disabled:opacity-60 [&>option]:bg-arkive-surface"
+                className="input-field !w-auto cursor-pointer !py-1.5 text-sm"
               >
                 {backends.map((b) => (
                   <option key={b.id} value={b.id}>

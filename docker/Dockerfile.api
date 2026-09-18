@@ -12,7 +12,7 @@ RUN apk add --no-cache ca-certificates wget \
 WORKDIR /app
 COPY --from=builder /out/arkive /app/arkive
 COPY api/migrations /app/migrations
-RUN chown -R arkive:arkive /app
+RUN mkdir -p /data/arkive && chown -R arkive:arkive /app /data/arkive
 ENV ARKIVE_MIGRATIONS_DIR=/app/migrations
 USER arkive
 EXPOSE 8080

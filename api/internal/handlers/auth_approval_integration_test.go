@@ -25,6 +25,8 @@ func TestSignupApprovalFlow(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
+	cfg.S3Endpoint = ""
+	cfg.DataDir = t.TempDir()
 	cfg.BootstrapAdminEmail = "bootstrap-admin@test.local"
 	cfg.MigrationsDir = filepath.Join("..", "..", "migrations")
 

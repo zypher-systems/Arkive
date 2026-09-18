@@ -42,22 +42,23 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Ensure compose MinIO bucket exists for the seeded default backend.
-	s3, err := storage.NewS3StoreOpts(storage.S3Options{
-		Endpoint:       cfg.S3Endpoint,
-		AccessKey:      cfg.S3AccessKey,
-		SecretKey:      cfg.S3SecretKey,
-		Bucket:         cfg.S3Bucket,
-		Region:         cfg.S3Region,
-		UseSSL:         cfg.S3UseSSL,
-		ForcePathStyle: true,
-	})
-	if err != nil {
-		logger.Error("storage client failed", "err", err)
-		os.Exit(1)
-	}
-	if err := s3.EnsureBucket(ctx); err != nil {
-		logger.Warn("ensure bucket", "err", err)
+	if cfg.S3Endpoint != "" {
+		s3, err := storage.NewS3StoreOpts(storage.S3Options{
+			Endpoint:       cfg.S3Endpoint,
+			AccessKey:      cfg.S3AccessKey,
+			SecretKey:      cfg.S3SecretKey,
+			Bucket:         cfg.S3Bucket,
+			Region:         cfg.S3Region,
+			UseSSL:         cfg.S3UseSSL,
+			ForcePathStyle: true,
+		})
+		if err != nil {
+			logger.Error("storage client failed", "err", err)
+			os.Exit(1)
+		}
+		if err := s3.EnsureBucket(ctx); err != nil {
+			logger.Warn("ensure bucket", "err", err)
+		}
 	}
 
 	application := &app.App{

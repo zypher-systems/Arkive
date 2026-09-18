@@ -1,13 +1,12 @@
 import type { ReactNode } from 'react';
-import { motion } from 'framer-motion';
 import {
-  Clock,
-  Cloud,
-  FolderOpen,
-  HardDrive,
-  Share2,
-  Users,
-} from 'lucide-react';
+  ClockIcon,
+  CloudIcon,
+  FolderOpenIcon,
+  DriveIcon,
+  ShareIcon,
+  TeamIcon,
+} from '../icons';
 import type { Workspace } from '../../lib/api';
 import { formatBytes } from '../../lib/api';
 import { ProgressBar } from '../ui/Card';
@@ -40,14 +39,12 @@ function workspaceLabel(w: Workspace) {
 }
 
 function NavBtn({
-  id,
   active,
   onClick,
   icon,
   children,
   badge,
 }: {
-  id: string;
   active: boolean;
   onClick: () => void;
   icon: ReactNode;
@@ -58,30 +55,17 @@ function NavBtn({
     <button
       type="button"
       onClick={onClick}
-      className={`relative flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm transition-colors duration-200 ${
-        active ? 'text-white' : 'text-arkive-muted hover:text-arkive-text'
+      className={`relative flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors duration-150 ${
+        active ? 'bg-hover font-medium text-ink' : 'text-muted hover:bg-hover hover:text-ink'
       }`}
     >
       {active && (
-        <motion.span
-          layoutId={`sidebar-${id}`}
-          className="absolute inset-0 rounded-xl bg-gradient-to-r from-arkive-accent/28 to-arkive-accent2/14 shadow-[0_0_18px_rgba(139,92,246,0.25)] ring-1 ring-white/10"
-          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-        />
+        <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" aria-hidden />
       )}
-      {active && (
-        <span className="absolute inset-y-1.5 -left-px w-[3px] rounded-full bg-gradient-to-b from-arkive-accent to-arkive-accent2 shadow-[0_0_8px_rgba(139,92,246,0.9)]" />
-      )}
-      <span
-        className={`relative shrink-0 transition-colors ${
-          active ? 'text-arkive-accent2' : 'opacity-70'
-        }`}
-      >
-        {icon}
-      </span>
-      <span className="relative min-w-0 flex-1 truncate">{children}</span>
+      <span className="shrink-0">{icon}</span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
       {badge && (
-        <span className="relative rounded-full bg-white/8 px-1.5 py-0.5 text-[10px] font-semibold text-arkive-muted ring-1 ring-white/10">
+        <span className="rounded-full bg-inset px-1.5 py-0.5 text-[10px] font-semibold text-muted ring-1 ring-line">
           {badge}
         </span>
       )}
@@ -89,19 +73,10 @@ function NavBtn({
   );
 }
 
-function Section({
-  title,
-  icon,
-  children,
-}: {
-  title: string;
-  icon: ReactNode;
-  children: ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="mb-5 border-b border-white/5 pb-4 last:mb-0 last:border-0 last:pb-0">
-      <p className="mb-2 flex items-center gap-1.5 px-2.5 text-[10px] font-bold tracking-[0.14em] text-arkive-muted/80 uppercase">
-        <span className="text-arkive-accent2/70">{icon}</span>
+    <section className="mb-5 last:mb-0">
+      <p className="mb-1.5 px-2.5 text-[11px] font-semibold tracking-wide text-faint uppercase">
         {title}
       </p>
       <ul className="space-y-0.5">{children}</ul>
@@ -126,16 +101,15 @@ export function FilesSidebar({
   const pct = totalQuota != null && totalQuota > 0 ? totalBytes / totalQuota : null;
 
   return (
-    <aside className="glass glass-hairline scroll-slim flex w-full shrink-0 flex-col rounded-3xl lg:sticky lg:top-[5.5rem] lg:h-[calc(100vh-8rem)] lg:w-64">
-      <div className="flex-1 overflow-y-auto p-3">
-        <Section title="Vaults" icon={<HardDrive size={11} />}>
+    <aside className="scroll-slim flex w-full shrink-0 flex-col lg:sticky lg:top-[4.5rem] lg:h-[calc(100vh-7rem)] lg:w-60 lg:border-r lg:border-line lg:pr-4">
+      <nav className="flex-1 overflow-y-auto rounded-md border border-line bg-surface p-2.5 shadow-xs lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+        <Section title="Vaults">
           {personal && (
             <li>
               <NavBtn
-                id={personal.id}
                 active={active?.kind === 'workspace' && active.id === personal.id}
                 onClick={() => onSelectWorkspace(personal.id)}
-                icon={<FolderOpen size={16} />}
+                icon={<FolderOpenIcon size={15} />}
               >
                 {workspaceLabel(personal)}
               </NavBtn>
@@ -144,27 +118,25 @@ export function FilesSidebar({
           {teams.map((w) => (
             <li key={w.id}>
               <NavBtn
-                id={w.id}
                 active={active?.kind === 'workspace' && active.id === w.id}
                 onClick={() => onSelectWorkspace(w.id)}
-                icon={<Users size={16} />}
+                icon={<TeamIcon size={15} />}
               >
                 {workspaceLabel(w)}
               </NavBtn>
             </li>
           ))}
           {!personal && teams.length === 0 && (
-            <li className="px-2.5 py-1.5 text-xs text-arkive-muted">No local vaults</li>
+            <li className="px-2.5 py-1.5 text-xs text-muted">No local vaults</li>
           )}
         </Section>
 
-        <Section title="Library" icon={<Share2 size={11} />}>
+        <Section title="Library">
           <li>
             <NavBtn
-              id="shared"
               active={active?.kind === 'shared'}
               onClick={onSelectShared}
-              icon={<Share2 size={16} />}
+              icon={<ShareIcon size={15} />}
               badge={sharedCount ? String(sharedCount) : undefined}
             >
               Shared with me
@@ -172,24 +144,22 @@ export function FilesSidebar({
           </li>
           <li>
             <NavBtn
-              id="recent"
               active={active?.kind === 'recent'}
               onClick={onSelectRecent}
-              icon={<Clock size={16} />}
+              icon={<ClockIcon size={15} />}
             >
               Recent
             </NavBtn>
           </li>
         </Section>
 
-        <Section title="Connected" icon={<Cloud size={11} />}>
+        <Section title="Connected">
           {mounts.map((w) => (
             <li key={w.id}>
               <NavBtn
-                id={w.id}
                 active={active?.kind === 'workspace' && active.id === w.id}
                 onClick={() => onSelectWorkspace(w.id)}
-                icon={<Cloud size={16} />}
+                icon={<CloudIcon size={15} />}
               >
                 {workspaceLabel(w)}
               </NavBtn>
@@ -197,51 +167,46 @@ export function FilesSidebar({
           ))}
           <li>
             <NavBtn
-              id="live-drive"
               active={active?.kind === 'live-drive'}
               onClick={onSelectLiveDrive}
-              icon={<Cloud size={16} />}
+              icon={<CloudIcon size={15} />}
             >
               Google Drive (live)
             </NavBtn>
           </li>
           {mounts.length === 0 && (
-            <li className="px-2.5 py-1.5 text-xs text-arkive-muted">Connect clouds in Account</li>
+            <li className="px-2.5 py-1.5 text-xs text-muted">Connect clouds in Account</li>
           )}
         </Section>
-      </div>
+      </nav>
 
-      <div className="relative border-t border-white/6 px-4 py-4">
-        <div
-          className="pointer-events-none absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-arkive-accent/40 to-transparent"
-          aria-hidden
-        />
+      <div className="mt-4 border-t border-line pt-4 pr-1 pl-1 lg:pl-2.5">
         <div className="flex items-center justify-between">
-          <p className="flex items-center gap-1.5 text-[10px] font-bold tracking-[0.14em] text-arkive-muted/80 uppercase">
-            <HardDrive size={11} className="text-arkive-accent2/70" />
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-faint uppercase">
+            <DriveIcon size={12} />
             Storage
           </p>
           {pct != null && (
             <span
-              className={`text-[10px] font-semibold ${
-                pct >= 0.9 ? 'text-red-300' : 'text-arkive-muted'
+              className={`text-[11px] font-semibold ${
+                pct >= 0.9 ? 'text-danger' : 'text-muted'
               }`}
             >
               {Math.round(pct * 100)}%
             </span>
           )}
         </div>
-        <p className="mt-1.5 font-display text-lg font-semibold text-arkive-text">
+        <p className="mt-1.5 text-sm font-semibold text-ink">
           {formatBytes(totalBytes)}
           {totalQuota != null && totalQuota > 0 && (
-            <span className="text-sm font-normal text-arkive-muted">
+            <span className="font-normal text-muted">
               {' '}
               / {formatBytes(totalQuota)}
             </span>
           )}
         </p>
-        {pct != null && <ProgressBar value={pct} danger={pct >= 0.9} className="mt-2.5" />}
-        <p className="mt-2 text-xs text-arkive-muted">
+        {pct != null && <ProgressBar value={pct} danger={pct >= 0.9} className="mt-2" />}
+        <p className="mt-1.5 text-xs text-muted">
           {totalFiles} file{totalFiles === 1 ? '' : 's'} across your roots
         </p>
       </div>

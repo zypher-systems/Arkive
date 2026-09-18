@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { contentUrl, thumbUrl, type LiveDriveItem, type Node } from '../../lib/api';
+import { useEffect, useState } from 'react';
 import {
   fileTypeLabel,
   isAudioName,
@@ -123,33 +124,17 @@ function ArchiveIcon({ className }: { className?: string }) {
 
 const OFFICE_STYLE: Record<
   OfficeKind,
-  { wrap: string; text: string; label: string; accent: string }
+  { wrap: string; text: string; label: string }
 > = {
-  word: {
-    wrap: 'bg-blue-500/15 text-blue-300',
-    text: 'text-blue-300',
-    label: 'DOC',
-    accent: 'currentColor',
-  },
-  excel: {
-    wrap: 'bg-emerald-500/15 text-emerald-300',
-    text: 'text-emerald-300',
-    label: 'XLS',
-    accent: 'currentColor',
-  },
-  powerpoint: {
-    wrap: 'bg-orange-500/15 text-orange-300',
-    text: 'text-orange-300',
-    label: 'PPT',
-    accent: 'currentColor',
-  },
-  archive: {
-    wrap: 'bg-white/[0.06] text-arkive-muted',
-    text: 'text-arkive-muted',
-    label: 'ZIP',
-    accent: 'currentColor',
-  },
+  word: { wrap: 'bg-[#dbe7f5] text-[#2f5b93]', text: 'text-[#2f5b93]', label: 'DOC' },
+  excel: { wrap: 'bg-[#d9ecdd] text-[#2e7a45]', text: 'text-[#2e7a45]', label: 'XLS' },
+  powerpoint: { wrap: 'bg-[#f6e0cf] text-[#9a5a20]', text: 'text-[#9a5a20]', label: 'PPT' },
+  archive: { wrap: 'bg-hover text-muted', text: 'text-muted', label: 'ZIP' },
 };
+
+function Themed({ children }: { children: ReactNode }) {
+  return <span className="contents dark:[&_.thumb-tint]:brightness-[0.72] dark:[&_.thumb-tint]:saturate-[0.85]">{children}</span>;
+}
 
 function OfficeBadge({
   kind,
@@ -162,22 +147,22 @@ function OfficeBadge({
 }) {
   const s = OFFICE_STYLE[kind];
   return (
-    <span
-      className={`flex flex-col items-center justify-center gap-0.5 ${s.wrap} ${
-        dense
-          ? 'h-9 w-9 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10'
-          : 'h-full w-full'
-      }`}
-    >
-      {kind === 'archive' ? (
-        <ArchiveIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
-      ) : (
-        <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} accent={s.accent} />
-      )}
-      <span className={`font-bold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'} ${s.text}`}>
-        {label || s.label}
+    <Themed>
+      <span
+        className={`thumb-tint flex flex-col items-center justify-center gap-0.5 ${s.wrap} ${
+          dense ? 'h-9 w-9 shrink-0 overflow-hidden rounded-md' : 'h-full w-full'
+        }`}
+      >
+        {kind === 'archive' ? (
+          <ArchiveIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
+        ) : (
+          <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
+        )}
+        <span className={`font-bold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'} ${s.text}`}>
+          {label || s.label}
+        </span>
       </span>
-    </span>
+    </Themed>
   );
 }
 
@@ -210,19 +195,19 @@ function TextPeek({ node }: { node: Node }) {
 
   if (!snippet) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-sky-300/90">
-        <FileDocIcon className="h-12 w-12" accent="currentColor" />
+      <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-hover text-muted">
+        <FileDocIcon className="h-12 w-12" />
         <span className="text-[10px] font-semibold tracking-wide">{fileTypeLabel(node)}</span>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-arkive-bg/80 p-1.5">
-      <span className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-sky-300/80">
+    <div className="flex h-full w-full flex-col bg-inset p-1.5">
+      <span className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-faint">
         {fileTypeLabel(node)}
       </span>
-      <pre className="min-h-0 flex-1 overflow-hidden whitespace-pre-wrap break-all font-mono text-[9px] leading-snug text-arkive-muted">
+      <pre className="min-h-0 flex-1 overflow-hidden whitespace-pre-wrap break-all font-mono text-[9px] leading-snug text-muted">
         {snippet}
       </pre>
     </div>
@@ -231,15 +216,17 @@ function TextPeek({ node }: { node: Node }) {
 
 function FolderThumb({ dense }: { dense: boolean }) {
   return (
-    <span
-      className={`flex items-center justify-center ${
-        dense
-          ? 'h-9 w-9 shrink-0 rounded-xl bg-gradient-to-br from-arkive-accent/30 to-arkive-accent2/20 text-violet-200 ring-1 ring-white/10 shadow-[0_0_12px_rgba(139,92,246,0.2)]'
-          : 'h-full w-full bg-gradient-to-br from-arkive-accent/16 via-transparent to-arkive-accent2/12 text-violet-200'
-      }`}
-    >
-      <FolderIcon className={dense ? 'h-6 w-6' : 'h-16 w-16 drop-shadow-sm'} />
-    </span>
+    <Themed>
+      <span
+        className={`thumb-tint flex items-center justify-center ${
+          dense
+            ? 'h-9 w-9 shrink-0 rounded-md bg-[#f2e6c9] text-[#8a6a1f]'
+            : 'h-full w-full bg-[#f2e6c9] text-[#8a6a1f]'
+        }`}
+      >
+        <FolderIcon className={dense ? 'h-6 w-6' : 'h-16 w-16'} />
+      </span>
+    </Themed>
   );
 }
 
@@ -252,9 +239,7 @@ type Props = {
 
 export function FileThumb({ node, size = 'sm', allowContent = true }: Props) {
   const dense = size === 'sm';
-  const box = dense
-    ? 'h-9 w-9 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10'
-    : 'h-full w-full';
+  const box = dense ? 'h-9 w-9 shrink-0 overflow-hidden rounded-md' : 'h-full w-full';
 
   if (node.kind === 'folder') {
     return <FolderThumb dense={dense} />;
@@ -273,7 +258,7 @@ export function FileThumb({ node, size = 'sm', allowContent = true }: Props) {
 
   if (allowContent && node.id && isImageNode(node)) {
     return (
-      <span className={`block bg-white/[0.04] ${box}`}>
+      <span className={`block bg-inset ${box}`}>
         <img
           src={thumbUrl(node.id)}
           alt=""
@@ -292,7 +277,7 @@ export function FileThumb({ node, size = 'sm', allowContent = true }: Props) {
 
   if (allowContent && node.id && isVideoNode(node)) {
     return (
-      <span className={`relative block bg-white/[0.05] ${box}`}>
+      <span className={`relative block bg-inset ${box}`}>
         <video
           src={contentUrl(node.id)}
           muted
@@ -311,18 +296,20 @@ export function FileThumb({ node, size = 'sm', allowContent = true }: Props) {
 
   if (isPdfNode(node)) {
     return (
-      <span
-        className={`flex flex-col items-center justify-center gap-0.5 bg-red-500/10 text-red-300 ${box}`}
-      >
-        <FileDocIcon className={dense ? 'h-6 w-6' : 'h-12 w-12'} accent="currentColor" />
-        <span className={`font-bold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>PDF</span>
-      </span>
+      <Themed>
+        <span
+          className={`thumb-tint flex flex-col items-center justify-center gap-0.5 bg-[#f3d9d4] text-[#93392f] ${box}`}
+        >
+          <FileDocIcon className={dense ? 'h-6 w-6' : 'h-12 w-12'} />
+          <span className={`font-bold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>PDF</span>
+        </span>
+      </Themed>
     );
   }
 
   if (isAudioNode(node)) {
     return (
-      <span className={`flex items-center justify-center bg-violet-500/10 text-violet-300 ${box}`}>
+      <span className={`flex items-center justify-center bg-hover text-muted ${box}`}>
         <AudioIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
       </span>
     );
@@ -338,17 +325,17 @@ export function FileThumb({ node, size = 'sm', allowContent = true }: Props) {
 
   if (isTextNode(node) || isImageNode(node) || isVideoNode(node)) {
     return (
-      <span className={`flex items-center justify-center bg-sky-500/10 text-sky-300 ${box}`}>
-        <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} accent="currentColor" />
+      <span className={`flex items-center justify-center bg-hover text-muted ${box}`}>
+        <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
       </span>
     );
   }
 
   return (
     <span
-      className={`flex flex-col items-center justify-center gap-0.5 bg-white/[0.05] text-arkive-muted ${box}`}
+      className={`flex flex-col items-center justify-center gap-0.5 bg-inset text-muted ${box}`}
     >
-      <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} accent="currentColor" />
+      <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
       <span className={`font-semibold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>
         {fileTypeLabel(node)}
       </span>
@@ -365,9 +352,7 @@ export function LiveDriveThumb({
   size?: 'sm' | 'lg';
 }) {
   const dense = size === 'sm';
-  const box = dense
-    ? 'h-9 w-9 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10'
-    : 'h-full w-full';
+  const box = dense ? 'h-9 w-9 shrink-0 overflow-hidden rounded-md' : 'h-full w-full';
 
   if (item.kind === 'folder') return <FolderThumb dense={dense} />;
 
@@ -384,28 +369,28 @@ export function LiveDriveThumb({
 
   if (isPdfName(item.name, item.mime)) {
     return (
-      <span
-        className={`flex flex-col items-center justify-center gap-0.5 bg-red-500/10 text-red-300 ${box}`}
-      >
-        <FileDocIcon className={dense ? 'h-6 w-6' : 'h-12 w-12'} accent="currentColor" />
-        <span className={`font-bold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>PDF</span>
-      </span>
+      <Themed>
+        <span
+          className={`thumb-tint flex flex-col items-center justify-center gap-0.5 bg-[#f3d9d4] text-[#93392f] ${box}`}
+        >
+          <FileDocIcon className={dense ? 'h-6 w-6' : 'h-12 w-12'} />
+          <span className={`font-bold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>PDF</span>
+        </span>
+      </Themed>
     );
   }
 
   if (isImageName(item.name, item.mime)) {
     return (
-      <span
-        className={`flex items-center justify-center bg-arkive-accent2/10 text-arkive-accent2 ${box}`}
-      >
-        <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} accent="currentColor" />
+      <span className={`flex items-center justify-center bg-hover text-muted ${box}`}>
+        <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
       </span>
     );
   }
 
   if (isVideoName(item.name, item.mime)) {
     return (
-      <span className={`flex items-center justify-center bg-white/[0.06] text-arkive-muted ${box}`}>
+      <span className={`flex items-center justify-center bg-hover text-muted ${box}`}>
         <VideoIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
       </span>
     );
@@ -413,7 +398,7 @@ export function LiveDriveThumb({
 
   if (isAudioName(item.name, item.mime)) {
     return (
-      <span className={`flex items-center justify-center bg-violet-500/10 text-violet-300 ${box}`}>
+      <span className={`flex items-center justify-center bg-hover text-muted ${box}`}>
         <AudioIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
       </span>
     );
@@ -421,9 +406,9 @@ export function LiveDriveThumb({
 
   return (
     <span
-      className={`flex flex-col items-center justify-center gap-0.5 bg-white/[0.05] text-arkive-muted ${box}`}
+      className={`flex flex-col items-center justify-center gap-0.5 bg-inset text-muted ${box}`}
     >
-      <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} accent="currentColor" />
+      <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
       <span className={`font-semibold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>
         {nameExtLabel(item.name)}
       </span>
