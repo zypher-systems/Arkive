@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Compose smoke: register → admin approve → upload → download.
 # Requires a running stack (default http://localhost:3080) and a bootstrap admin.
+# BASE must be localhost, an IP, or a hostname with a dot — curl will not store
+# cookies for a bare Docker name like "web".
 set -euo pipefail
 BASE="${ARKIVE_PUBLIC_URL:-http://localhost:3080}"
 ADMIN_EMAIL="${ARKIVE_BOOTSTRAP_ADMIN_EMAIL:-admin@arkive.local}"

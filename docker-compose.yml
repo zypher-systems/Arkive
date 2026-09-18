@@ -82,6 +82,11 @@ services:
       dockerfile: docker/Dockerfile.web
     ports:
       - "3080:8080"
+    networks:
+      default:
+        aliases:
+          # Dotted name so curl will store session cookies (bare "web" will not).
+          - web.local
     depends_on:
       api:
         condition: service_healthy

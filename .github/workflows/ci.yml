@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main, dev]
   pull_request:
 
 jobs:
@@ -52,15 +50,18 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    env:
+      ARKIVE_BOOTSTRAP_ADMIN_EMAIL: admin@arkive.local
+      ARKIVE_PUBLIC_URL: http://localhost:3080
     steps:
       - uses: actions/checkout@v4
       - name: Start stack
         run: docker compose up -d --build
-      - name: Wait for API
+      - name: Wait for stack
         run: |
           ok=0
           for i in $(seq 1 90); do
-            if docker compose exec -T api wget -qO- http://127.0.0.1:8080/api/ready >/dev/null 2>&1; then
+            if curl -sf http://localhost:3080/api/ready >/dev/null; then
               ok=1
               break
             fi
@@ -68,13 +69,7 @@ jobs:
           done
           test "$ok" = 1
       - name: Smoke
-        run: |
-          NET=$(docker inspect "$(docker compose ps -q api)" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
-          docker run --rm --network "$NET" \
-            -e ARKIVE_PUBLIC_URL=http://web:8080 \
-            -e ARKIVE_BOOTSTRAP_ADMIN_EMAIL=admin@arkive.local \
-            -v "$PWD/scripts/smoke.sh:/smoke.sh:ro" \
-            python:3.12-alpine sh -c "apk add --no-cache curl bash && bash /smoke.sh"
+        run: ./scripts/smoke.sh
       - name: Tear down
         if: always()
         run: docker compose down -v || true

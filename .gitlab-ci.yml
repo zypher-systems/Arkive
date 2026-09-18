@@ -98,7 +98,7 @@ test:smoke:
     - |
       NET=$(docker inspect "$(docker compose ps -q api)" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
       docker run --rm --network "$NET" \
-        -e ARKIVE_PUBLIC_URL=http://web:8080 \
+        -e ARKIVE_PUBLIC_URL=http://web.local:8080 \
         -e ARKIVE_BOOTSTRAP_ADMIN_EMAIL=admin@arkive.local \
         -v "$PWD/scripts/smoke.sh:/smoke.sh:ro" \
         python:3.12-alpine sh -c "apk add --no-cache curl bash && bash /smoke.sh"

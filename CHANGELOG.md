@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - MinIO images pull from quay.io with pinned release tags
-- GitHub Actions CI (tests + compose smoke; no image publish)
+- GitHub Actions CI on pull requests only (tests + compose smoke; no image publish)
 
 ## [1.0.0] - 2026-08-12
 
