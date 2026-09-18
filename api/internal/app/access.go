@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -167,6 +166,6 @@ func WriteHTTPError(err error) (int, string) {
 	case errors.Is(err, ErrWorkspaceMismatch):
 		return 400, "parent not in workspace"
 	default:
-		return 500, fmt.Sprintf("internal error: %v", err)
+		return 500, "internal error"
 	}
 }

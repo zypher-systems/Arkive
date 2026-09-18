@@ -370,6 +370,11 @@ func (h *AuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 			httpjson.Error(w, http.StatusInternalServerError, "update failed")
 			return
 		}
+		_, _ = h.App.DB.Exec(r.Context(), `DELETE FROM sessions WHERE user_id = $1`, user.ID)
+		if err := h.createSession(w, r, user.ID); err != nil {
+			httpjson.Error(w, http.StatusInternalServerError, "update failed")
+			return
+		}
 	} else {
 		_, err := h.App.DB.Exec(r.Context(), `UPDATE users SET display_name = $1 WHERE id = $2`, display, user.ID)
 		if err != nil {

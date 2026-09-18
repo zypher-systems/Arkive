@@ -14,6 +14,8 @@ docker compose up --build
 
 Open [http://localhost:3080](http://localhost:3080).
 
+Arkive is licensed under the [MIT License](LICENSE).
+
 ### Production
 
 TLS terminates at a reverse proxy; Arkive stays HTTP. Examples: [`deploy/Caddyfile`](deploy/Caddyfile), [`deploy/traefik.yml`](deploy/traefik.yml), [`deploy/nginx-proxy.conf`](deploy/nginx-proxy.conf).
@@ -173,9 +175,11 @@ docker/       Dockerfiles + nginx.conf
 deploy/       Caddy / Traefik / nginx TLS examples
 docs/         Backup and upgrade runbooks
 assets/       Logo / brand source
+.github/      Public CI
 docker-compose.yml
 docker-compose.prod.yml
 LICENSE
+SECURITY.md
 CHANGELOG.md
 ```
 
@@ -186,7 +190,7 @@ cd api && go test ./...
 cd web && npm install && npm run build
 ```
 
-CI (GitLab, runner tag `docker-build`) runs `go test ./...` against Postgres, `web` unit tests + production build, and Docker image builds for api/web (including git tags such as `v1.0.0`).
+CI (GitHub Actions, plus optional GitLab) runs `go test ./...` against Postgres, `web` unit tests + production build, compose smoke, and Docker image builds for api/web. Images are not published from CI.
 
 Optional signup-approval integration test (needs a Postgres DSN; set automatically in CI):
 

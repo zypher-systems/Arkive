@@ -52,3 +52,67 @@ func TestShareCreateAndList(t *testing.T) {
 		t.Fatalf("listed=%+v", listed)
 	}
 }
+
+func TestShareCreateRejectsForeignWorkspace(t *testing.T) {
+	env := newTestEnv(t)
+	nodeID := env.upload("team-share.txt", []byte("do not leak"))
+
+	otherEmail := fmt.Sprintf("other-%d@test.local", time.Now().UnixNano())
+	otherID := env.registerPending(otherEmail, "password123", "Other")
+	env.approve(otherID)
+	otherCookie := env.login(otherEmail, "password123")
+
+	saved := env.Cookie
+	env.Cookie = otherCookie
+	rr := env.do(http.MethodGet, "/api/workspaces", nil, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("other workspaces status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var spaces []struct {
+		ID   uuid.UUID `json:"id"`
+		Type string    `json:"type"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &spaces); err != nil {
+		t.Fatal(err)
+	}
+	var foreign uuid.UUID
+	for _, s := range spaces {
+		if s.Type == "personal" {
+			foreign = s.ID
+			break
+		}
+	}
+	if foreign == uuid.Nil {
+		t.Fatal("other user missing personal workspace")
+	}
+	env.Cookie = saved
+
+	body, _ := json.Marshal(map[string]any{
+		"grantee_workspace_id": foreign.String(),
+		"permission":           "read",
+	})
+	rr = env.do(http.MethodPost, "/api/nodes/"+nodeID.String()+"/shares", bytes.NewReader(body), "application/json")
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("foreign workspace share status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	body, _ = json.Marshal(map[string]string{"name": "Share Team"})
+	rr = env.do(http.MethodPost, "/api/workspaces", bytes.NewReader(body), "application/json")
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create team status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var team struct {
+		ID uuid.UUID `json:"id"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &team); err != nil {
+		t.Fatal(err)
+	}
+	body, _ = json.Marshal(map[string]any{
+		"grantee_workspace_id": team.ID.String(),
+		"permission":           "read",
+	})
+	rr = env.do(http.MethodPost, "/api/nodes/"+nodeID.String()+"/shares", bytes.NewReader(body), "application/json")
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("own team share status=%d body=%s", rr.Code, rr.Body.String())
+	}
+}

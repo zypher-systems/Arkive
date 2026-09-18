@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Arkive thin WebDAV desktop helper"
 authors = ["Arkive"]
 edition = "2021"
+license = "MIT"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

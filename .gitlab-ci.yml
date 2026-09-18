@@ -1,4 +1,4 @@
-# GitLab CI for self-hosted Codevault (https://codevault.sh)
+# Optional GitLab CI (self-hosted runners). GitHub Actions is the public CI.
 # Runner: Docker executor — required tag: docker-build
 
 workflow:

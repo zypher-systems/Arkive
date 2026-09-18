@@ -60,11 +60,14 @@ func NewRouter(a *app.App) http.Handler {
 		httpjson.Write(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	r.Get("/api/public/{token}", publicH.Meta)
-	r.Get("/api/public/{token}/nodes", publicH.ListNodes)
 	pubLimit := middleware.NewIPRateLimiter(60, time.Minute)
-	r.With(middleware.RateLimit(pubLimit)).Get("/api/public/{token}/download", publicH.Download)
-	r.With(middleware.RateLimit(pubLimit)).Post("/api/public/{token}/download-zip", publicH.DownloadZip)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RateLimit(pubLimit))
+		r.Get("/api/public/{token}", publicH.Meta)
+		r.Get("/api/public/{token}/nodes", publicH.ListNodes)
+		r.Get("/api/public/{token}/download", publicH.Download)
+		r.Post("/api/public/{token}/download-zip", publicH.DownloadZip)
+	})
 	r.Get("/api/storage/google/enabled", gdriveH.Enabled)
 	r.Get("/api/auth/google/drive/callback", gdriveH.Callback)
 

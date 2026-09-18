@@ -6,6 +6,10 @@ web/node_modules/
 *.test
 .env
 .DS_Store
+Thumbs.db
+*.log
 api/arkive
 .idea/
 .vscode/
+.cursor/
+desktop/src-tauri/target/

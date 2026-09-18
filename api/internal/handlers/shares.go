@@ -97,6 +97,13 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var granteeWorkspaceID *uuid.UUID
 
 	if req.GranteeWorkspaceID != nil {
+		// Sharer must belong to the target workspace. Otherwise any writer could
+		// attach a node to an arbitrary team and grant every member access.
+		if err := h.App.RequireWorkspaceAccess(r.Context(), *req.GranteeWorkspaceID, user.ID, false); err != nil {
+			status, msg := app.WriteHTTPError(err)
+			httpjson.Error(w, status, msg)
+			return
+		}
 		granteeWorkspaceID = req.GranteeWorkspaceID
 	} else if req.GranteeUserID != nil {
 		granteeUserID = req.GranteeUserID
