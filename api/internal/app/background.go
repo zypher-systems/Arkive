@@ -35,6 +35,9 @@ func (a *App) log() *slog.Logger {
 	return slog.Default()
 }
 
+// Log returns the app logger, falling back to slog.Default when unset.
+func (a *App) Log() *slog.Logger { return a.log() }
+
 func (a *App) startBackgroundPool() {
 	a.bg.once.Do(func() {
 		a.bg.queue = make(chan bgJob, bgQueueSize)

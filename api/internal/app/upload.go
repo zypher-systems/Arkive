@@ -233,7 +233,7 @@ func (a *App) commitStoredFile(ctx context.Context, p StoreFileParams, name, con
 	}
 	err = scanNode(tx.QueryRow(ctx, `
 		UPDATE nodes SET storage_key = $1, size = $2, mime = $3, checksum = $4,
-		       thumb_key = NULL, content_text = NULL, updated_at = now()
+		       thumb_key = NULL, content_text = '', updated_at = now()
 		WHERE id = $5
 		`+nodeReturning, key, size, contentType, sum, existingID), &n)
 	if err != nil {

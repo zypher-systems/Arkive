@@ -263,7 +263,7 @@ func (a *App) RestoreVersion(ctx context.Context, nodeID uuid.UUID, version int,
 		return err
 	}
 	if _, err := tx.Exec(ctx, `
-		UPDATE nodes SET storage_key = $1, size = $2, mime = $3, thumb_key = NULL, content_text = NULL, updated_at = now()
+		UPDATE nodes SET storage_key = $1, size = $2, mime = $3, thumb_key = NULL, content_text = '', updated_at = now()
 		WHERE id = $4
 	`, newKey, vSize, vMime, nodeID); err != nil {
 		_ = store.Delete(ctx, newKey)
