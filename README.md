@@ -295,7 +295,7 @@ make image          # docker build -f docker/Dockerfile
 
 `go test ./...` needs no database: every test gets a fresh SQLite file. With `ARKIVE_TEST_DATABASE_URL=postgres://…` the same tests run against PostgreSQL. Write SQL that works on both — the rules are in [`api/internal/db/README.md`](api/internal/db/README.md); schema changes need a migration in both `api/migrations/` and `api/migrations/sqlite/` (a test checks they match).
 
-CI (GitHub Actions, plus optional GitLab) runs `go vet` + `go test ./...` on SQLite (also with `-race`) and on PostgreSQL, `web` unit tests + production build, and for both compose layouts the compose smoke, the Playwright end-to-end suite and the smoke again after a restart. On failure the Playwright HTML report and traces are uploaded as artifacts. CI builds the image from the commit with `docker-compose.build.yml`.
+CI (GitHub Actions) runs `go vet` + `go test ./...` on SQLite (also with `-race`) and on PostgreSQL, `web` unit tests + production build, and for both compose layouts the compose smoke, the Playwright end-to-end suite and the smoke again after a restart. On failure the Playwright HTML report and traces are uploaded as artifacts. CI builds the image from the commit with `docker-compose.build.yml`.
 
 **Releases:** pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml): tests, multi-arch images to `ghcr.io/zypher-systems/arkive` (with SBOM and provenance), a smoke test of the pushed image, and a GitHub release with binaries and the matching `CHANGELOG.md` section as notes.
 
