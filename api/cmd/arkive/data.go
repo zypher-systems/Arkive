@@ -90,8 +90,9 @@ func runExport(args []string) int {
 }
 
 func runGC(args []string) int {
-	fs := newFlagSet("gc", "[--dry-run] [--json]")
+	fs := newFlagSet("gc", "[--dry-run] [--force] [--json]")
 	dry := fs.Bool("dry-run", false, "only report what would be deleted")
+	force := fs.Bool("force", false, "delete even when the safety checks refuse (empty database, too many orphans)")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -107,7 +108,7 @@ func runGC(args []string) int {
 	}
 	defer done()
 
-	rep, err := a.GarbageCollect(ctx, *dry)
+	rep, err := a.GarbageCollectWith(ctx, app.GCOptions{DryRun: *dry, Force: *force})
 	if *asJSON {
 		printJSON(rep)
 	} else {
@@ -118,6 +119,9 @@ func runGC(args []string) int {
 				line = fmt.Sprintf("%-24s skipped: %s", b.Name, b.Skipped)
 			}
 			fmt.Println(line)
+		}
+		if rep.Refused != "" {
+			fmt.Printf("REFUSED: %s\n", rep.Refused)
 		}
 		fmt.Printf("uploads: %d expired session(s), %d orphan partial file(s), %d bytes\n",
 			rep.Uploads.ExpiredSessions, rep.Uploads.OrphanFiles, rep.Uploads.Bytes)

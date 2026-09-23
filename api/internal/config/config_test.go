@@ -19,6 +19,20 @@ func TestLoadDefaultStorageEnv(t *testing.T) {
 	}
 }
 
+func TestLoadDatabaseURLDefaultsToSQLiteInDataDir(t *testing.T) {
+	t.Setenv("ARKIVE_DATABASE_URL", "")
+	t.Setenv("ARKIVE_DATA_DIR", "/srv/arkive")
+	cfg := Load()
+	if cfg.DatabaseURL != "sqlite:///srv/arkive/arkive.db" || !cfg.DatabaseURLDefaulted {
+		t.Fatalf("default database url=%q defaulted=%v", cfg.DatabaseURL, cfg.DatabaseURLDefaulted)
+	}
+	t.Setenv("ARKIVE_DATABASE_URL", "postgres://a:b@db/arkive")
+	cfg = Load()
+	if cfg.DatabaseURL != "postgres://a:b@db/arkive" || cfg.DatabaseURLDefaulted {
+		t.Fatalf("explicit database url=%q defaulted=%v", cfg.DatabaseURL, cfg.DatabaseURLDefaulted)
+	}
+}
+
 func TestLoadSecretsFromEnv(t *testing.T) {
 	t.Setenv("ARKIVE_SESSION_SECRET", "")
 	t.Setenv("ARKIVE_SECRETS_KEY", "")

@@ -24,7 +24,13 @@ type maintFixture struct {
 
 func newMaintFixture(t *testing.T) *maintFixture {
 	t.Helper()
-	dsn := dbtest.URL(t)
+	return newMaintFixtureOn(t, dbtest.URL(t))
+}
+
+// newMaintFixtureOn builds the fixture on a given database (FreshURL for
+// tests that need to see the whole database).
+func newMaintFixtureOn(t *testing.T, dsn string) *maintFixture {
+	t.Helper()
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn

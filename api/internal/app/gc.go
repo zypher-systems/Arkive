@@ -15,6 +15,25 @@ import (
 // recently than this are never collected.
 const GCMinAge = time.Hour
 
+// Deletion caps. Arkive deletes blobs itself when files are purged, so the GC
+// only ever finds a few leaks. A run that finds many more orphans than that
+// is far more likely to be looking at the wrong database (for example a new,
+// empty SQLite database next to the blobs of a PostgreSQL install) than at
+// real garbage, so it deletes nothing and says so, unless forced.
+const (
+	// GCMaxOrphanFraction of a backend's Arkive blobs may be deleted per run…
+	GCMaxOrphanFraction = 0.10
+	// …but at least GCMinOrphanCap orphans are always allowed.
+	GCMinOrphanCap = 100
+)
+
+// GCOptions tune GarbageCollectWith.
+type GCOptions struct {
+	DryRun bool
+	// Force deletes even when the safety checks above would refuse.
+	Force bool
+}
+
 // GCBackendReport is the per-backend part of a GCReport.
 type GCBackendReport struct {
 	BackendID    uuid.UUID `json:"backend_id"`
@@ -30,6 +49,8 @@ type GCBackendReport struct {
 	DeletedBytes int64     `json:"deleted_bytes"` //
 	Skipped      string    `json:"skipped,omitempty"`
 	Errors       []string  `json:"errors,omitempty"`
+	// Managed counts listed blobs in Arkive's key layout (not .tmp).
+	Managed int `json:"managed"`
 }
 
 // GCReport summarizes one GarbageCollect run.
@@ -43,6 +64,8 @@ type GCReport struct {
 	OrphanBytes  int64             `json:"orphan_bytes"`
 	Deleted      int               `json:"deleted"`
 	DeletedBytes int64             `json:"deleted_bytes"`
+	// Refused explains why nothing was deleted on any backend.
+	Refused string `json:"refused,omitempty"`
 }
 
 type gcCandidate struct {
@@ -61,7 +84,19 @@ type gcCandidate struct {
 // if the database cannot be read nothing is deleted; each orphan is re-checked
 // against the database right before it is deleted. Keys are matched against
 // references from all workspaces, so a key still referenced anywhere is kept.
+//
+// Two guards protect against a wrong or empty database: when the database
+// references no blobs at all but a backend holds Arkive blobs, nothing is
+// deleted; and a backend whose orphans exceed GCMaxOrphanFraction of its
+// blobs (and GCMinOrphanCap) is skipped. Both are logged as errors and can be
+// overridden with GCOptions.Force (`arkive gc --force`).
 func (a *App) GarbageCollect(ctx context.Context, dryRun bool) (GCReport, error) {
+	return a.GarbageCollectWith(ctx, GCOptions{DryRun: dryRun})
+}
+
+// GarbageCollectWith is GarbageCollect with options.
+func (a *App) GarbageCollectWith(ctx context.Context, opts GCOptions) (GCReport, error) {
+	dryRun := opts.DryRun
 	rep := GCReport{DryRun: dryRun, StartedAt: time.Now().UTC()}
 
 	type backendRow struct {
@@ -142,6 +177,9 @@ func (a *App) GarbageCollect(ctx context.Context, dryRun bool) (GCReport, error)
 						br.Ignored++
 						return nil
 					}
+					if !isTmp {
+						br.Managed++
+					}
 					if o.ModTime.IsZero() || o.ModTime.After(cutoff) {
 						br.KeptRecent++
 						return nil
@@ -171,9 +209,51 @@ func (a *App) GarbageCollect(ctx context.Context, dryRun bool) (GCReport, error)
 		return rep, fmt.Errorf("load referenced keys: %w", err)
 	}
 
+	// Safety: a database that references no blob at all while a backend
+	// holds unreferenced Arkive blobs is almost certainly the wrong (or a new,
+	// empty) database. Deleting would wipe the real data.
+	if len(refs) == 0 && !opts.Force {
+		for i := range backends {
+			for _, c := range candidates[i] {
+				if !c.isTmp {
+					rep.Refused = "the database references no files but storage holds Arkive blobs; is ARKIVE_DATABASE_URL pointing at the right database? (override: arkive gc --force)"
+					break
+				}
+			}
+		}
+		if rep.Refused != "" {
+			a.log().Error("orphan gc refused: database has no file references but storage holds blobs; nothing deleted",
+				"hint", "check ARKIVE_DATABASE_URL; run `arkive gc --force` only if the blobs really are garbage")
+		}
+	}
+
 	// Phase 3: delete.
 	for i := range backends {
 		br := &rep.Backends[i]
+		if rep.Refused != "" {
+			candidates[i] = nil
+			if br.Skipped == "" {
+				br.Skipped = "refused: database references no files"
+			}
+		}
+		if !opts.Force && len(candidates[i]) > 0 {
+			orphans := 0
+			for _, c := range candidates[i] {
+				if _, ok := refs[c.key]; !ok && !c.isTmp {
+					orphans++
+				}
+			}
+			limit := max(GCMinOrphanCap, int(float64(br.Managed)*GCMaxOrphanFraction))
+			if orphans > limit {
+				br.Skipped = fmt.Sprintf("refused: %d of %d blobs are unreferenced (limit %d per run); verify the database, then run `arkive gc --force`", orphans, br.Managed, limit)
+				br.Orphans = orphans
+				a.log().Error("orphan gc refused on backend: too many unreferenced blobs; nothing deleted",
+					"backend", br.Name, "orphans", orphans, "blobs", br.Managed, "limit", limit)
+				rep.Orphans += orphans
+				candidates[i] = nil
+				continue
+			}
+		}
 		for _, c := range candidates[i] {
 			if err := ctx.Err(); err != nil {
 				return rep, err

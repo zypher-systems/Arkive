@@ -59,6 +59,12 @@ func serve(logger *slog.Logger) error {
 		return fmt.Errorf("database connect failed: %w", err)
 	}
 	defer pool.Close()
+	logger.Info("database ready", "engine", string(pool.Dialect()), "url", db.Redact(cfg.DatabaseURL), "default", cfg.DatabaseURLDefaulted)
+
+	if err := app.CheckDataDir(ctx, pool, cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "\n  arkive: %v\n\n", err)
+		return errors.New("refusing to start: the database is empty but the data directory holds files (see the message above)")
+	}
 
 	if err := resolveSecrets(ctx, logger, &cfg, pool); err != nil {
 		return err
