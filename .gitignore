@@ -12,4 +12,3 @@ api/arkive
 .idea/
 .vscode/
 .cursor/
-desktop/src-tauri/target/

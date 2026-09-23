@@ -85,11 +85,10 @@ Arkive is private by default: anyone can create an account, but new signups stay
 - Server-generated image thumbnails for Files tiles
 - Signup approve/reject email (optional SMTP)
 - Brand UI (graphite + industrial orange/amber)
-- Optional thin desktop wrapper under [`desktop/`](desktop/) (Tauri + WebDAV)
 
 ### WebDAV (official sync/mount path)
 
-Mount a workspace with Basic auth (email + password). This is the supported way to sync from desktop/mobile until a dedicated client ships (see [`desktop/README.md`](desktop/README.md)).
+Mount a workspace with Basic auth (email + password). This is the supported way to sync from desktop/mobile.
 
 ```text
 http://localhost:3080/dav/<workspace-id>/
