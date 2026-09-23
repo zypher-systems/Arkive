@@ -655,7 +655,7 @@ func (h *FileHandler) GetSharedWithMe(w http.ResponseWriter, r *http.Request) {
 	fetch := limit + 1
 	rows, err := h.App.DB.Query(r.Context(), `
 		SELECT n.id, n.workspace_id, n.parent_id, n.name, n.kind, n.size, n.mime, n.checksum, n.created_by, n.created_at, n.updated_at,
-		       CASE WHEN bool_or(s.permission = 'write') THEN 'write' ELSE 'read' END
+		       CASE WHEN MAX(CASE WHEN s.permission = 'write' THEN 1 ELSE 0 END) = 1 THEN 'write' ELSE 'read' END
 		FROM shares s
 		JOIN nodes n ON n.id = s.node_id
 		WHERE n.deleted_at IS NULL
@@ -670,6 +670,7 @@ func (h *FileHandler) GetSharedWithMe(w http.ResponseWriter, r *http.Request) {
 		LIMIT $2 OFFSET $3
 	`, user.ID, fetch, offset)
 	if err != nil {
+		h.App.Log().Error("shared-with-me query", "err", err)
 		httpjson.Error(w, http.StatusInternalServerError, "query failed")
 		return
 	}

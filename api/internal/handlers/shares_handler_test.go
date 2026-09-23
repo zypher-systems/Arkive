@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -50,6 +51,29 @@ func TestShareCreateAndList(t *testing.T) {
 	}
 	if len(listed) != 1 || listed[0].ID != created.ID {
 		t.Fatalf("listed=%+v", listed)
+	}
+
+	// The grantee sees the node under Shared with me with the effective
+	// permission (portable aggregate: this query once used Postgres bool_or).
+	cookie := env.login(granteeEmail, "password123")
+	req := httptest.NewRequest(http.MethodGet, "/api/shared", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	env.H.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("shared with me status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var shared struct {
+		Items []struct {
+			ID         uuid.UUID `json:"id"`
+			Permission string    `json:"permission"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &shared); err != nil {
+		t.Fatal(err)
+	}
+	if len(shared.Items) != 1 || shared.Items[0].ID != nodeID || shared.Items[0].Permission != "read" {
+		t.Fatalf("shared=%+v", shared.Items)
 	}
 }
 
