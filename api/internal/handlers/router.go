@@ -215,9 +215,15 @@ func NewRouter(a *app.App) http.Handler {
 	})
 
 	// WebDAV verbs (PROPFIND/MKCOL/…) are not in chi's method map — route outside chi.
-	davLimit := middleware.NewIPRateLimiter(120, time.Minute)
+	// File managers (Finder, Explorer) issue bursts of PROPFIND/GET while browsing.
+	davLimit := middleware.NewIPRateLimiter(1200, time.Minute)
 	davAuth := middleware.RateLimit(davLimit)(middleware.RequireAuthOrBasic(authH.SessionLookup(), davH.BasicLookup())(davH))
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/dav" {
+			// Some clients mount the bare prefix; treat it as the workspace list.
+			req.URL.Path = "/dav/"
+			req.URL.RawPath = ""
+		}
 		if strings.HasPrefix(req.URL.Path, "/dav/") {
 			davAuth.ServeHTTP(w, req)
 			return

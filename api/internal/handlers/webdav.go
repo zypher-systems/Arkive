@@ -963,8 +963,7 @@ func (h *WebDAVHandler) put(w http.ResponseWriter, r *http.Request, ws uuid.UUID
 		http.Error(w, "could not save file", http.StatusInternalServerError)
 		return
 	}
-	go h.App.IndexNodeText(context.Background(), ws, nodeID, ct, key)
-	go h.App.GenerateThumbnail(context.Background(), ws, nodeID, ct, key)
+	h.App.SchedulePostUpload(ws, nodeID, ct, key)
 	if hasMtime {
 		w.Header().Set("X-OC-Mtime", "accepted")
 	}
@@ -1371,10 +1370,9 @@ func (h *WebDAVHandler) replaceContent(ctx context.Context, ws, actor, dstID, sr
 	if mime != nil {
 		ct = *mime
 	}
-	go h.App.GenerateThumbnail(context.Background(), ws, dstID, ct, *key)
-	if text == "" {
-		go h.App.IndexNodeText(context.Background(), ws, dstID, ct, *key)
-	}
+	// Re-indexing text is idempotent, so the shared post-upload queue covers
+	// both the thumbnail and a missing search index.
+	h.App.SchedulePostUpload(ws, dstID, ct, *key)
 	return nil
 }
 
@@ -1456,7 +1454,7 @@ func (h *WebDAVHandler) copyNode(ctx context.Context, ws, actor uuid.UUID, src *
 	if src.Mime != nil {
 		ct = *src.Mime
 	}
-	go h.App.GenerateThumbnail(context.Background(), ws, newID, ct, key)
+	h.App.SchedulePostUpload(ws, newID, ct, key)
 	return nil
 }
 

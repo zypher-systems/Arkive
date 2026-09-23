@@ -15,7 +15,7 @@ The API runs [goose](https://github.com/pressly/goose) migrations from `api/migr
 - Set `ARKIVE_ENV=production` and unique `ARKIVE_SESSION_SECRET` / `ARKIVE_SECRETS_KEY`. The API refuses to boot on placeholders.
 - Inner nginx listens on **8080** (mapped to host **3080**). Outer reverse-proxy examples live in `deploy/`.
 - Folder list, trash, shared-with-me, and admin users are paginated. Old clients that expected a bare JSON array for trash/shared/admin users need to read `{ items, has_more, next_offset }`.
-- WebDAV advertises DAV class 1 (no LOCK).
+- WebDAV advertises DAV class 1 (no LOCK). Since 1.1 it advertises class 2 with exclusive locks; see [webdav.md](webdav.md).
 - User status may be `disabled` in addition to `pending` / `active` / `rejected`.
 
 ## Version-to-version

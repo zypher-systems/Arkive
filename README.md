@@ -101,7 +101,7 @@ Copy mount URLs from **Account → WebDAV mount**, or use the workspace id from 
 ```bash
 rclone config create arkive webdav \
   url http://localhost:3080/dav/<workspace-id>/ \
-  vendor other \
+  vendor owncloud \
   user admin@arkive.local \
   pass <password>
 # obscure password for rclone: rclone obscure 'yourpassword'
