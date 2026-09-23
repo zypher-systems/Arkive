@@ -146,6 +146,10 @@ func (s *failAfterStore) Delete(ctx context.Context, key string) error {
 	return s.inner.Delete(ctx, key)
 }
 
+func (s *failAfterStore) List(ctx context.Context, prefix string, fn func(storage.ObjectInfo) error) error {
+	return s.inner.List(ctx, prefix, fn)
+}
+
 func TestMigrateCopyFailureCleansDest(t *testing.T) {
 	fx := setupMigrateFixture(t, 2)
 	ctx := context.Background()

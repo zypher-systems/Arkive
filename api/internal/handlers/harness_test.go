@@ -305,3 +305,7 @@ func (s *failAfterStore) Get(ctx context.Context, key string) (io.ReadCloser, *s
 func (s *failAfterStore) Delete(ctx context.Context, key string) error {
 	return s.inner.Delete(ctx, key)
 }
+
+func (s *failAfterStore) List(ctx context.Context, prefix string, fn func(storage.ObjectInfo) error) error {
+	return s.inner.List(ctx, prefix, fn)
+}
