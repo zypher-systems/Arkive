@@ -32,5 +32,8 @@ func (h *SettingsHandler) PutVersionRetention(w http.ResponseWriter, r *http.Req
 		httpjson.Error(w, http.StatusInternalServerError, "could not save settings")
 		return
 	}
+	h.App.Audit(r.Context(), r, actorID(r), "settings.updated", "setting", "versions", map[string]any{
+		"max_versions": *req.MaxVersions,
+	})
 	httpjson.Write(w, http.StatusOK, map[string]int{"max_versions": h.App.MaxVersionsPerFile(r.Context())})
 }
