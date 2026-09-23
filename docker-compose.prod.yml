@@ -1,12 +1,19 @@
-# Production overlay. TLS belongs on an outer reverse proxy — Arkive stays HTTP.
+# Production overlay for either layout. TLS belongs on an outer reverse proxy —
+# Arkive stays HTTP.
 #
-#   cp .env.example .env   # set POSTGRES_PASSWORD and ARKIVE_PUBLIC_URL
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-#   docker compose logs arkive | grep setup_token   # or set ARKIVE_SETUP_TOKEN
+#   cp .env.example .env   # set ARKIVE_PUBLIC_URL (and POSTGRES_PASSWORD for PostgreSQL)
+#
+#   SQLite (single container):
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#   PostgreSQL:
+#     docker compose -f docker-compose.postgres.yml -f docker-compose.prod.yml up -d --build
+#
+#   docker compose … logs arkive | grep setup_token   # or set ARKIVE_SETUP_TOKEN
 #
 # Required in .env (no defaults):
-#   POSTGRES_PASSWORD
 #   ARKIVE_PUBLIC_URL          (https://arkive.example.com)
+# PostgreSQL layout: also set POSTGRES_PASSWORD — the "arkive" default is for
+# local try-outs only (the server logs a warning in production).
 #
 # ARKIVE_SESSION_SECRET / ARKIVE_SECRETS_KEY are optional: when unset, strong
 # values are generated on first boot and stored in /data/arkive/.arkive-secrets
@@ -16,18 +23,14 @@
 # ARKIVE_TRUSTED_PROXIES so client IPs (rate limits, logs) come from
 # X-Forwarded-For. To stop direct access, publish only on loopback with
 # ARKIVE_PORT=127.0.0.1:3080. Bind a host directory (or NFS
-# mount) over /data/arkive if you do not want the named arkive_data volume.
-# Postgres port stays unpublished.
+# mount) over /data/arkive if you do not want the named arkive_data volume
+# (with SQLite, keep that directory on a local disk, not NFS).
+# The Postgres port stays unpublished.
 
 services:
-  postgres:
-    environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-
   arkive:
     environment:
       ARKIVE_ENV: production
-      ARKIVE_DATABASE_URL: postgres://arkive:${POSTGRES_PASSWORD}@postgres:5432/arkive?sslmode=disable
       ARKIVE_DATA_DIR: ${ARKIVE_DATA_DIR:-/data/arkive}
       ARKIVE_PUBLIC_URL: ${ARKIVE_PUBLIC_URL:?set ARKIVE_PUBLIC_URL in .env}
       ARKIVE_COOKIE_SECURE: ${ARKIVE_COOKIE_SECURE:-true}

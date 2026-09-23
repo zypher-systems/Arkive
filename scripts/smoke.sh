@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Compose smoke: SPA + first-run setup → register → admin approve → upload →
-# download → WebDAV PROPFIND.
+# download → search → WebDAV PROPFIND.
+#
+# Works against either layout (docker-compose.yml with SQLite, or
+# docker-compose.postgres.yml). Run it again after a restart: the second run
+# logs in as the admin created by the first, which proves the data persisted.
 #
 # Requires a running stack (default http://localhost:3080).
 #   - Fresh instance: pass the setup token (ARKIVE_SMOKE_SETUP_TOKEN, falling
@@ -85,7 +89,12 @@ id=$(json_field '["id"]' <"$tmp/up.json")
 curl -sS -f -b "$user_cookie" -o "$tmp/dl.txt" "$BASE/api/nodes/$id/download"
 grep -q 'smoke file' "$tmp/dl.txt" || fail "download mismatch"
 
-# 5. WebDAV through the same binary.
+# 5. Search (full-text index: PostgreSQL tsvector or SQLite FTS5).
+curl -sS -f -b "$user_cookie" "$BASE/api/workspaces/$ws/search?q=smoke" >"$tmp/search.json"
+python3 -c 'import json,sys; ids=[n["id"] for n in json.load(open(sys.argv[1]))]; sys.exit(0 if sys.argv[2] in ids else 1)' \
+  "$tmp/search.json" "$id" || fail "search did not find smoke.txt: $(cat "$tmp/search.json")"
+
+# 6. WebDAV through the same binary.
 dav=$(curl -sS -o "$tmp/dav.xml" -w '%{http_code}' -u "$USER_EMAIL:$USER_PASS" -X PROPFIND -H 'Depth: 1' "$BASE/dav/$ws/" || true)
 [[ "$dav" == "207" ]] || fail "WebDAV PROPFIND returned $dav"
 grep -q 'smoke.txt' "$tmp/dav.xml" || fail "WebDAV listing lacks smoke.txt"

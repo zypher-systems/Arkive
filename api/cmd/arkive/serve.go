@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -60,6 +61,9 @@ func serve(logger *slog.Logger) error {
 	}
 	defer pool.Close()
 	logger.Info("database ready", "engine", string(pool.Dialect()), "url", db.Redact(cfg.DatabaseURL), "default", cfg.DatabaseURLDefaulted)
+	if cfg.IsProduction() && usesDefaultPostgresPassword(cfg.DatabaseURL) {
+		logger.Warn("the PostgreSQL password is the compose default \"arkive\"; set POSTGRES_PASSWORD in .env")
+	}
 
 	if err := app.CheckDataDir(ctx, pool, cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "\n  arkive: %v\n\n", err)
@@ -241,4 +245,19 @@ func runMigrate(args []string) int {
 	}
 	fmt.Println("migrations up to date")
 	return 0
+}
+
+// usesDefaultPostgresPassword reports the docker-compose.postgres.yml default
+// credentials, which are fine for a try-out but not for production.
+func usesDefaultPostgresPassword(rawURL string) bool {
+	t, err := db.ParseURL(rawURL)
+	if err != nil || t.Dialect != db.Postgres {
+		return false
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.User == nil {
+		return false
+	}
+	pw, _ := u.User.Password()
+	return pw == "arkive"
 }

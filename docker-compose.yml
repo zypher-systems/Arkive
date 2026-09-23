@@ -1,28 +1,18 @@
-# Arkive: one app container + Postgres.
+# Arkive: one container, one data folder (SQLite).
 #
 #   docker compose up -d
 #   docker compose logs arkive | grep setup_token   # one-time first-run token
 #
 # Then open http://localhost:3080 and create the admin account.
-# Secrets are generated on first boot into the arkive_data volume
-# (/data/arkive/.arkive-secrets) unless you set them in .env.
+#
+# Everything lives in the arkive_data volume at /data/arkive: the SQLite
+# database (arkive.db), your files, and the generated secrets
+# (.arkive-secrets). Back up that one volume.
+#
+# Bigger install, several replicas, or upgrading a 1.0 install that used
+# PostgreSQL? Use docker-compose.postgres.yml instead (see docs/upgrade.md).
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: arkive
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-arkive}
-      POSTGRES_DB: arkive
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arkive -d arkive"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   arkive:
     build:
       context: .
@@ -33,7 +23,8 @@ services:
     ports:
       - "${ARKIVE_PORT:-3080}:8080"
     environment:
-      ARKIVE_DATABASE_URL: postgres://arkive:${POSTGRES_PASSWORD:-arkive}@postgres:5432/arkive?sslmode=disable
+      # Empty = SQLite at /data/arkive/arkive.db. postgres://… uses PostgreSQL.
+      ARKIVE_DATABASE_URL: ${ARKIVE_DATABASE_URL:-}
       ARKIVE_DATA_DIR: /data/arkive
       # Empty = generated on first boot and kept in /data/arkive/.arkive-secrets.
       ARKIVE_SESSION_SECRET: ${ARKIVE_SESSION_SECRET:-}
@@ -49,6 +40,8 @@ services:
       ARKIVE_TRUSTED_PROXIES: ${ARKIVE_TRUSTED_PROXIES:-}
       ARKIVE_METRICS_ENABLED: ${ARKIVE_METRICS_ENABLED:-false}
       ARKIVE_METRICS_TOKEN: ${ARKIVE_METRICS_TOKEN:-}
+      # Escape hatch for the "empty database but files in /data/arkive" check.
+      ARKIVE_ALLOW_NONEMPTY_DATA_DIR: ${ARKIVE_ALLOW_NONEMPTY_DATA_DIR:-false}
       # Optional OIDC — set in .env to enable SSO on the login page
       ARKIVE_OIDC_ISSUER: ${ARKIVE_OIDC_ISSUER:-}
       ARKIVE_OIDC_CLIENT_ID: ${ARKIVE_OIDC_CLIENT_ID:-}
@@ -65,9 +58,6 @@ services:
       ARKIVE_S3_USE_SSL: ${ARKIVE_S3_USE_SSL:-false}
     volumes:
       - arkive_data:/data/arkive
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "/usr/local/bin/arkive", "healthcheck"]
       interval: 5s
@@ -81,5 +71,4 @@ services:
           - arkive.local
 
 volumes:
-  postgres_data:
   arkive_data:

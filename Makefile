@@ -2,7 +2,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 WEBUI_DIST := api/internal/webui/dist
 
-.PHONY: build web embed-web api test image clean-web
+.PHONY: build web embed-web api test test-race test-postgres image clean-web
 
 ## build: web UI + single arkive binary with the UI embedded (./arkive)
 build: embed-web api
@@ -17,8 +17,19 @@ embed-web: web
 api:
 	cd api && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o ../arkive ./cmd/arkive
 
+## test: Go tests on SQLite (a fresh database per test, no setup needed)
 test:
 	cd api && go vet ./... && go test ./...
+
+## test-race: the same with the race detector (needs a C toolchain)
+test-race:
+	cd api && go test -race ./...
+
+## test-postgres: Go tests on PostgreSQL, e.g.
+##   docker run -d --rm -p 5432:5432 -e POSTGRES_USER=arkive -e POSTGRES_PASSWORD=arkive postgres:16-alpine
+TEST_POSTGRES_URL ?= postgres://arkive:arkive@localhost:5432/arkive?sslmode=disable
+test-postgres:
+	cd api && ARKIVE_TEST_DATABASE_URL='$(TEST_POSTGRES_URL)' go test ./...
 
 image:
 	docker build -f docker/Dockerfile --build-arg VERSION=$(VERSION) -t arkive:$(VERSION) .

@@ -5,7 +5,12 @@ on:
 
 jobs:
   api:
+    name: api (${{ matrix.db }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, postgres]
     services:
       postgres:
         image: postgres:16-alpine
@@ -20,6 +25,9 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+    env:
+      # Empty = every test gets a fresh SQLite database (no setup needed).
+      ARKIVE_TEST_DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgres://arkive:arkive@localhost:5432/arkive?sslmode=disable' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -31,9 +39,11 @@ jobs:
         run: go vet ./...
       - name: Test
         working-directory: api
-        env:
-          ARKIVE_TEST_DATABASE_URL: postgres://arkive:arkive@localhost:5432/arkive?sslmode=disable
         run: go test ./...
+      - name: Test with the race detector
+        if: matrix.db == 'sqlite'
+        working-directory: api
+        run: go test -race ./...
 
   web:
     runs-on: ubuntu-latest
@@ -52,8 +62,14 @@ jobs:
       - run: npm run build
 
   e2e:
+    name: e2e (${{ matrix.layout }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [docker-compose.yml, docker-compose.postgres.yml]
     env:
+      COMPOSE_FILE: ${{ matrix.layout }}
       ARKIVE_PUBLIC_URL: http://localhost:3080
       # Known token so the smoke script can complete first-run setup.
       ARKIVE_SETUP_TOKEN: ci-setup-token
@@ -63,9 +79,14 @@ jobs:
         run: docker compose up -d --build --wait
       - name: Smoke
         run: ./scripts/smoke.sh
+      - name: Restart and smoke again (data persists)
+        run: |
+          docker compose restart arkive
+          docker compose up -d --wait
+          ./scripts/smoke.sh
       - name: Logs
         if: failure()
-        run: docker compose logs arkive
+        run: docker compose logs
       - name: Tear down
         if: always()
         run: docker compose down -v || true
