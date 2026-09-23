@@ -26,6 +26,9 @@ jobs:
         with:
           go-version: "1.25.x"
           cache-dependency-path: api/go.sum
+      - name: Vet
+        working-directory: api
+        run: go vet ./...
       - name: Test
         working-directory: api
         env:
@@ -51,25 +54,18 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     env:
-      ARKIVE_BOOTSTRAP_ADMIN_EMAIL: admin@arkive.local
       ARKIVE_PUBLIC_URL: http://localhost:3080
+      # Known token so the smoke script can complete first-run setup.
+      ARKIVE_SETUP_TOKEN: ci-setup-token
     steps:
       - uses: actions/checkout@v4
       - name: Start stack
-        run: docker compose up -d --build
-      - name: Wait for stack
-        run: |
-          ok=0
-          for i in $(seq 1 90); do
-            if curl -sf http://localhost:3080/api/ready >/dev/null; then
-              ok=1
-              break
-            fi
-            sleep 2
-          done
-          test "$ok" = 1
+        run: docker compose up -d --build --wait
       - name: Smoke
         run: ./scripts/smoke.sh
+      - name: Logs
+        if: failure()
+        run: docker compose logs arkive
       - name: Tear down
         if: always()
         run: docker compose down -v || true

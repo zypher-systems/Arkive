@@ -16,3 +16,4 @@ api/arkive
 .vscode/
 .cursor/
 desktop/src-tauri/target/
+api/.data/
