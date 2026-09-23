@@ -1,10 +1,11 @@
-# Traefik static config snippet + Docker labels for the Arkive web service.
+# Traefik static config snippet + Docker labels for the arkive service.
 # TLS at Traefik; Arkive stays HTTP. Set:
 #   ARKIVE_PUBLIC_URL=https://arkive.example.com
 #   ARKIVE_COOKIE_SECURE=true
 #
 # Outer body-size / timeout must match ARKIVE_MAX_UPLOAD_BYTES (default 10 GiB).
 # Forwarded headers must be replaced by Traefik (default), not appended from the client.
+# Put Traefik's address/network in ARKIVE_TRUSTED_PROXIES so Arkive honours X-Forwarded-For.
 
 # --- traefik.yml (static) ---
 # entryPoints:
@@ -32,7 +33,7 @@
 #       httpChallenge:
 #         entryPoint: web
 
-# --- docker-compose labels on the `web` service ---
+# --- docker-compose labels on the `arkive` service ---
 # labels:
 #   - traefik.enable=true
 #   - traefik.http.routers.arkive.rule=Host(`arkive.example.com`)
