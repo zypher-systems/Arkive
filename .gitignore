@@ -1,7 +1,9 @@
 node_modules/
-dist/
 web/dist/
 web/node_modules/
+# Vite build copied in for go:embed (make build / docker/Dockerfile); keep the placeholder.
+api/internal/webui/dist/*
+!api/internal/webui/dist/.gitkeep
 *.exe
 *.test
 .env
@@ -9,6 +11,7 @@ web/node_modules/
 Thumbs.db
 *.log
 api/arkive
+/arkive
 .idea/
 .vscode/
 .cursor/
