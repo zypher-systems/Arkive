@@ -27,6 +27,7 @@ func NewRouter(a *app.App) http.Handler {
 	adminUsersH := &AdminUsersHandler{App: a}
 	gdriveH := &GDriveHandler{App: a}
 	settingsH := &SettingsHandler{App: a}
+	auditH := &AuditHandler{App: a}
 
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
@@ -67,15 +68,18 @@ func NewRouter(a *app.App) http.Handler {
 		r.Get("/api/public/{token}/nodes", publicH.ListNodes)
 		r.Get("/api/public/{token}/download", publicH.Download)
 		r.Post("/api/public/{token}/download-zip", publicH.DownloadZip)
+		r.Put("/api/public/{token}/upload", publicH.Upload)
 	})
 	r.Get("/api/storage/google/enabled", gdriveH.Enabled)
 	r.Get("/api/auth/google/drive/callback", gdriveH.Callback)
 
 	authLimit := middleware.NewIPRateLimiter(20, 15*time.Minute)
+	twoFactorLimit := middleware.NewIPRateLimiter(20, 15*time.Minute)
 
 	r.Route("/api/auth", func(r chi.Router) {
 		r.With(middleware.RateLimit(authLimit)).Post("/register", authH.Register)
 		r.With(middleware.RateLimit(authLimit)).Post("/login", authH.Login)
+		r.With(middleware.RateLimit(authLimit)).Post("/login/2fa", authH.LoginTwoFactor)
 		r.With(middleware.RateLimit(authLimit)).Post("/forgot-password", authH.ForgotPassword)
 		r.With(middleware.RateLimit(authLimit)).Post("/reset-password", authH.ResetPassword)
 		r.Get("/oidc/enabled", oidcH.Enabled)
@@ -96,6 +100,16 @@ func NewRouter(a *app.App) http.Handler {
 		r.Get("/api/me/app-passwords", authH.ListAppPasswords)
 		r.Post("/api/me/app-passwords", authH.CreateAppPassword)
 		r.Delete("/api/me/app-passwords/{id}", authH.RevokeAppPassword)
+
+		r.Get("/api/me/2fa", authH.TwoFactorStatus)
+		r.Group(func(r chi.Router) {
+			// Code-guessing endpoints share a per-IP budget like login.
+			r.Use(middleware.RateLimit(twoFactorLimit))
+			r.Post("/api/me/2fa/setup", authH.TwoFactorSetup)
+			r.Post("/api/me/2fa/enable", authH.TwoFactorEnable)
+			r.Post("/api/me/2fa/disable", authH.TwoFactorDisable)
+			r.Post("/api/me/2fa/recovery-codes", authH.TwoFactorRegenerateRecovery)
+		})
 
 		r.Get("/api/workspaces", wsH.List)
 		r.Post("/api/workspaces", wsH.CreateTeam)
@@ -168,6 +182,8 @@ func NewRouter(a *app.App) http.Handler {
 			r.Post("/api/admin/users/{userID}/disable", adminUsersH.Disable)
 			r.Delete("/api/admin/users/{userID}", adminUsersH.Delete)
 			r.Patch("/api/admin/users/{userID}/admin", adminUsersH.PatchAdmin)
+			r.Post("/api/admin/users/{userID}/2fa/reset", adminUsersH.ResetTwoFactor)
+			r.Get("/api/admin/audit", auditH.List)
 			r.Patch("/api/admin/users/{userID}/quota", adminUsersH.PatchQuota)
 			r.Patch("/api/admin/workspaces/{workspaceID}/quota", backendH.PatchWorkspaceQuota)
 			r.Get("/api/admin/settings/google", settingsH.GetGoogle)
