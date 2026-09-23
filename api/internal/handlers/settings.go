@@ -34,6 +34,7 @@ func (h *SettingsHandler) PutGoogle(w http.ResponseWriter, r *http.Request) {
 			httpjson.Error(w, http.StatusInternalServerError, "could not clear settings")
 			return
 		}
+		h.App.Audit(r.Context(), r, actorID(r), "settings.updated", "setting", "google", map[string]any{"cleared": true})
 		httpjson.Write(w, http.StatusOK, h.App.GoogleOAuthSettingsPublic(r.Context()))
 		return
 	}
@@ -49,6 +50,9 @@ func (h *SettingsHandler) PutGoogle(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusInternalServerError, "could not save settings")
 		return
 	}
+	h.App.Audit(r.Context(), r, actorID(r), "settings.updated", "setting", "google", map[string]any{
+		"client_id": strings.TrimSpace(req.ClientID), "secret_changed": strings.TrimSpace(req.ClientSecret) != "",
+	})
 	httpjson.Write(w, http.StatusOK, h.App.GoogleOAuthSettingsPublic(r.Context()))
 }
 
@@ -76,6 +80,7 @@ func (h *SettingsHandler) PutSMTP(w http.ResponseWriter, r *http.Request) {
 			httpjson.Error(w, http.StatusInternalServerError, "could not clear settings")
 			return
 		}
+		h.App.Audit(r.Context(), r, actorID(r), "settings.updated", "setting", "smtp", map[string]any{"cleared": true})
 		httpjson.Write(w, http.StatusOK, h.App.SMTPSettingsPublic(r.Context()))
 		return
 	}
@@ -87,5 +92,8 @@ func (h *SettingsHandler) PutSMTP(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusInternalServerError, "could not save settings")
 		return
 	}
+	h.App.Audit(r.Context(), r, actorID(r), "settings.updated", "setting", "smtp", map[string]any{
+		"host": strings.TrimSpace(req.Host), "from": strings.TrimSpace(req.From), "password_changed": req.Password != "",
+	})
 	httpjson.Write(w, http.StatusOK, h.App.SMTPSettingsPublic(r.Context()))
 }

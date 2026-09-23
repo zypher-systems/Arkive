@@ -116,6 +116,9 @@ func (h *BackendHandler) Create(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusInternalServerError, "commit failed")
 		return
 	}
+	h.App.Audit(r.Context(), r, actorID(r), "backend.created", "backend", id.String(), map[string]any{
+		"name": name, "type": req.Type, "is_default": isDefault,
+	})
 	cfg, _ := h.App.BackendPublicConfig(req.Type, raw)
 	httpjson.Write(w, http.StatusCreated, backendDTO{
 		ID: id, Name: name, Type: req.Type, Config: cfg, IsDefault: isDefault, CreatedAt: created.Format(time.RFC3339),
@@ -168,6 +171,9 @@ func (h *BackendHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.App.InvalidateStore(id)
+	h.App.Audit(r.Context(), r, actorID(r), "backend.updated", "backend", id.String(), map[string]any{
+		"name": name, "type": typ, "config_changed": len(req.Config) > 0 && string(req.Config) != "null",
+	})
 	cfg, _ := h.App.BackendPublicConfig(typ, raw)
 	httpjson.Write(w, http.StatusOK, backendDTO{ID: id, Name: name, Type: typ, Config: cfg})
 }
@@ -200,6 +206,7 @@ func (h *BackendHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.App.InvalidateStore(id)
+	h.App.Audit(r.Context(), r, actorID(r), "backend.deleted", "backend", id.String(), nil)
 	httpjson.Write(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -229,6 +236,9 @@ func (h *BackendHandler) SetDefault(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusInternalServerError, "commit failed")
 		return
 	}
+	h.App.Audit(r.Context(), r, actorID(r), "backend.updated", "backend", id.String(), map[string]any{
+		"is_default": true,
+	})
 	httpjson.Write(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
