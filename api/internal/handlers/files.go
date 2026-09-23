@@ -1,10 +1,9 @@
 package handlers
 
 import (
-	"context"
+	"errors"
 	"io"
 	"net/http"
-	"path"
 	"strconv"
 	"strings"
 
@@ -200,12 +199,9 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		parentID = &id
-		if err := h.App.RequireParentInWorkspace(r.Context(), id, wsID, user.ID, true); err != nil {
-			status, msg := app.WriteHTTPError(err)
-			httpjson.Error(w, status, msg)
-			return
-		}
-	} else if err := h.App.RequireWorkspaceAccess(r.Context(), wsID, user.ID, true); err != nil {
+	}
+	// Permission errors take precedence over validation errors (as before).
+	if err := h.App.RequireUploadTarget(r.Context(), wsID, parentID, user.ID); err != nil {
 		status, msg := app.WriteHTTPError(err)
 		httpjson.Error(w, status, msg)
 		return
@@ -219,104 +215,49 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusBadRequest, "name required")
 		return
 	}
-	contentType := r.Header.Get("Content-Type")
-	if contentType == "" || contentType == "application/octet-stream" {
-		contentType = "application/octet-stream"
+	size := r.ContentLength
+	if size < 0 {
+		size = -1
 	}
-
-	store, err := h.App.StoreForWorkspace(r.Context(), wsID)
+	res, err := h.App.StoreFile(r.Context(), app.StoreFileParams{
+		WorkspaceID: wsID,
+		ParentID:    parentID,
+		Name:        name,
+		ContentType: r.Header.Get("Content-Type"),
+		ActorID:     user.ID,
+		Body:        r.Body,
+		Size:        size,
+	})
 	if err != nil {
-		httpjson.Error(w, http.StatusInternalServerError, "storage unavailable")
+		status, msg := storeFileHTTPError(err)
+		httpjson.Error(w, status, msg)
 		return
 	}
-
-	// Overwrite existing file with same name (archives prior version).
-	var existingID uuid.UUID
-	var existingSize int64
-	var findErr error
-	if parentID == nil {
-		findErr = h.App.DB.QueryRow(r.Context(), `
-			SELECT id, size FROM nodes WHERE workspace_id = $1 AND parent_id IS NULL AND name = $2 AND kind = 'file' AND deleted_at IS NULL
-		`, wsID, name).Scan(&existingID, &existingSize)
-	} else {
-		findErr = h.App.DB.QueryRow(r.Context(), `
-			SELECT id, size FROM nodes WHERE workspace_id = $1 AND parent_id = $2 AND name = $3 AND kind = 'file' AND deleted_at IS NULL
-		`, wsID, *parentID, name).Scan(&existingID, &existingSize)
-	}
-	replace := int64(0)
-	if findErr == nil {
-		replace = existingSize
-	}
-	counted, sizeHint, qerr := wrapQuotaBody(h.App, r, wsID, replace)
-	if qerr != nil {
-		httpjson.Error(w, http.StatusRequestEntityTooLarge, "storage quota exceeded")
+	if res.Created {
+		httpjson.Write(w, http.StatusCreated, res.Node)
 		return
 	}
+	httpjson.Write(w, http.StatusOK, res.Node)
+}
 
-	if findErr == nil {
-		_ = h.App.ArchiveCurrentVersion(r.Context(), existingID, user.ID)
-		newKey := app.StorageKey(wsID, uuid.New())
-		if err := store.Put(r.Context(), newKey, counted, sizeHint, contentType); err != nil {
-			_ = store.Delete(r.Context(), newKey)
-			if isUploadTooLarge(err) {
-				httpjson.Error(w, http.StatusRequestEntityTooLarge, "payload too large")
-				return
-			}
-			httpjson.Error(w, http.StatusInternalServerError, "upload failed")
-			return
-		}
-		var n models.Node
-		err = h.App.DB.QueryRow(r.Context(), `
-			UPDATE nodes SET storage_key = $1, size = $2, mime = $3, updated_at = now()
-			WHERE id = $4
-			RETURNING id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
-		`, newKey, storedSize(counted, sizeHint), contentType, existingID).Scan(
-			&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt,
-		)
-		if err != nil {
-			_ = store.Delete(r.Context(), newKey)
-			httpjson.Error(w, http.StatusInternalServerError, "could not update file")
-			return
-		}
-		go h.App.IndexNodeText(context.Background(), wsID, n.ID, contentType, newKey)
-		go h.App.GenerateThumbnail(context.Background(), wsID, n.ID, contentType, newKey)
-		httpjson.Write(w, http.StatusOK, n)
-		return
+// storeFileHTTPError maps app.StoreFile errors to HTTP status + message.
+func storeFileHTTPError(err error) (int, string) {
+	switch {
+	case errors.Is(err, app.ErrQuotaExceeded):
+		return http.StatusRequestEntityTooLarge, "storage quota exceeded"
+	case isUploadTooLarge(err):
+		return http.StatusRequestEntityTooLarge, "payload too large"
+	case errors.Is(err, app.ErrNameRequired):
+		return http.StatusBadRequest, "name required"
+	case errors.Is(err, app.ErrNameConflict):
+		return http.StatusConflict, "name already exists"
+	case errors.Is(err, app.ErrNotFound), errors.Is(err, app.ErrForbidden), errors.Is(err, app.ErrWorkspaceMismatch):
+		return app.WriteHTTPError(err)
+	case errors.Is(err, app.ErrStorageWrite):
+		return http.StatusInternalServerError, "upload failed"
+	default:
+		return http.StatusInternalServerError, "could not save file"
 	}
-
-	nodeID := uuid.New()
-	key := app.StorageKey(wsID, nodeID)
-
-	if err := store.Put(r.Context(), key, counted, sizeHint, contentType); err != nil {
-		_ = store.Delete(r.Context(), key)
-		if isUploadTooLarge(err) {
-			httpjson.Error(w, http.StatusRequestEntityTooLarge, "payload too large")
-			return
-		}
-		httpjson.Error(w, http.StatusInternalServerError, "upload failed")
-		return
-	}
-
-	var n models.Node
-	err = h.App.DB.QueryRow(r.Context(), `
-		INSERT INTO nodes (id, workspace_id, parent_id, name, kind, size, mime, storage_key, created_by)
-		VALUES ($1, $2, $3, $4, 'file', $5, $6, $7, $8)
-		RETURNING id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
-	`, nodeID, wsID, parentID, name, storedSize(counted, sizeHint), contentType, key, user.ID).Scan(
-		&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt,
-	)
-	if err != nil {
-		_ = store.Delete(r.Context(), key)
-		if strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
-			httpjson.Error(w, http.StatusConflict, "name already exists")
-			return
-		}
-		httpjson.Error(w, http.StatusInternalServerError, "could not save file metadata")
-		return
-	}
-	go h.App.IndexNodeText(context.Background(), wsID, n.ID, contentType, key)
-	go h.App.GenerateThumbnail(context.Background(), wsID, n.ID, contentType, key)
-	httpjson.Write(w, http.StatusCreated, n)
 }
 
 func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
@@ -762,11 +703,7 @@ func (h *FileHandler) GetSharedWithMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func sanitizeName(name string) string {
-	name = strings.TrimSpace(name)
-	name = path.Base(name)
-	name = strings.ReplaceAll(name, "..", "")
-	name = strings.Trim(name, "/\\")
-	return name
+	return app.SanitizeName(name)
 }
 
 func max64(v, min int64) int64 {

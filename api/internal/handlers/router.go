@@ -94,6 +94,18 @@ func NewRouter(a *app.App) http.Handler {
 		})
 	})
 
+	// tus 1.0.0 resumable uploads (authenticated; Tus-Resumable on every response).
+	tusH := &TusHandler{App: a}
+	r.Group(func(r chi.Router) {
+		r.Use(tusH.Middleware)
+		r.Use(middleware.RequireAuth(authH.SessionLookup()))
+		r.Options("/api/uploads", tusH.Options)
+		r.Post("/api/uploads", tusH.Create)
+		r.Head("/api/uploads/{uploadID}", tusH.Head)
+		r.Patch("/api/uploads/{uploadID}", tusH.Patch)
+		r.Delete("/api/uploads/{uploadID}", tusH.Delete)
+	})
+
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(authH.SessionLookup()))
 
@@ -196,6 +208,8 @@ func NewRouter(a *app.App) http.Handler {
 			r.Put("/api/admin/settings/trash", settingsH.PutTrashRetention)
 			r.Get("/api/admin/settings/registration", settingsH.GetRegistration)
 			r.Put("/api/admin/settings/registration", settingsH.PutRegistration)
+			r.Get("/api/admin/settings/versions", settingsH.GetVersionRetention)
+			r.Put("/api/admin/settings/versions", settingsH.PutVersionRetention)
 			r.Post("/api/admin/search/reindex", settingsH.ReindexSearch)
 		})
 	})

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/arkive/arkive/internal/config"
@@ -21,6 +22,8 @@ type App struct {
 	Logger      *slog.Logger
 	googleOAuth googleOAuthCache
 	smtp        smtpCache
+	bg          bgPool
+	uploadLocks sync.Map // upload id -> *sync.Mutex (tus PATCH/DELETE guard)
 }
 
 func (a *App) SeedDefaultBackend(ctx context.Context) error {
@@ -76,9 +79,14 @@ func (a *App) DefaultBackendID(ctx context.Context) (uuid.UUID, error) {
 	return id, err
 }
 
+// gcInterval is how often the orphan blob GC runs from the background loop.
+const gcInterval = 24 * time.Hour
+
 func (a *App) CleanupExpiredSessions(ctx context.Context) {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
+	// First GC roughly an hour after start, then daily.
+	lastGC := time.Now().Add(-gcInterval + time.Hour)
 	for {
 		select {
 		case <-ctx.Done():
@@ -107,8 +115,48 @@ func (a *App) CleanupExpiredSessions(ctx context.Context) {
 			} else if n > 0 {
 				a.Logger.Info("trash retention purge", "purged", n)
 			}
+			a.runMaintenance(ctx, &lastGC)
 		}
 	}
+}
+
+// runMaintenance is the hourly upload/version housekeeping plus the daily GC.
+func (a *App) runMaintenance(ctx context.Context, lastGC *time.Time) {
+	if rep, err := a.PurgeExpiredUploads(ctx, false); err != nil {
+		a.log().Warn("upload session purge failed", "err", err)
+	} else if rep.ExpiredSessions > 0 || rep.OrphanFiles > 0 {
+		a.log().Info("upload session purge", "expired_sessions", rep.ExpiredSessions, "orphan_files", rep.OrphanFiles, "bytes", rep.Bytes)
+	}
+	if n, err := a.PruneAllVersions(ctx); err != nil {
+		a.log().Warn("version retention prune failed", "err", err)
+	} else if n > 0 {
+		a.log().Info("version retention prune", "files", n)
+	}
+	if time.Since(*lastGC) < gcInterval {
+		return
+	}
+	*lastGC = time.Now()
+	rep, err := a.GarbageCollect(ctx, false)
+	if err != nil {
+		a.log().Warn("orphan gc failed", "err", err)
+		return
+	}
+	skipped := 0
+	errs := 0
+	for _, b := range rep.Backends {
+		if b.Skipped != "" {
+			skipped++
+		}
+		errs += len(b.Errors)
+		if len(b.Errors) > 0 {
+			a.log().Warn("orphan gc backend errors", "backend", b.Name, "skipped", b.Skipped, "errors", b.Errors)
+		}
+	}
+	a.log().Info("orphan gc",
+		"backends", len(rep.Backends), "skipped_backends", skipped,
+		"orphans", rep.Orphans, "deleted", rep.Deleted, "deleted_bytes", rep.DeletedBytes,
+		"expired_uploads", rep.Uploads.ExpiredSessions, "errors", errs,
+		"duration", rep.FinishedAt.Sub(rep.StartedAt).Round(time.Millisecond))
 }
 
 func StorageKey(workspaceID, nodeID uuid.UUID) string {

@@ -3,11 +3,13 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -171,6 +173,126 @@ func (s *WebDAVStore) Delete(ctx context.Context, key string) error {
 	defer res.Body.Close()
 	if res.StatusCode >= 300 && res.StatusCode != 404 {
 		return fmt.Errorf("webdav delete: %s", res.Status)
+	}
+	return nil
+}
+
+type davMultistatus struct {
+	Responses []struct {
+		Href     string `xml:"href"`
+		Propstat []struct {
+			Prop struct {
+				ResourceType struct {
+					Collection *struct{} `xml:"collection"`
+				} `xml:"resourcetype"`
+				ContentLength string `xml:"getcontentlength"`
+				LastModified  string `xml:"getlastmodified"`
+			} `xml:"prop"`
+			Status string `xml:"status"`
+		} `xml:"propstat"`
+	} `xml:"response"`
+}
+
+const davListBody = `<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/></d:prop></d:propfind>`
+
+// List walks the remote tree with Depth: 1 PROPFINDs (Depth: infinity is
+// commonly disabled). Keys are paths relative to the configured base URL.
+func (s *WebDAVStore) List(ctx context.Context, prefix string, fn func(ObjectInfo) error) error {
+	baseURL, err := url.Parse(s.base)
+	if err != nil {
+		return err
+	}
+	basePath := strings.TrimRight(baseURL.Path, "/")
+	queue := []string{""}
+	seen := map[string]bool{"": true}
+	for len(queue) > 0 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		dir := queue[0]
+		queue = queue[1:]
+		// Only descend into directories that can contain matching keys.
+		if dir != "" && !strings.HasPrefix(dir+"/", prefix) && !strings.HasPrefix(prefix, dir+"/") {
+			continue
+		}
+		target := s.base + "/"
+		if dir != "" {
+			target = s.objectURL(dir) + "/"
+		}
+		req, err := http.NewRequestWithContext(ctx, "PROPFIND", target, strings.NewReader(davListBody))
+		if err != nil {
+			return err
+		}
+		s.setAuth(req)
+		req.Header.Set("Depth", "1")
+		req.Header.Set("Content-Type", "application/xml; charset=utf-8")
+		res, err := s.client.Do(req)
+		if err != nil {
+			return err
+		}
+		if res.StatusCode == http.StatusNotFound && dir != "" {
+			res.Body.Close()
+			continue
+		}
+		if res.StatusCode != http.StatusMultiStatus {
+			res.Body.Close()
+			return fmt.Errorf("webdav propfind %s: %s", dir, res.Status)
+		}
+		var ms davMultistatus
+		err = xml.NewDecoder(io.LimitReader(res.Body, 64<<20)).Decode(&ms)
+		res.Body.Close()
+		if err != nil {
+			return fmt.Errorf("webdav propfind decode: %w", err)
+		}
+		for _, r := range ms.Responses {
+			hrefURL, err := url.Parse(strings.TrimSpace(r.Href))
+			if err != nil {
+				continue
+			}
+			p := hrefURL.Path // already percent-decoded
+			rel := strings.Trim(strings.TrimPrefix(p, basePath), "/")
+			if p != basePath && !strings.HasPrefix(p, basePath+"/") {
+				continue
+			}
+			if rel == "" || rel == dir {
+				continue
+			}
+			isDir := false
+			var size int64 = -1
+			var mod time.Time
+			for _, ps := range r.Propstat {
+				if ps.Status != "" && !strings.Contains(ps.Status, " 200") {
+					continue
+				}
+				if ps.Prop.ResourceType.Collection != nil {
+					isDir = true
+				}
+				if ps.Prop.ContentLength != "" {
+					if n, err := strconv.ParseInt(strings.TrimSpace(ps.Prop.ContentLength), 10, 64); err == nil {
+						size = n
+					}
+				}
+				if ps.Prop.LastModified != "" {
+					if t, err := http.ParseTime(strings.TrimSpace(ps.Prop.LastModified)); err == nil {
+						mod = t
+					}
+				}
+			}
+			if isDir {
+				if !seen[rel] {
+					seen[rel] = true
+					queue = append(queue, rel)
+				}
+				continue
+			}
+			if !strings.HasPrefix(rel, prefix) {
+				continue
+			}
+			if err := fn(ObjectInfo{Key: rel, Size: size, ModTime: mod}); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
