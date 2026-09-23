@@ -125,9 +125,28 @@ func TestTusOptions(t *testing.T) {
 	}
 }
 
+// lockVersionSetting mirrors the app package helper: tests that change or
+// depend on the global version-retention setting take this advisory lock.
+func lockVersionSetting(t *testing.T, env *testEnv) {
+	t.Helper()
+	conn, err := env.App.DB.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_lock(872364019)`); err != nil {
+		conn.Release()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock(872364019)`)
+		conn.Release()
+	})
+}
+
 func TestTusResumableUploadFlow(t *testing.T) {
 	env := newTestEnv(t)
 	ctx := context.Background()
+	lockVersionSetting(t, env)
 	folder := env.mkdir("docs")
 	payload := bytes.Repeat([]byte("0123456789"), 100) // 1000 bytes
 	loc := env.tusCreate("big.txt", len(payload), &folder)
