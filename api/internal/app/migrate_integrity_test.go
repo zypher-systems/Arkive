@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/arkive/arkive/internal/config"
-	"github.com/arkive/arkive/internal/db"
+	"github.com/arkive/arkive/internal/db/dbtest"
 	"github.com/arkive/arkive/internal/storage"
 	"github.com/google/uuid"
 )
@@ -29,22 +29,12 @@ type migrateFixture struct {
 
 func setupMigrateFixture(t *testing.T, files int) *migrateFixture {
 	t.Helper()
-	dsn := os.Getenv("ARKIVE_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("ARKIVE_TEST_DATABASE_URL not set")
-	}
+	dsn := dbtest.URL(t)
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
 	cfg.MigrationsDir = filepath.Join("..", "..", "migrations")
-	if err := db.Migrate(cfg.DatabaseURL, cfg.MigrationsDir); err != nil {
-		t.Fatal(err)
-	}
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
+	pool := dbtest.Open(t, cfg.DatabaseURL, cfg.MigrationsDir)
 
 	a := &App{DB: pool, Stores: NewStoreRegistry(), Cfg: cfg}
 	oldDir := t.TempDir()

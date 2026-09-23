@@ -8,12 +8,12 @@ import (
 
 	"github.com/arkive/arkive/internal/app"
 	"github.com/arkive/arkive/internal/auth"
+	"github.com/arkive/arkive/internal/db"
 	"github.com/arkive/arkive/internal/httpjson"
 	"github.com/arkive/arkive/internal/middleware"
 	"github.com/arkive/arkive/internal/models"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -411,7 +411,7 @@ func (h *AdminUsersHandler) ResetTwoFactor(w http.ResponseWriter, r *http.Reques
 		httpjson.Error(w, http.StatusNotFound, "user not found")
 		return
 	}
-	err = pgx.BeginFunc(r.Context(), h.App.DB, func(tx pgx.Tx) error {
+	err = db.BeginFunc(r.Context(), h.App.DB, func(tx db.Tx) error {
 		return h.App.ResetTwoFactor(r.Context(), tx, userID)
 	})
 	if err != nil {

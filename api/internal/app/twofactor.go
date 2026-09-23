@@ -12,9 +12,8 @@ import (
 
 	"github.com/arkive/arkive/internal/auth"
 	"github.com/arkive/arkive/internal/crypto"
+	"github.com/arkive/arkive/internal/db"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const RecoveryCodeCount = 10
@@ -25,12 +24,8 @@ const recoveryAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
 
 var ErrTwoFactorNotEnabled = errors.New("two-factor authentication is not enabled")
 
-// DBTX is the subset of pgxpool.Pool / pgx.Tx used by helpers that may run
-// inside or outside a transaction.
-type DBTX interface {
-	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
+// DBTX is what helpers that may run inside or outside a transaction take.
+type DBTX = db.Querier
 
 func (a *App) EncryptTOTPSecret(secret string) (string, error) {
 	return crypto.Encrypt(a.Cfg.SecretsKey, secret)
@@ -56,7 +51,7 @@ func (a *App) VerifyTOTP(ctx context.Context, q DBTX, userID uuid.UUID, code str
 		SELECT totp_secret, COALESCE(totp_last_step, -1)
 		FROM users WHERE id = $1 AND totp_enabled_at IS NOT NULL
 	`, userID).Scan(&stored, &lastStep)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, db.ErrNoRows) {
 		return false, ErrTwoFactorNotEnabled
 	}
 	if err != nil {

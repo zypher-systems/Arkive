@@ -11,10 +11,9 @@ import (
 	"path"
 	"strings"
 
+	"github.com/arkive/arkive/internal/db"
 	"github.com/arkive/arkive/internal/models"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -155,7 +154,7 @@ func (a *App) RequireUploadTarget(ctx context.Context, workspaceID uuid.UUID, pa
 		}
 		var kind string
 		if err := a.DB.QueryRow(ctx, `SELECT kind FROM nodes WHERE id = $1 AND deleted_at IS NULL`, *parentID).Scan(&kind); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, db.ErrNoRows) {
 				return ErrNotFound
 			}
 			return err
@@ -182,7 +181,7 @@ func (a *App) findFileByName(ctx context.Context, workspaceID uuid.UUID, parentI
 			SELECT id, size FROM nodes WHERE workspace_id = $1 AND parent_id = $2 AND name = $3 AND kind = 'file' AND deleted_at IS NULL
 		`, workspaceID, *parentID, name).Scan(&id, &size)
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, db.ErrNoRows) {
 		return uuid.Nil, 0, false, nil
 	}
 	if err != nil {
@@ -193,7 +192,7 @@ func (a *App) findFileByName(ctx context.Context, workspaceID uuid.UUID, parentI
 
 const nodeReturning = `RETURNING id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at`
 
-func scanNode(row pgx.Row, n *models.Node) error {
+func scanNode(row db.Row, n *models.Node) error {
 	return row.Scan(&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt)
 }
 
@@ -205,7 +204,7 @@ func (a *App) commitStoredFile(ctx context.Context, p StoreFileParams, name, con
 			VALUES ($1, $2, $3, 'file', $4, $5, $6, $7, $8)
 			`+nodeReturning, p.WorkspaceID, p.ParentID, name, size, contentType, key, sum, p.ActorID), &n)
 		if err != nil {
-			if isUniqueViolation(err) {
+			if db.IsUniqueViolation(err) {
 				return StoreFileResult{}, ErrNameConflict
 			}
 			return StoreFileResult{}, err
@@ -220,7 +219,7 @@ func (a *App) commitStoredFile(ctx context.Context, p StoreFileParams, name, con
 	defer tx.Rollback(ctx)
 	var live bool
 	if err := tx.QueryRow(ctx, `SELECT deleted_at IS NULL FROM nodes WHERE id = $1 FOR UPDATE`, existingID).Scan(&live); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, db.ErrNoRows) {
 			return StoreFileResult{}, ErrNameConflict
 		}
 		return StoreFileResult{}, err
@@ -248,12 +247,4 @@ func (a *App) commitStoredFile(ctx context.Context, p StoreFileParams, name, con
 // checksumString renders nodes.checksum: lowercase hex SHA-256 of the content.
 func checksumString(h hash.Hash) string {
 	return hex.EncodeToString(h.Sum(nil))
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23505"
-	}
-	return strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate")
 }

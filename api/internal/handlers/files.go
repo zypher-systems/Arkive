@@ -8,12 +8,12 @@ import (
 	"strings"
 
 	"github.com/arkive/arkive/internal/app"
+	"github.com/arkive/arkive/internal/db"
 	"github.com/arkive/arkive/internal/httpjson"
 	"github.com/arkive/arkive/internal/middleware"
 	"github.com/arkive/arkive/internal/models"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type FileHandler struct {
@@ -49,7 +49,7 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit, offset := parsePage(r)
 	fetch := limit + 1
 
-	var rows pgx.Rows
+	var rows db.Rows
 	if parentID == nil {
 		rows, err = h.App.DB.Query(r.Context(), `
 			SELECT id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at

@@ -84,7 +84,7 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 		where = append(where, "(created_at, id) < ("+arg(t)+"::timestamptz, "+arg(id)+"::uuid)")
 	}
 	if a := strings.TrimSpace(q.Get("action")); a != "" {
-		where = append(where, "action LIKE "+arg(escapeLike(a)+"%"))
+		where = append(where, "action LIKE "+arg(escapeLike(a)+"%")+` ESCAPE '\'`)
 	}
 	if a := strings.TrimSpace(q.Get("actor")); a != "" {
 		id, err := uuid.Parse(a)

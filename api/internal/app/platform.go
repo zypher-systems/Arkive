@@ -11,9 +11,9 @@ import (
 
 	"github.com/arkive/arkive/internal/config"
 	"github.com/arkive/arkive/internal/crypto"
+	"github.com/arkive/arkive/internal/db"
 	"github.com/arkive/arkive/internal/models"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // ErrSetupDone is returned by CreateSetupAdmin once any user exists.
@@ -57,8 +57,8 @@ const setupLockKey int64 = 872364012
 // personal workspace. It returns ErrSetupDone when any user already exists.
 //
 // Race safety: the transaction takes an advisory lock before checking for
-// users, so two concurrent requests cannot both see an empty table. (A future
-// SQLite backend gets the same guarantee from BEGIN IMMEDIATE.)
+// users, so two concurrent requests cannot both see an empty table. SQLite
+// gets the same guarantee from BEGIN IMMEDIATE.
 func (a *App) CreateSetupAdmin(ctx context.Context, email, passwordHash, displayName string) (models.User, error) {
 	var user models.User
 	backendID, err := a.DefaultBackendID(ctx)
@@ -71,8 +71,11 @@ func (a *App) CreateSetupAdmin(ctx context.Context, email, passwordHash, display
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, setupLockKey); err != nil {
-		return user, err
+	// SQLite: BEGIN IMMEDIATE already serializes writers.
+	if tx.Dialect() == db.Postgres {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, setupLockKey); err != nil {
+			return user, err
+		}
 	}
 	var exists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users)`).Scan(&exists); err != nil {
@@ -133,10 +136,10 @@ var encryptedValue = regexp.MustCompile(`enc:v1:[A-Za-z0-9+/]+`)
 // placeholder. If existing ciphertext decrypts with one of those placeholders,
 // that key is returned so the data stays readable. ok=false with
 // encrypted=true means ciphertext exists that no known placeholder opens.
-func DetectLegacySecretsKey(ctx context.Context, db *pgxpool.Pool) (key string, encrypted bool) {
+func DetectLegacySecretsKey(ctx context.Context, q db.Querier) (key string, encrypted bool) {
 	var samples []string
 	collect := func(sql string) {
-		rows, err := db.Query(ctx, sql)
+		rows, err := q.Query(ctx, sql)
 		if err != nil {
 			return
 		}
@@ -148,7 +151,7 @@ func DetectLegacySecretsKey(ctx context.Context, db *pgxpool.Pool) (key string, 
 			}
 		}
 	}
-	collect(`SELECT config::text FROM storage_backends WHERE config::text LIKE '%enc:v1:%'`)
+	collect(`SELECT CAST(config AS TEXT) FROM storage_backends WHERE CAST(config AS TEXT) LIKE '%enc:v1:%'`)
 	collect(`SELECT value FROM instance_settings WHERE value LIKE '%enc:v1:%'`)
 	if len(samples) == 0 {
 		return "", false

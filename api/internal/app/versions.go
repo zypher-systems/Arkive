@@ -7,10 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/arkive/arkive/internal/db"
 	"github.com/arkive/arkive/internal/storage"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
@@ -61,10 +60,7 @@ func (a *App) ArchiveCurrentVersion(ctx context.Context, nodeID, actorID uuid.UU
 	return a.pruneVersions(ctx, nodeID)
 }
 
-type dbQuerier interface {
-	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
+type dbQuerier = db.Querier
 
 // archiveVersion inserts the node's current blob as the next version row.
 // It returns false when there was nothing to archive.
@@ -219,7 +215,7 @@ func (a *App) RestoreVersion(ctx context.Context, nodeID uuid.UUID, version int,
 		SELECT storage_key, size, mime FROM node_versions WHERE node_id = $1 AND version = $2
 	`, nodeID, version).Scan(&vKey, &vSize, &vMime)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == db.ErrNoRows {
 			return ErrNotFound
 		}
 		return err

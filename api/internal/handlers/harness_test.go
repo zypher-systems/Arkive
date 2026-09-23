@@ -16,7 +16,7 @@ import (
 
 	"github.com/arkive/arkive/internal/app"
 	"github.com/arkive/arkive/internal/config"
-	"github.com/arkive/arkive/internal/db"
+	"github.com/arkive/arkive/internal/db/dbtest"
 	"github.com/arkive/arkive/internal/handlers"
 	"github.com/arkive/arkive/internal/storage"
 	"github.com/google/uuid"
@@ -37,10 +37,7 @@ type testEnv struct {
 
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
-	dsn := os.Getenv("ARKIVE_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("ARKIVE_TEST_DATABASE_URL not set")
-	}
+	dsn := dbtest.URL(t)
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
@@ -49,14 +46,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	cfg.BootstrapAdminEmail = fmt.Sprintf("admin-%d@test.local", time.Now().UnixNano())
 	cfg.MigrationsDir = filepath.Join("..", "..", "migrations")
 
-	if err := db.Migrate(cfg.DatabaseURL, cfg.MigrationsDir); err != nil {
-		t.Fatal(err)
-	}
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
+	pool := dbtest.Open(t, cfg.DatabaseURL, cfg.MigrationsDir)
 
 	application := &app.App{
 		DB:     pool,

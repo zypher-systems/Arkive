@@ -7,19 +7,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/arkive/arkive/internal/app"
 	"github.com/arkive/arkive/internal/config"
 	"github.com/arkive/arkive/internal/crypto"
-	"github.com/arkive/arkive/internal/db"
+	"github.com/arkive/arkive/internal/db/dbtest"
 	"github.com/arkive/arkive/internal/handlers"
-	"github.com/jackc/pgx/v5"
 )
 
 // freshApp creates a brand-new, empty database on the test server (setup is
@@ -27,26 +23,8 @@ import (
 // migrates it with the embedded migrations and returns an App over it.
 func freshApp(t *testing.T, mutate func(*config.Config)) *app.App {
 	t.Helper()
-	dsn := os.Getenv("ARKIVE_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("ARKIVE_TEST_DATABASE_URL not set")
-	}
 	ctx := context.Background()
-	name := fmt.Sprintf("arkive_setup_%d", time.Now().UnixNano())
-	admin, err := pgx.Connect(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
-		admin.Close(ctx)
-		t.Fatal(err)
-	}
-	u, err := url.Parse(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	u.Path = "/" + name
-	freshDSN := u.String()
+	freshDSN := dbtest.FreshURL(t)
 
 	cfg := config.Load()
 	cfg.DatabaseURL = freshDSN
@@ -58,18 +36,7 @@ func freshApp(t *testing.T, mutate func(*config.Config)) *app.App {
 	if mutate != nil {
 		mutate(&cfg)
 	}
-	if err := db.Migrate(cfg.DatabaseURL, cfg.MigrationsDir); err != nil {
-		t.Fatal(err)
-	}
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		pool.Close()
-		_, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
-		admin.Close(context.Background())
-	})
+	pool := dbtest.Open(t, cfg.DatabaseURL, cfg.MigrationsDir)
 	a := &app.App{DB: pool, Stores: app.NewStoreRegistry(), Cfg: cfg}
 	if err := a.SeedDefaultBackend(ctx); err != nil {
 		t.Fatal(err)

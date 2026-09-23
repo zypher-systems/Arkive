@@ -15,7 +15,6 @@ import (
 	"github.com/arkive/arkive/internal/config"
 	"github.com/arkive/arkive/internal/db"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // openApp builds an App for offline commands (export, gc) that read blobs:
@@ -23,7 +22,7 @@ import (
 func openApp(logger *slog.Logger) (*app.App, context.Context, func(), error) {
 	cfg := config.Load()
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
+	pool, err := db.OpenWith(ctx, cfg.DatabaseURL, db.Options{MustExist: true})
 	if err != nil {
 		cancel()
 		return nil, nil, nil, err
@@ -154,9 +153,9 @@ func runUserReset2FA(args []string) int {
 
 	a := &app.App{DB: pool, Logger: newLogger()}
 	var id uuid.UUID
-	err = pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+	err = db.BeginFunc(ctx, pool, func(tx db.Tx) error {
 		if err := tx.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, email).Scan(&id); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, db.ErrNoRows) {
 				return fmt.Errorf("no account with email %q", email)
 			}
 			return err

@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arkive/arkive/internal/db/dbtest"
 	"github.com/google/uuid"
 )
 
@@ -129,18 +130,7 @@ func TestTusOptions(t *testing.T) {
 // depend on the global version-retention setting take this advisory lock.
 func lockVersionSetting(t *testing.T, env *testEnv) {
 	t.Helper()
-	conn, err := env.App.DB.Acquire(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_lock(872364019)`); err != nil {
-		conn.Release()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock(872364019)`)
-		conn.Release()
-	})
+	dbtest.LockShared(t, 872364019)
 }
 
 func TestTusResumableUploadFlow(t *testing.T) {
@@ -360,7 +350,7 @@ func TestTusPurgeExpired(t *testing.T) {
 	ctx := context.Background()
 	loc := env.tusCreate("stale.bin", 10, nil)
 	id := strings.TrimPrefix(loc, "/api/uploads/")
-	if _, err := env.App.DB.Exec(ctx, `UPDATE uploads SET expires_at = now() - interval '1 minute' WHERE id = $1`, id); err != nil {
+	if _, err := env.App.DB.Exec(ctx, `UPDATE uploads SET expires_at = $2 WHERE id = $1`, id, time.Now().Add(-time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if rr := env.tus(http.MethodHead, loc, nil, nil, env.Cookie); rr.Code != http.StatusNotFound {

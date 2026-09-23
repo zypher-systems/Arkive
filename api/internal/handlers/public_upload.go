@@ -12,10 +12,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/arkive/arkive/internal/app"
+	"github.com/arkive/arkive/internal/db"
 	"github.com/arkive/arkive/internal/httpjson"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -154,7 +154,7 @@ func (h *PublicHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			ON CONFLICT DO NOTHING
 			RETURNING name
 		`, nodeID, wsID, folderID, candidate, size, contentType, key).Scan(&got)
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, db.ErrNoRows) {
 			continue
 		}
 		if err != nil {
@@ -165,7 +165,7 @@ func (h *PublicHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 	if finalName == "" {
 		_ = store.Delete(context.WithoutCancel(r.Context()), key)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		if err != nil && !errors.Is(err, db.ErrNoRows) {
 			httpjson.Error(w, http.StatusInternalServerError, "could not save file metadata")
 			return
 		}

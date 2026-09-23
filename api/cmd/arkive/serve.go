@@ -20,7 +20,6 @@ import (
 	"github.com/arkive/arkive/internal/middleware"
 	"github.com/arkive/arkive/internal/storage"
 	"github.com/arkive/arkive/internal/webui"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func newLogger() *slog.Logger {
@@ -55,7 +54,7 @@ func serve(logger *slog.Logger) error {
 	if err := db.Migrate(cfg.DatabaseURL, cfg.MigrationsDir); err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
+	pool, err := db.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("database connect failed: %w", err)
 	}
@@ -143,7 +142,7 @@ func serve(logger *slog.Logger) error {
 
 // resolveSecrets fills unset secrets from <DataDir>/.arkive-secrets,
 // generating them on first boot.
-func resolveSecrets(ctx context.Context, logger *slog.Logger, cfg *config.Config, pool *pgxpool.Pool) error {
+func resolveSecrets(ctx context.Context, logger *slog.Logger, cfg *config.Config, pool db.DB) error {
 	var legacyErr error
 	res, err := cfg.ResolveSecrets(func() string {
 		key, encrypted := app.DetectLegacySecretsKey(ctx, pool)

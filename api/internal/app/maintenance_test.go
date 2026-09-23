@@ -10,8 +10,8 @@ import (
 
 	"github.com/arkive/arkive/internal/config"
 	"github.com/arkive/arkive/internal/db"
+	"github.com/arkive/arkive/internal/db/dbtest"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type maintFixture struct {
@@ -24,23 +24,13 @@ type maintFixture struct {
 
 func newMaintFixture(t *testing.T) *maintFixture {
 	t.Helper()
-	dsn := os.Getenv("ARKIVE_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("ARKIVE_TEST_DATABASE_URL not set")
-	}
+	dsn := dbtest.URL(t)
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
 	cfg.DataDir = t.TempDir()
 	cfg.MigrationsDir = filepath.Join("..", "..", "migrations")
-	if err := db.Migrate(cfg.DatabaseURL, cfg.MigrationsDir); err != nil {
-		t.Fatal(err)
-	}
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
+	pool := dbtest.Open(t, cfg.DatabaseURL, cfg.MigrationsDir)
 	a := &App{DB: pool, Stores: NewStoreRegistry(), Cfg: cfg}
 	dir := t.TempDir()
 	backend := insertNFSBackend(t, a, dir)
@@ -217,7 +207,7 @@ func TestGarbageCollectSkipsBusyBackendAndDBFailure(t *testing.T) {
 	}
 
 	// Database unavailable: error, nothing deleted.
-	pool, err := pgxpool.New(ctx, f.app.Cfg.DatabaseURL)
+	pool, err := db.Open(ctx, f.app.Cfg.DatabaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,20 +225,9 @@ func TestGarbageCollectSkipsBusyBackendAndDBFailure(t *testing.T) {
 // database) that change or depend on the global version-retention setting.
 const versionSettingLockKey int64 = 872364019
 
-func lockVersionSetting(t *testing.T, pool *pgxpool.Pool) {
+func lockVersionSetting(t *testing.T, _ db.DB) {
 	t.Helper()
-	conn, err := pool.Acquire(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_lock($1)`, versionSettingLockKey); err != nil {
-		conn.Release()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, versionSettingLockKey)
-		conn.Release()
-	})
+	dbtest.LockShared(t, versionSettingLockKey)
 }
 
 func TestVersionRetentionSetting(t *testing.T) {

@@ -11,12 +11,12 @@ import (
 
 	"github.com/arkive/arkive/internal/config"
 	"github.com/arkive/arkive/internal/crypto"
+	"github.com/arkive/arkive/internal/db"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type App struct {
-	DB          *pgxpool.Pool
+	DB          db.DB
 	Stores      *StoreRegistry
 	Cfg         config.Config
 	Logger      *slog.Logger

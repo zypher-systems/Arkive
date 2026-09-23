@@ -305,8 +305,8 @@ func TestTwoFactorLoginFlow(t *testing.T) {
 	// Expired challenge.
 	ch = env.passwordStep(u)
 	if _, err := env.App.DB.Exec(context.Background(), `
-		UPDATE login_challenges SET expires_at = now() - interval '1 second' WHERE token_hash = $1
-	`, auth.HashToken(ch)); err != nil {
+		UPDATE login_challenges SET expires_at = $2 WHERE token_hash = $1
+	`, auth.HashToken(ch), time.Now().Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	rr = env.secondStep(ch, totpNow(t, secret, 0))
@@ -565,7 +565,7 @@ func TestUploadLink(t *testing.T) {
 	}
 
 	// Expiry.
-	if _, err := env.App.DB.Exec(context.Background(), `UPDATE public_links SET expires_at = now() - interval '1 minute' WHERE id = $1`, linkID); err != nil {
+	if _, err := env.App.DB.Exec(context.Background(), `UPDATE public_links SET expires_at = $2 WHERE id = $1`, linkID, time.Now().Add(-time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	expect(t, env.publicUpload(token, "late.txt", []byte("x"), reqOpts{}), http.StatusGone, "expired upload link")
@@ -664,11 +664,13 @@ func TestAuditLogEndpoint(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		env.App.Audit(ctx, nil, u.ID.String(), "test.page", "thing", fmt.Sprint(i), map[string]any{"i": i})
 	}
-	if _, err := env.App.DB.Exec(ctx, `
-		INSERT INTO audit_log (created_at, actor_user_id, action, meta)
-		SELECT '2020-01-01T00:00:00Z', $1, 'test.tie', '{}' FROM generate_series(1, 3)
-	`, u.ID); err != nil {
-		t.Fatal(err)
+	tie := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		if _, err := env.App.DB.Exec(ctx, `
+			INSERT INTO audit_log (created_at, actor_user_id, action, meta) VALUES ($1, $2, 'test.tie', '{}')
+		`, tie, u.ID); err != nil {
+			t.Fatal(err)
+		}
 	}
 	type page struct {
 		Items []struct {

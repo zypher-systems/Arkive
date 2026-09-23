@@ -15,8 +15,6 @@ import (
 	"github.com/arkive/arkive/internal/auth"
 	"github.com/arkive/arkive/internal/config"
 	"github.com/arkive/arkive/internal/db"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // userCommands is the `arkive user ...` registry.
@@ -53,9 +51,9 @@ func runUser(args []string) int {
 	return c.run(args[1:])
 }
 
-func openDB() (*pgxpool.Pool, context.Context, context.CancelFunc, error) {
+func openDB() (db.DB, context.Context, context.CancelFunc, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	pool, err := db.Connect(ctx, config.Load().DatabaseURL)
+	pool, err := db.OpenWith(ctx, config.Load().DatabaseURL, db.Options{MustExist: true})
 	if err != nil {
 		cancel()
 		return nil, nil, nil, err
@@ -177,10 +175,10 @@ func runUserResetPassword(args []string) int {
 	defer cancel()
 	defer pool.Close()
 
-	err = pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+	err = db.BeginFunc(ctx, pool, func(tx db.Tx) error {
 		var id string
 		if err := tx.QueryRow(ctx, `UPDATE users SET password_hash = $1 WHERE email = $2 RETURNING id::text`, hash, email).Scan(&id); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, db.ErrNoRows) {
 				return fmt.Errorf("no account with email %q", email)
 			}
 			return err
@@ -225,7 +223,7 @@ func runUserSetAdmin(args []string, admin bool) int {
 	defer pool.Close()
 
 	var status string
-	err = pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+	err = db.BeginFunc(ctx, pool, func(tx db.Tx) error {
 		if !admin && !*force {
 			var others int
 			if err := tx.QueryRow(ctx, `
@@ -246,7 +244,7 @@ func runUserSetAdmin(args []string, admin bool) int {
 				WHERE email = $2 RETURNING status`
 		}
 		if err := tx.QueryRow(ctx, q, admin, email).Scan(&status); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, db.ErrNoRows) {
 				return fmt.Errorf("no account with email %q", email)
 			}
 			return err

@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/arkive/arkive/internal/db"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // UploadSessionTTL is how long an idle resumable upload is kept.
@@ -146,9 +146,9 @@ func (a *App) CreateUploadSession(ctx context.Context, p CreateUploadSessionPara
 	_ = f.Close()
 	err = a.DB.QueryRow(ctx, `
 		INSERT INTO uploads (id, user_id, workspace_id, parent_id, filename, content_type, length, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, now() + $8::interval)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING created_at, updated_at, expires_at
-	`, s.ID, s.UserID, s.WorkspaceID, s.ParentID, s.Filename, s.ContentType, s.Length, ttlInterval()).Scan(&s.CreatedAt, &s.UpdatedAt, &s.ExpiresAt)
+	`, s.ID, s.UserID, s.WorkspaceID, s.ParentID, s.Filename, s.ContentType, s.Length, uploadExpiry()).Scan(&s.CreatedAt, &s.UpdatedAt, &s.ExpiresAt)
 	if err != nil {
 		_ = os.Remove(a.uploadPartPath(s.ID))
 		return nil, err
@@ -156,8 +156,9 @@ func (a *App) CreateUploadSession(ctx context.Context, p CreateUploadSessionPara
 	return s, nil
 }
 
-func ttlInterval() string {
-	return fmt.Sprintf("%d seconds", int64(UploadSessionTTL/time.Second))
+// uploadExpiry is computed in Go: interval arithmetic is not portable SQL.
+func uploadExpiry() time.Time {
+	return time.Now().Add(UploadSessionTTL)
 }
 
 // GetUploadSession loads a live session owned by userID. Other users' and
@@ -168,7 +169,7 @@ func (a *App) GetUploadSession(ctx context.Context, id, userID uuid.UUID) (*Uplo
 		SELECT id, user_id, workspace_id, parent_id, filename, content_type, length, "offset", created_at, updated_at, expires_at
 		FROM uploads WHERE id = $1 AND user_id = $2 AND expires_at > now()
 	`, id, userID).Scan(&s.ID, &s.UserID, &s.WorkspaceID, &s.ParentID, &s.Filename, &s.ContentType, &s.Length, &s.Offset, &s.CreatedAt, &s.UpdatedAt, &s.ExpiresAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, db.ErrNoRows) {
 		return nil, ErrUploadNotFound
 	}
 	if err != nil {
@@ -227,8 +228,8 @@ func (a *App) WriteUploadChunk(ctx context.Context, s *UploadSession, offset int
 		// Use a fresh context: record progress even if the client went away.
 		dbctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		_, err := a.DB.Exec(dbctx, `
-			UPDATE uploads SET "offset" = $1, updated_at = now(), expires_at = now() + $2::interval WHERE id = $3
-		`, s.Offset+n, ttlInterval(), s.ID)
+			UPDATE uploads SET "offset" = $1, updated_at = now(), expires_at = $2 WHERE id = $3
+		`, s.Offset+n, uploadExpiry(), s.ID)
 		cancel()
 		if err != nil {
 			_ = f.Truncate(s.Offset)

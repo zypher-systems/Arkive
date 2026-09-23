@@ -19,12 +19,11 @@ import (
 
 	"github.com/arkive/arkive/internal/app"
 	"github.com/arkive/arkive/internal/auth"
+	"github.com/arkive/arkive/internal/db"
 	"github.com/arkive/arkive/internal/middleware"
 	"github.com/arkive/arkive/internal/models"
 	"github.com/arkive/arkive/internal/storage"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // WebDAVHandler serves /dav/{workspaceID}/… (RFC 4918 class 1 and 2).
@@ -66,7 +65,7 @@ func (h *WebDAVHandler) BasicLookup() middleware.BasicAuthLookup {
 			return nil, err
 		}
 		if user.Status != "active" {
-			return nil, pgx.ErrNoRows
+			return nil, db.ErrNoRows
 		}
 		// Prefer account password, then app password (ark_<prefix>_<secret>).
 		// With 2FA enabled the account password alone is not enough: app passwords only.
@@ -75,7 +74,7 @@ func (h *WebDAVHandler) BasicLookup() middleware.BasicAuthLookup {
 		}
 		prefix, ok := parseAppPasswordPrefix(password)
 		if !ok {
-			return nil, pgx.ErrNoRows
+			return nil, db.ErrNoRows
 		}
 		var appID uuid.UUID
 		var secretHash string
@@ -84,7 +83,7 @@ func (h *WebDAVHandler) BasicLookup() middleware.BasicAuthLookup {
 			WHERE user_id = $1 AND prefix = $2 AND revoked_at IS NULL
 		`, user.ID, prefix).Scan(&appID, &secretHash)
 		if err != nil || !auth.CheckPassword(password, secretHash) {
-			return nil, pgx.ErrNoRows
+			return nil, db.ErrNoRows
 		}
 		_, _ = h.App.DB.Exec(r.Context(), `
 			UPDATE app_passwords SET last_used_at = now() WHERE id = $1
@@ -319,7 +318,7 @@ func davTargetETag(ws uuid.UUID, t davTarget) string {
 
 const davNodeCols = `id, workspace_id, parent_id, name, kind, size, mime, storage_key, checksum, created_by, created_at, updated_at`
 
-func scanDAVNode(row pgx.Row, n *models.Node) error {
+func scanDAVNode(row db.Row, n *models.Node) error {
 	return row.Scan(&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.StorageKey, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt)
 }
 
@@ -344,7 +343,7 @@ func (h *WebDAVHandler) lookup(ctx context.Context, ws uuid.UUID, rel string) (d
 				WHERE workspace_id = $1 AND parent_id = $2 AND name = $3 AND deleted_at IS NULL`, ws, *parent, part), &n)
 		}
 		last := i == len(parts)-1
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, db.ErrNoRows) {
 			if last {
 				t.ParentOK, t.ParentID, t.Name = true, parent, part
 			}
@@ -577,7 +576,7 @@ func (h *WebDAVHandler) propfind(w http.ResponseWriter, r *http.Request, ws uuid
 	}
 
 	if depth == "1" && t.isDir() {
-		var rows pgx.Rows
+		var rows db.Rows
 		if t.Root {
 			rows, err = h.App.DB.Query(r.Context(), `SELECT `+davNodeCols+` FROM nodes
 				WHERE workspace_id = $1 AND parent_id IS NULL AND deleted_at IS NULL
@@ -956,7 +955,7 @@ func (h *WebDAVHandler) put(w http.ResponseWriter, r *http.Request, ws uuid.UUID
 	}
 	if err != nil {
 		_ = store.Delete(r.Context(), key)
-		if davIsUniqueViolation(err) {
+		if db.IsUniqueViolation(err) {
 			http.Error(w, "resource was created concurrently", http.StatusConflict)
 			return
 		}
@@ -988,11 +987,6 @@ func davUploadError(w http.ResponseWriter, err error) {
 	default:
 		http.Error(w, "upload failed", http.StatusInternalServerError)
 	}
-}
-
-func davIsUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // ---------------------------------------------------------------------------
@@ -1032,7 +1026,7 @@ func (h *WebDAVHandler) mkcol(w http.ResponseWriter, r *http.Request, ws uuid.UU
 		VALUES ($1, $2, $3, 'folder', $4)
 	`, ws, t.ParentID, t.Name, user.ID)
 	if err != nil {
-		if davIsUniqueViolation(err) {
+		if db.IsUniqueViolation(err) {
 			http.Error(w, "already exists", http.StatusMethodNotAllowed)
 			return
 		}
@@ -1042,9 +1036,7 @@ func (h *WebDAVHandler) mkcol(w http.ResponseWriter, r *http.Request, ws uuid.UU
 	w.WriteHeader(http.StatusCreated)
 }
 
-type davExecer interface {
-	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-}
+type davExecer = db.Querier
 
 // davTrashTree soft-deletes a node and its descendants (same as the REST
 // delete: the tree lands in the workspace trash and can be restored).
@@ -1201,7 +1193,7 @@ func (h *WebDAVHandler) transfer(w http.ResponseWriter, r *http.Request, ws uuid
 		switch {
 		case errors.Is(err, app.ErrQuotaExceeded):
 			davQuotaError(w, err)
-		case davIsUniqueViolation(err):
+		case db.IsUniqueViolation(err):
 			http.Error(w, "destination was created concurrently", http.StatusConflict)
 		default:
 			http.Error(w, "operation failed", http.StatusInternalServerError)

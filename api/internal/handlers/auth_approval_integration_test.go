@@ -6,22 +6,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/arkive/arkive/internal/app"
 	"github.com/arkive/arkive/internal/config"
-	"github.com/arkive/arkive/internal/db"
+	"github.com/arkive/arkive/internal/db/dbtest"
 	"github.com/arkive/arkive/internal/handlers"
 )
 
 func TestSignupApprovalFlow(t *testing.T) {
-	dsn := os.Getenv("ARKIVE_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("ARKIVE_TEST_DATABASE_URL not set")
-	}
+	dsn := dbtest.URL(t)
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
@@ -30,14 +26,7 @@ func TestSignupApprovalFlow(t *testing.T) {
 	cfg.BootstrapAdminEmail = "bootstrap-admin@test.local"
 	cfg.MigrationsDir = filepath.Join("..", "..", "migrations")
 
-	if err := db.Migrate(cfg.DatabaseURL, cfg.MigrationsDir); err != nil {
-		t.Fatal(err)
-	}
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
+	pool := dbtest.Open(t, cfg.DatabaseURL, cfg.MigrationsDir)
 
 	application := &app.App{
 		DB:     pool,

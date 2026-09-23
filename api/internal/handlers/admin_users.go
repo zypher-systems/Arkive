@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/arkive/arkive/internal/app"
+	"github.com/arkive/arkive/internal/db"
 	"github.com/arkive/arkive/internal/httpjson"
 	"github.com/arkive/arkive/internal/middleware"
 	"github.com/arkive/arkive/internal/models"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type AdminUsersHandler struct {
@@ -35,7 +35,7 @@ func (h *AdminUsersHandler) List(w http.ResponseWriter, r *http.Request) {
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	limit, offset := parsePage(r)
 	fetch := limit + 1
-	var rows pgx.Rows
+	var rows db.Rows
 	var err error
 	if status == "" {
 		rows, err = h.App.DB.Query(r.Context(), `
