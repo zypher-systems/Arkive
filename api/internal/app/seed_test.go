@@ -10,7 +10,7 @@ import (
 )
 
 func TestSeedDefaultBackendLocal(t *testing.T) {
-	dsn := dbtest.URL(t)
+	dsn := dbtest.FreshURL(t) // an empty database: no default backend yet
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
@@ -51,7 +51,7 @@ func TestSeedDefaultBackendLocal(t *testing.T) {
 }
 
 func TestSeedDefaultBackendS3WhenEndpointSet(t *testing.T) {
-	dsn := dbtest.URL(t)
+	dsn := dbtest.FreshURL(t) // an empty database: no default backend yet
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
