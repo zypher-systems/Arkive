@@ -180,6 +180,8 @@ func NewRouter(a *app.App) http.Handler {
 			r.Put("/api/admin/settings/trash", settingsH.PutTrashRetention)
 			r.Get("/api/admin/settings/registration", settingsH.GetRegistration)
 			r.Put("/api/admin/settings/registration", settingsH.PutRegistration)
+			r.Get("/api/admin/settings/versions", settingsH.GetVersionRetention)
+			r.Put("/api/admin/settings/versions", settingsH.PutVersionRetention)
 			r.Post("/api/admin/search/reindex", settingsH.ReindexSearch)
 		})
 	})

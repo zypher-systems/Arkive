@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"path"
 	"strings"
@@ -15,31 +16,40 @@ import (
 const maxIndexedText = 256 * 1024
 
 // IndexNodeText extracts searchable text for text-like and Office files after upload.
+// Best-effort: failures are logged.
 func (a *App) IndexNodeText(ctx context.Context, workspaceID, nodeID uuid.UUID, mime string, storageKey string) {
+	if err := a.indexNodeText(ctx, workspaceID, nodeID, mime, storageKey); err != nil {
+		a.log().Warn("search index failed", "workspace_id", workspaceID, "node_id", nodeID, "err", err)
+	}
+}
+
+func (a *App) indexNodeText(ctx context.Context, workspaceID, nodeID uuid.UUID, mime string, storageKey string) error {
 	if storageKey == "" {
-		return
+		return nil
 	}
 	var name string
-	_ = a.DB.QueryRow(ctx, `SELECT name FROM nodes WHERE id = $1`, nodeID).Scan(&name)
+	if err := a.DB.QueryRow(ctx, `SELECT name FROM nodes WHERE id = $1`, nodeID).Scan(&name); err != nil {
+		return fmt.Errorf("load node: %w", err)
+	}
 	if !isIndexable(mime, name) {
-		return
+		return nil
 	}
 	store, err := a.StoreForWorkspace(ctx, workspaceID)
 	if err != nil {
-		return
+		return fmt.Errorf("open store: %w", err)
 	}
 	rc, _, err := store.Get(ctx, storageKey)
 	if err != nil {
-		return
+		return fmt.Errorf("read blob: %w", err)
 	}
 	defer rc.Close()
 	buf, err := io.ReadAll(io.LimitReader(rc, 8<<20))
 	if err != nil {
-		return
+		return fmt.Errorf("read blob: %w", err)
 	}
 	text := extractText(mime, name, buf)
 	if text == "" {
-		return
+		return nil
 	}
 	if len(text) > maxIndexedText {
 		text = text[:maxIndexedText]
@@ -47,7 +57,10 @@ func (a *App) IndexNodeText(ctx context.Context, workspaceID, nodeID uuid.UUID, 
 	if !utf8.ValidString(text) {
 		text = strings.ToValidUTF8(text, "")
 	}
-	_, _ = a.DB.Exec(ctx, `UPDATE nodes SET content_text = $1 WHERE id = $2`, text, nodeID)
+	if _, err := a.DB.Exec(ctx, `UPDATE nodes SET content_text = $1 WHERE id = $2`, text, nodeID); err != nil {
+		return fmt.Errorf("store text: %w", err)
+	}
+	return nil
 }
 
 // ReindexMissing walks files without content_text (instance admin job).

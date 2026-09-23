@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/arkive/arkive/internal/config"
@@ -21,6 +22,8 @@ type App struct {
 	Logger      *slog.Logger
 	googleOAuth googleOAuthCache
 	smtp        smtpCache
+	bg          bgPool
+	uploadLocks sync.Map // upload id -> *sync.Mutex (tus PATCH/DELETE guard)
 }
 
 func (a *App) SeedDefaultBackend(ctx context.Context) error {

@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	_ "image/gif"
 	"image/jpeg"
@@ -34,39 +35,52 @@ func isImageMime(mime, name string) bool {
 	return false
 }
 
-// GenerateThumbnail creates a JPEG thumbnail for image nodes (best-effort).
+// GenerateThumbnail creates a JPEG thumbnail for image nodes (best-effort;
+// failures are logged).
 func (a *App) GenerateThumbnail(ctx context.Context, workspaceID, nodeID uuid.UUID, mime, storageKey string) {
+	if err := a.generateThumbnail(ctx, workspaceID, nodeID, mime, storageKey); err != nil {
+		a.log().Warn("thumbnail failed", "workspace_id", workspaceID, "node_id", nodeID, "err", err)
+	}
+}
+
+func (a *App) generateThumbnail(ctx context.Context, workspaceID, nodeID uuid.UUID, mime, storageKey string) error {
 	if storageKey == "" {
-		return
+		return nil
 	}
 	var name string
-	_ = a.DB.QueryRow(ctx, `SELECT name FROM nodes WHERE id = $1`, nodeID).Scan(&name)
+	if err := a.DB.QueryRow(ctx, `SELECT name FROM nodes WHERE id = $1`, nodeID).Scan(&name); err != nil {
+		return fmt.Errorf("load node: %w", err)
+	}
 	if !isImageMime(mime, name) {
-		return
+		return nil
 	}
 	store, err := a.StoreForWorkspace(ctx, workspaceID)
 	if err != nil {
-		return
+		return fmt.Errorf("open store: %w", err)
 	}
 	rc, _, err := store.Get(ctx, storageKey)
 	if err != nil {
-		return
+		return fmt.Errorf("read blob: %w", err)
 	}
 	defer rc.Close()
 	img, _, err := image.Decode(io.LimitReader(rc, 32<<20))
 	if err != nil || img == nil {
-		return
+		// Undecodable or unsupported image format: nothing to do.
+		return nil
 	}
 	thumb := resizeImage(img, thumbMaxEdge)
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, thumb, &jpeg.Options{Quality: 82}); err != nil {
-		return
+		return fmt.Errorf("encode: %w", err)
 	}
 	key := ThumbKey(workspaceID, nodeID)
 	if err := store.Put(ctx, key, bytes.NewReader(buf.Bytes()), int64(buf.Len()), "image/jpeg"); err != nil {
-		return
+		return fmt.Errorf("store thumbnail: %w", err)
 	}
-	_, _ = a.DB.Exec(ctx, `UPDATE nodes SET thumb_key = $1 WHERE id = $2`, key, nodeID)
+	if _, err := a.DB.Exec(ctx, `UPDATE nodes SET thumb_key = $1 WHERE id = $2`, key, nodeID); err != nil {
+		return fmt.Errorf("save thumb key: %w", err)
+	}
+	return nil
 }
 
 func (a *App) DeleteThumbnail(ctx context.Context, workspaceID uuid.UUID, thumbKey *string) {

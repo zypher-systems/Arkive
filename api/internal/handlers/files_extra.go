@@ -3,7 +3,6 @@ package handlers
 import (
 	"archive/zip"
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -359,7 +358,7 @@ func (h *FileHandler) PutContent(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusInternalServerError, "could not update file")
 		return
 	}
-	go h.App.IndexNodeText(context.Background(), workspaceID, n.ID, contentType, newKey)
+	h.App.SchedulePostUpload(workspaceID, n.ID, contentType, newKey)
 	httpjson.Write(w, http.StatusOK, n)
 }
 
