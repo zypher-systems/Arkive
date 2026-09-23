@@ -272,12 +272,30 @@ cd web && npm install && npm run dev
 make build   # web build + ./arkive with the UI embedded
 make test           # go vet + go test on SQLite (fresh database per test, zero setup)
 make test-postgres  # the same suite on PostgreSQL (TEST_POSTGRES_URL=postgres://…)
+make e2e            # Playwright suite against a fresh compose stack (see Testing)
 make image          # docker build -f docker/Dockerfile
 ```
 
 `go test ./...` needs no database: every test gets a fresh SQLite file. With `ARKIVE_TEST_DATABASE_URL=postgres://…` the same tests run against PostgreSQL. Write SQL that works on both — the rules are in [`api/internal/db/README.md`](api/internal/db/README.md); schema changes need a migration in both `api/migrations/` and `api/migrations/sqlite/` (a test checks they match).
 
-CI (GitHub Actions, plus optional GitLab) runs `go vet` + `go test ./...` on SQLite (also with `-race`) and on PostgreSQL, `web` unit tests + production build, the compose smoke against both compose layouts (including a restart), and a build of the single image. Images are not published from CI.
+CI (GitHub Actions, plus optional GitLab) runs `go vet` + `go test ./...` on SQLite (also with `-race`) and on PostgreSQL, `web` unit tests + production build, and for both compose layouts the compose smoke, the Playwright end-to-end suite and the smoke again after a restart. Images are not published from CI; on failure the Playwright HTML report and traces are uploaded as artifacts.
+
+### Testing
+
+| Level | Command | What |
+| --- | --- | --- |
+| API | `make test` / `make test-postgres` | Go tests, including a sweep that seeds a realistic instance and calls every registered GET route (no 5xx) plus the main write paths (`api/internal/handlers/sweep_test.go`). |
+| Web | `cd web && npm test` | Unit tests for the UI's pure logic (tus client, sorting, access, i18n). |
+| End to end | `make e2e` | Builds the image from this checkout, starts `docker-compose.yml` (`E2E_COMPOSE=docker-compose.postgres.yml` for PostgreSQL) on port 3180, runs the Playwright suite in [`e2e/`](e2e/) and tears the stack down. |
+
+The e2e suite drives the real UI and API: sign-in and registration, file operations, PUT and tus uploads (including resume after a reload), the editor and versions, sharing, public and upload-only links, 2FA, admin, WebDAV, phone layout and themes. Every test fails on uncaught page errors or any 5xx response. Run it against a stack you started yourself:
+
+```bash
+cd e2e && npm ci && npx playwright install chromium
+ARKIVE_E2E_URL=http://localhost:3080 ARKIVE_SETUP_TOKEN=<token the stack was started with> npx playwright test
+```
+
+A fresh instance is set up with `ARKIVE_SETUP_TOKEN`; for one that is already set up, pass `ARKIVE_E2E_ADMIN_EMAIL` / `ARKIVE_E2E_ADMIN_PASSWORD`. Start the stack with `ARKIVE_TRUSTED_PROXIES` covering your Docker bridge (see the Makefile): each test sends its own `X-Forwarded-For` so the per-IP sign-in rate limit applies per test. `PLAYWRIGHT_CHROMIUM_EXECUTABLE` points Playwright at an installed Chromium instead of its own. `ARKIVE_E2E_SCREENS=<dir> npx playwright test --project=screens` saves screenshots of the main screens (desktop light and dark, phone) with realistic data.
 
 Compose smoke (stack already up). Checks the SPA, completes first-run setup, registers a pending user, approves them, uploads, downloads and lists the file over WebDAV:
 

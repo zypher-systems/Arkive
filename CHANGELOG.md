@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default storage is a local folder (`/data/arkive`); MinIO is no longer in Compose
 - Admin storage type “NFS” is now “Local folder” (existing `nfs` backends still work)
 - GitHub Actions CI on pull requests only (tests + compose smoke; no image publish)
+- Playwright end-to-end suite (`e2e/`, `make e2e`) against the real stack; CI runs it on both compose layouts between the compose smokes and uploads the report and traces on failure
 
 ### Fixed
 
