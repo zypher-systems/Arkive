@@ -21,6 +21,7 @@ type App struct {
 	Logger      *slog.Logger
 	googleOAuth googleOAuthCache
 	smtp        smtpCache
+	setup       setupState
 }
 
 func (a *App) SeedDefaultBackend(ctx context.Context) error {
