@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -98,11 +99,11 @@ func (a *App) PurgeExpiredTrash(ctx context.Context) (int, error) {
 	rows, err := a.DB.Query(ctx, `
 		SELECT id FROM nodes
 		WHERE deleted_at IS NOT NULL
-		  AND deleted_at < now() - make_interval(days => $1)
+		  AND deleted_at < $1
 		  AND (parent_id IS NULL OR parent_id NOT IN (
 		    SELECT id FROM nodes WHERE deleted_at IS NOT NULL
 		  ))
-	`, days)
+	`, time.Now().AddDate(0, 0, -days))
 	if err != nil {
 		return 0, err
 	}

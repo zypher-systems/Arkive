@@ -5,7 +5,12 @@ on:
 
 jobs:
   api:
+    name: api (${{ matrix.db }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, postgres]
     services:
       postgres:
         image: postgres:16-alpine
@@ -20,17 +25,25 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+    env:
+      # Empty = every test gets a fresh SQLite database (no setup needed).
+      ARKIVE_TEST_DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgres://arkive:arkive@localhost:5432/arkive?sslmode=disable' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
           cache-dependency-path: api/go.sum
+      - name: Vet
+        working-directory: api
+        run: go vet ./...
       - name: Test
         working-directory: api
-        env:
-          ARKIVE_TEST_DATABASE_URL: postgres://arkive:arkive@localhost:5432/arkive?sslmode=disable
         run: go test ./...
+      - name: Test with the race detector
+        if: matrix.db == 'sqlite'
+        working-directory: api
+        run: go test -race ./...
 
   web:
     runs-on: ubuntu-latest
@@ -48,28 +61,68 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # The real stack from this commit (single image, both compose layouts):
+  # curl smoke (first-run setup, register/approve, upload, search, WebDAV),
+  # the Playwright suite in e2e/ against the same instance, then a restart and
+  # the smoke again to prove data persists.
   e2e:
+    name: e2e (${{ matrix.layout }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [docker-compose.yml, docker-compose.postgres.yml]
     env:
-      ARKIVE_BOOTSTRAP_ADMIN_EMAIL: admin@arkive.local
+      # Build the image from this commit rather than pulling it from GHCR.
+      COMPOSE_FILE: ${{ matrix.layout }}:docker-compose.build.yml
       ARKIVE_PUBLIC_URL: http://localhost:3080
+      # Known token so the smoke script can complete first-run setup.
+      ARKIVE_SETUP_TOKEN: ci-setup-token
+      # Each Playwright test sends its own X-Forwarded-For so login/register
+      # rate limits (per client IP) apply per test; trust the runner's
+      # Docker bridge so the header is honoured.
+      ARKIVE_TRUSTED_PROXIES: 127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      # The smoke creates the admin; the suite signs in as the same account.
+      ARKIVE_E2E_URL: http://localhost:3080
+      ARKIVE_E2E_ADMIN_EMAIL: admin@arkive.local
+      ARKIVE_E2E_ADMIN_PASSWORD: smoketest1
     steps:
       - uses: actions/checkout@v4
       - name: Start stack
-        run: docker compose up -d --build
-      - name: Wait for stack
-        run: |
-          ok=0
-          for i in $(seq 1 90); do
-            if curl -sf http://localhost:3080/api/ready >/dev/null; then
-              ok=1
-              break
-            fi
-            sleep 2
-          done
-          test "$ok" = 1
+        run: docker compose up -d --build --wait
       - name: Smoke
         run: ./scripts/smoke.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Playwright
+        working-directory: e2e
+        run: npx playwright test
+      - name: Restart and smoke again (data persists)
+        run: |
+          docker compose restart arkive
+          docker compose up -d --wait
+          ./scripts/smoke.sh
+      - name: Logs
+        if: failure()
+        run: docker compose logs
+      - name: Upload Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.layout }}
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 14
       - name: Tear down
         if: always()
         run: docker compose down -v || true

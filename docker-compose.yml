@@ -1,33 +1,48 @@
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: arkive
-      POSTGRES_PASSWORD: arkive
-      POSTGRES_DB: arkive
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arkive -d arkive"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+# Arkive: one container, one data folder (SQLite).
+#
+#   docker compose up -d
+#   docker compose logs arkive | grep setup_token   # one-time first-run token
+#
+# Then open http://localhost:3080 and create the admin account.
+#
+# Everything lives in the arkive_data volume at /data/arkive: the SQLite
+# database (arkive.db), your files, and the generated secrets
+# (.arkive-secrets). Back up that one volume.
+#
+# Bigger install, several replicas, or upgrading a 1.0 install that used
+# PostgreSQL? Use docker-compose.postgres.yml instead (see docs/upgrade.md).
+#
+# The image comes from GitHub Container Registry. ARKIVE_VERSION picks the tag:
+# "1" (default) follows 1.x releases, "1.1" pins a minor line, "1.1.0" an exact
+# release. `docker compose pull && docker compose up -d` updates.
+# To build from this checkout instead, add -f docker-compose.build.yml.
 
-  api:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.api
+services:
+  arkive:
+    image: ghcr.io/zypher-systems/arkive:${ARKIVE_VERSION:-1}
+    restart: unless-stopped
+    ports:
+      - "${ARKIVE_PORT:-3080}:8080"
     environment:
-      ARKIVE_DATABASE_URL: postgres://arkive:arkive@postgres:5432/arkive?sslmode=disable
+      # Empty = SQLite at /data/arkive/arkive.db. postgres://… uses PostgreSQL.
+      ARKIVE_DATABASE_URL: ${ARKIVE_DATABASE_URL:-}
       ARKIVE_DATA_DIR: /data/arkive
-      ARKIVE_SESSION_SECRET: ${ARKIVE_SESSION_SECRET:-change-me-in-production-use-long-random-string}
-      ARKIVE_SECRETS_KEY: ${ARKIVE_SECRETS_KEY:-change-me-in-production-use-long-random-string}
-      ARKIVE_BOOTSTRAP_ADMIN_EMAIL: ${ARKIVE_BOOTSTRAP_ADMIN_EMAIL:-admin@arkive.local}
-      ARKIVE_HTTP_ADDR: ":8080"
+      # Empty = generated on first boot and kept in /data/arkive/.arkive-secrets.
+      ARKIVE_SESSION_SECRET: ${ARKIVE_SESSION_SECRET:-}
+      ARKIVE_SECRETS_KEY: ${ARKIVE_SECRETS_KEY:-}
+      # Optional. Empty = a one-time token is printed to the log on first boot.
+      ARKIVE_SETUP_TOKEN: ${ARKIVE_SETUP_TOKEN:-}
+      # Optional: this email becomes admin when it registers / logs in.
+      ARKIVE_BOOTSTRAP_ADMIN_EMAIL: ${ARKIVE_BOOTSTRAP_ADMIN_EMAIL:-}
       ARKIVE_COOKIE_SECURE: ${ARKIVE_COOKIE_SECURE:-false}
-      ARKIVE_MIGRATIONS_DIR: /app/migrations
       ARKIVE_PUBLIC_URL: ${ARKIVE_PUBLIC_URL:-http://localhost:3080}
       ARKIVE_MAX_UPLOAD_BYTES: ${ARKIVE_MAX_UPLOAD_BYTES:-10737418240}
+      # Reverse proxy in front? List its address/CIDR so X-Forwarded-For is honoured.
+      ARKIVE_TRUSTED_PROXIES: ${ARKIVE_TRUSTED_PROXIES:-}
+      ARKIVE_METRICS_ENABLED: ${ARKIVE_METRICS_ENABLED:-false}
+      ARKIVE_METRICS_TOKEN: ${ARKIVE_METRICS_TOKEN:-}
+      # Escape hatch for the "empty database but files in /data/arkive" check.
+      ARKIVE_ALLOW_NONEMPTY_DATA_DIR: ${ARKIVE_ALLOW_NONEMPTY_DATA_DIR:-false}
       # Optional OIDC — set in .env to enable SSO on the login page
       ARKIVE_OIDC_ISSUER: ${ARKIVE_OIDC_ISSUER:-}
       ARKIVE_OIDC_CLIENT_ID: ${ARKIVE_OIDC_CLIENT_ID:-}
@@ -42,34 +57,19 @@ services:
       ARKIVE_S3_SECRET_KEY: ${ARKIVE_S3_SECRET_KEY:-}
       ARKIVE_S3_BUCKET: ${ARKIVE_S3_BUCKET:-}
       ARKIVE_S3_USE_SSL: ${ARKIVE_S3_USE_SSL:-false}
-
     volumes:
       - arkive_data:/data/arkive
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/ready"]
+      test: ["CMD", "/usr/local/bin/arkive", "healthcheck"]
       interval: 5s
       timeout: 5s
       retries: 15
       start_period: 10s
-
-  web:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.web
-    ports:
-      - "3080:8080"
     networks:
       default:
         aliases:
-          # Dotted name so curl will store session cookies (bare "web" will not).
-          - web.local
-    depends_on:
-      api:
-        condition: service_healthy
+          # Dotted name so curl stores session cookies (bare "arkive" will not).
+          - arkive.local
 
 volumes:
-  postgres_data:
   arkive_data:

@@ -3,7 +3,6 @@ package handlers
 import (
 	"archive/zip"
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,11 +31,8 @@ func (h *FileHandler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusBadRequest, "invalid workspace id")
 		return
 	}
-	if err := h.App.RequireWorkspaceAccess(r.Context(), wsID, user.ID, false); err != nil {
-		status, msg := app.WriteHTTPError(err)
-		httpjson.Error(w, status, msg)
-		return
-	}
+	// No workspace membership check: walk() checks read access per node, so
+	// people a folder is shared with can download it (or part of it) as zip.
 	var req zipRequest
 	if err := httpjson.Decode(r, &req); err != nil || len(req.NodeIDs) == 0 {
 		httpjson.Error(w, http.StatusBadRequest, "node_ids required")
@@ -221,7 +217,9 @@ func (h *FileHandler) Content(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Accept-Ranges", "bytes")
 
-	if textLike && rangeHdr != "" {
+	// Ranges: text peeks, and video/audio players (Safari refuses media
+	// without 206 answers; seeking needs them everywhere).
+	if rangeHdr != "" {
 		start, end, ok := parseBytesRange(rangeHdr, total)
 		if !ok {
 			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", total))
@@ -229,13 +227,18 @@ func (h *FileHandler) Content(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Cap a single text range response
-		if end-start+1 > 64*1024 {
+		if textLike && end-start+1 > 64*1024 {
 			end = start + 64*1024 - 1
 			if end >= total {
 				end = total - 1
 			}
 		}
-		if start > 0 {
+		if seeker, ok := rc.(io.Seeker); ok && start > 0 {
+			if _, err := seeker.Seek(start, io.SeekStart); err != nil {
+				httpjson.Error(w, http.StatusInternalServerError, "storage error")
+				return
+			}
+		} else if start > 0 {
 			if _, err := io.CopyN(io.Discard, rc, start); err != nil {
 				httpjson.Error(w, http.StatusInternalServerError, "storage error")
 				return
@@ -359,7 +362,7 @@ func (h *FileHandler) PutContent(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusInternalServerError, "could not update file")
 		return
 	}
-	go h.App.IndexNodeText(context.Background(), workspaceID, n.ID, contentType, newKey)
+	h.App.SchedulePostUpload(workspaceID, n.ID, contentType, newKey)
 	httpjson.Write(w, http.StatusOK, n)
 }
 
@@ -380,33 +383,10 @@ func (h *FileHandler) Search(w http.ResponseWriter, r *http.Request) {
 		httpjson.Write(w, http.StatusOK, []models.Node{})
 		return
 	}
-	pattern := "%" + escapeLike(q) + "%"
-	rows, err := h.App.DB.Query(r.Context(), `
-		SELECT id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
-		FROM nodes
-		WHERE workspace_id = $1 AND deleted_at IS NULL
-		  AND (
-		    search_vector @@ plainto_tsquery('english', $2)
-		    OR name ILIKE $3 ESCAPE '\'
-		  )
-		ORDER BY
-		  ts_rank(COALESCE(search_vector, ''::tsvector), plainto_tsquery('english', $2)) DESC,
-		  kind DESC, name ASC
-		LIMIT 50
-	`, wsID, q, pattern)
+	out, err := h.App.SearchNodes(r.Context(), app.SearchScope{Cond: "n.workspace_id = $1", Arg: wsID}, q)
 	if err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "query failed")
 		return
-	}
-	defer rows.Close()
-	out := []models.Node{}
-	for rows.Next() {
-		var n models.Node
-		if err := rows.Scan(&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt); err != nil {
-			httpjson.Error(w, http.StatusInternalServerError, "scan failed")
-			return
-		}
-		out = append(out, n)
 	}
 	httpjson.Write(w, http.StatusOK, out)
 }
@@ -418,46 +398,18 @@ func (h *FileHandler) SearchAll(w http.ResponseWriter, r *http.Request) {
 		httpjson.Write(w, http.StatusOK, []models.Node{})
 		return
 	}
-	pattern := "%" + escapeLike(q) + "%"
-	rows, err := h.App.DB.Query(r.Context(), `
-		SELECT id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
-		FROM nodes
-		WHERE deleted_at IS NULL
-		  AND workspace_id IN (
-		    SELECT workspace_id FROM workspace_members WHERE user_id = $1
-		  )
-		  AND (
-		    search_vector @@ plainto_tsquery('english', $2)
-		    OR name ILIKE $3 ESCAPE '\'
-		  )
-		ORDER BY
-		  ts_rank(COALESCE(search_vector, ''::tsvector), plainto_tsquery('english', $2)) DESC,
-		  kind DESC, name ASC
-		LIMIT 50
-	`, user.ID, q, pattern)
+	out, err := h.App.SearchNodes(r.Context(), app.SearchScope{
+		Cond: "n.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)",
+		Arg:  user.ID,
+	}, q)
 	if err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "query failed")
 		return
 	}
-	defer rows.Close()
-	out := []models.Node{}
-	for rows.Next() {
-		var n models.Node
-		if err := rows.Scan(&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt); err != nil {
-			httpjson.Error(w, http.StatusInternalServerError, "scan failed")
-			return
-		}
-		out = append(out, n)
-	}
 	httpjson.Write(w, http.StatusOK, out)
 }
 
-func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
-	return s
-}
+func escapeLike(s string) string { return app.EscapeLike(s) }
 
 func isTextPreview(ct, name string) bool {
 	ct = strings.ToLower(ct)

@@ -137,6 +137,12 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"permission": req.Permission,
 		"share_id":   s.ID.String(),
 	})
+	h.App.Audit(r.Context(), r, user.ID.String(), "share.created", "share", s.ID.String(), map[string]any{
+		"node_id":              nodeID.String(),
+		"permission":           req.Permission,
+		"grantee_user_id":      s.GranteeUserID,
+		"grantee_workspace_id": s.GranteeWorkspaceID,
+	})
 	if granteeUserID != nil {
 		var toEmail, nodeName string
 		_ = h.App.DB.QueryRow(r.Context(), `SELECT email FROM users WHERE id = $1`, *granteeUserID).Scan(&toEmail)
@@ -173,5 +179,10 @@ func (h *ShareHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusInternalServerError, "delete failed")
 		return
 	}
+	actor := user.ID
+	h.App.LogActivity(r.Context(), &nodeID, nil, &actor, "share.deleted", map[string]any{"share_id": shareID.String()})
+	h.App.Audit(r.Context(), r, user.ID.String(), "share.deleted", "share", shareID.String(), map[string]any{
+		"node_id": nodeID.String(),
+	})
 	httpjson.Write(w, http.StatusOK, map[string]string{"status": "ok"})
 }

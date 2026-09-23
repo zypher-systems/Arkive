@@ -1,73 +1,134 @@
+@import "@fontsource-variable/inter/index.css";
 @import "tailwindcss";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+/* Touch devices: grow hit targets to >= 44px. */
+@custom-variant coarse (@media (pointer: coarse));
+/* Only real hover devices get hover-revealed affordances. */
+@custom-variant can-hover (@media (hover: hover) and (pointer: fine));
 
+/*
+ * Arkive design tokens.
+ * Graphite neutrals + one amber accent. Every color used in components maps to
+ * one of these variables so light/dark stay in lock-step. Text tokens meet
+ * WCAG AA (>= 4.5:1) against --surface and --app in both themes.
+ */
 :root {
   color-scheme: light;
-  --app: #f4f4f2;
+  --app: #f5f5f3;
   --surface: #ffffff;
-  --inset: #efefec;
-  --hover: #e9e9e5;
-  --line: #e2e2dd;
+  --raised: #ffffff;
+  --inset: #f0f0ed;
+  --hover: #ecece8;
+  --active: #e4e4df;
+  --line: #e3e3de;
   --strong: #cfcfc8;
-  --ink: #1b1d21;
-  --muted: #5c626d;
-  --faint: #71767e;
+  --ink: #16181c;
+  --muted: #555b64;
+  --faint: #6b7079;
   --accent: #b45309;
-  --accent-strong: #92400e;
-  --accent-soft: rgba(180, 83, 9, 0.1);
+  --accent-strong: #8f3f07;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(180, 83, 9, 0.09);
+  --accent-line: rgba(180, 83, 9, 0.35);
   --danger: #b42318;
   --danger-strong: #912018;
   --danger-soft: rgba(180, 35, 24, 0.08);
-  --ok: #1e7a4c;
-  --ok-soft: rgba(30, 122, 76, 0.1);
-  --primary: #23262b;
+  --ok: #17754a;
+  --ok-soft: rgba(23, 117, 74, 0.1);
+  --info: #2f5b93;
+  --info-soft: rgba(47, 91, 147, 0.1);
+  --primary: #22252a;
+  --primary-hover: #33373e;
   --primary-fg: #ffffff;
-  --overlay: rgba(24, 25, 28, 0.5);
-  --selection: rgba(180, 83, 9, 0.18);
-  --ark-shadow-xs: 0 1px 2px rgba(27, 29, 33, 0.06);
-  --ark-shadow-sm: 0 1px 2px rgba(27, 29, 33, 0.08), 0 2px 8px rgba(27, 29, 33, 0.06);
-  --ark-shadow-md: 0 4px 16px rgba(27, 29, 33, 0.1), 0 1px 3px rgba(27, 29, 33, 0.08);
-  --ark-shadow-lg: 0 12px 40px rgba(27, 29, 33, 0.16), 0 2px 6px rgba(27, 29, 33, 0.1);
+  --overlay: rgba(20, 21, 24, 0.45);
+  --selection: rgba(180, 83, 9, 0.16);
+  --row-selected: #fbf1e6;
+  --folder: #c98a1b;
+  --folder-soft: #f6ead0;
+  --ark-ring: 0 0 0 3px rgba(180, 83, 9, 0.22);
+  --ark-shadow-xs: 0 1px 2px rgba(22, 24, 28, 0.05);
+  --ark-shadow-sm: 0 1px 2px rgba(22, 24, 28, 0.06), 0 1px 6px rgba(22, 24, 28, 0.04);
+  --ark-shadow-md: 0 6px 20px -4px rgba(22, 24, 28, 0.12), 0 2px 6px rgba(22, 24, 28, 0.05);
+  --ark-shadow-lg: 0 24px 60px -12px rgba(22, 24, 28, 0.25), 0 4px 12px rgba(22, 24, 28, 0.08);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --app: #14161a;
-  --surface: #1c1f25;
-  --inset: #171a20;
-  --hover: #262b34;
-  --line: #2b303a;
-  --strong: #3d434f;
-  --ink: #e8eaed;
-  --muted: #9aa1ad;
-  --faint: #878e99;
-  --accent: #d99a2b;
-  --accent-strong: #e8b45a;
-  --accent-soft: rgba(217, 154, 43, 0.14);
-  --danger: #e0685c;
-  --danger-strong: #ec8a80;
-  --danger-soft: rgba(224, 104, 92, 0.12);
-  --ok: #4cc38a;
-  --ok-soft: rgba(76, 195, 138, 0.12);
-  --primary: #e8eaed;
-  --primary-fg: #16181d;
+  --app: #111317;
+  --surface: #181a1f;
+  --raised: #1e2127;
+  --inset: #14161a;
+  --hover: #23262d;
+  --active: #2a2e36;
+  --line: #2a2e35;
+  --strong: #3b4049;
+  --ink: #ebecee;
+  --muted: #a3a8b1;
+  --faint: #8d939c;
+  --accent: #e2a23c;
+  --accent-strong: #f1bd66;
+  --accent-fg: #1b1306;
+  --accent-soft: rgba(226, 162, 60, 0.12);
+  --accent-line: rgba(226, 162, 60, 0.4);
+  --danger: #f07a6e;
+  --danger-strong: #f59a90;
+  --danger-soft: rgba(240, 122, 110, 0.12);
+  --ok: #4fc68d;
+  --ok-soft: rgba(79, 198, 141, 0.12);
+  --info: #7fa9e0;
+  --info-soft: rgba(127, 169, 224, 0.12);
+  --primary: #ebecee;
+  --primary-hover: #d6d8dc;
+  --primary-fg: #15171b;
   --overlay: rgba(0, 0, 0, 0.6);
-  --selection: rgba(217, 154, 43, 0.3);
-  --ark-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --ark-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.4);
-  --ark-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.45);
-  --ark-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.5);
+  --selection: rgba(226, 162, 60, 0.28);
+  --row-selected: #2a2419;
+  --folder: #d9a441;
+  --folder-soft: #2f2817;
+  --ark-ring: 0 0 0 3px rgba(226, 162, 60, 0.3);
+  --ark-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --ark-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 6px rgba(0, 0, 0, 0.25);
+  --ark-shadow-md: 0 8px 24px -6px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --ark-shadow-lg: 0 24px 60px -12px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 @theme {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono",
     monospace;
 
-  --animate-fade-in: fade-in 0.15s ease-out;
-  --animate-fade-up: fade-up 0.16s ease-out;
+  /* Type scale (px): 11 · 12 · 13 · 14 · 16 · 18 · 22 · 28 */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-md: 1rem;
+  --text-md--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.625rem;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.875rem;
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 2.25rem;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --animate-fade-in: fade-in 0.14s ease-out;
+  --animate-fade-up: fade-up 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-pop: pop 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-in-right: slide-in-right 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-in-left: slide-in-left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-up: slide-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 
   @keyframes fade-in {
     from { opacity: 0; }
@@ -77,13 +138,31 @@
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes slide-in-right {
+    from { transform: translateX(24px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes slide-in-left {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes slide-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
 }
 
 @theme inline {
   --color-app: var(--app);
   --color-surface: var(--surface);
+  --color-raised: var(--raised);
   --color-inset: var(--inset);
   --color-hover: var(--hover);
+  --color-active: var(--active);
   --color-line: var(--line);
   --color-strong: var(--strong);
   --color-ink: var(--ink);
@@ -91,35 +170,54 @@
   --color-faint: var(--faint);
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
+  --color-accent-fg: var(--accent-fg);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
   --color-danger: var(--danger);
   --color-danger-strong: var(--danger-strong);
   --color-danger-soft: var(--danger-soft);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-fg: var(--primary-fg);
   --color-overlay: var(--overlay);
+  --color-row-selected: var(--row-selected);
+  --color-folder: var(--folder);
+  --color-folder-soft: var(--folder-soft);
   --shadow-xs: var(--ark-shadow-xs);
   --shadow-sm: var(--ark-shadow-sm);
   --shadow-md: var(--ark-shadow-md);
   --shadow-lg: var(--ark-shadow-lg);
+  --shadow-ring: var(--ark-ring);
 }
 
+/* Element defaults live in the base layer so utilities (outline-none, etc.) can override them. */
+@layer base {
 html,
 body,
 #root {
   height: 100%;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+  font-feature-settings: "cv11", "ss01";
   color: var(--ink);
   background: var(--app);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::selection {
@@ -129,15 +227,25 @@ body {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 2px;
 }
 
-input[type="checkbox"] {
-  accent-color: var(--accent);
-  width: 0.875rem;
-  height: 0.875rem;
-  flex-shrink: 0;
+button,
+[role="button"] {
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.sr-only-focusable:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 }
 
 /* ---------- Surfaces ---------- */
@@ -145,35 +253,95 @@ input[type="checkbox"] {
 @utility panel {
   background-color: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--ark-shadow-xs);
 }
 
 /* ---------- Inputs ---------- */
 
 @utility input-field {
+  display: block;
   width: 100%;
-  border-radius: 6px;
+  min-height: 2.25rem;
+  border-radius: var(--radius-md);
   border: 1px solid var(--strong);
   background-color: var(--surface);
   color: var(--ink);
-  padding: 0.5rem 0.75rem;
+  padding: 0.4375rem 0.75rem;
   font-size: 0.875rem;
+  line-height: 1.25rem;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 
   &::placeholder {
     color: var(--faint);
   }
 
+  &:hover:not(:disabled):not(:focus) {
+    border-color: var(--faint);
+  }
+
   &:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
+    box-shadow: var(--ark-ring);
   }
 
   &:disabled {
-    opacity: 0.55;
+    opacity: 0.6;
     cursor: not-allowed;
+    background-color: var(--inset);
+  }
+
+  &[aria-invalid="true"] {
+    border-color: var(--danger);
+  }
+}
+
+@utility check {
+  appearance: none;
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 4px;
+  border: 1.5px solid var(--strong);
+  background: var(--surface);
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+
+  &:hover {
+    border-color: var(--faint);
+  }
+
+  &::before {
+    content: "";
+    width: 0.55rem;
+    height: 0.55rem;
+    transform: scale(0);
+    transition: transform 0.08s ease-in-out;
+    background: var(--accent-fg);
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  }
+
+  &:checked,
+  &:indeterminate {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  &:checked::before {
+    transform: scale(1);
+  }
+
+  &:indeterminate::before {
+    transform: scale(1);
+    clip-path: inset(40% 5% 40% 5%);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 }
 
@@ -184,8 +352,8 @@ input[type="checkbox"] {
   scrollbar-color: var(--strong) transparent;
 
   &::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
   }
 
   &::-webkit-scrollbar-track {
@@ -194,14 +362,15 @@ input[type="checkbox"] {
 
   &::-webkit-scrollbar-thumb {
     border-radius: 999px;
-    background: var(--strong);
+    border: 3px solid transparent;
+    background: var(--strong) padding-box;
   }
 }
 
 /* ---------- Skeleton ---------- */
 
 @utility skeleton {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--hover);
   animation: skeleton-pulse 1.4s ease-in-out infinite;
 }
@@ -212,9 +381,44 @@ input[type="checkbox"] {
     opacity: 1;
   }
   50% {
-    opacity: 0.55;
+    opacity: 0.5;
   }
 }
+
+/* ---------- Markdown preview ---------- */
+
+.prose-ark {
+  color: var(--ink);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.prose-ark > :first-child { margin-top: 0; }
+.prose-ark h1, .prose-ark h2, .prose-ark h3, .prose-ark h4 {
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 1.6em 0 0.6em;
+  letter-spacing: -0.01em;
+}
+.prose-ark h1 { font-size: 1.75rem; }
+.prose-ark h2 { font-size: 1.375rem; padding-bottom: 0.3em; border-bottom: 1px solid var(--line); }
+.prose-ark h3 { font-size: 1.125rem; }
+.prose-ark p, .prose-ark ul, .prose-ark ol, .prose-ark pre, .prose-ark blockquote, .prose-ark table { margin: 0 0 1em; }
+.prose-ark ul, .prose-ark ol { padding-left: 1.5em; }
+.prose-ark ul { list-style: disc; }
+.prose-ark ol { list-style: decimal; }
+.prose-ark li { margin: 0.25em 0; }
+.prose-ark a { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+.prose-ark code { font-family: var(--font-mono); font-size: 0.85em; background: var(--inset); border: 1px solid var(--line); border-radius: 4px; padding: 0.1em 0.35em; }
+.prose-ark pre { background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0.9em 1em; overflow: auto; }
+.prose-ark pre code { background: none; border: 0; padding: 0; font-size: 0.8125rem; }
+.prose-ark blockquote { border-left: 3px solid var(--accent-line); padding-left: 1em; color: var(--muted); }
+.prose-ark hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
+.prose-ark table { border-collapse: collapse; display: block; overflow-x: auto; }
+.prose-ark th, .prose-ark td { border: 1px solid var(--line); padding: 0.4em 0.75em; text-align: left; }
+.prose-ark th { background: var(--inset); font-weight: 600; }
+.prose-ark img { max-width: 100%; border-radius: var(--radius-sm); }
+.prose-ark input[type="checkbox"] { margin-right: 0.4em; }
 
 /* ---------- Reduced motion ---------- */
 
@@ -225,5 +429,6 @@ input[type="checkbox"] {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

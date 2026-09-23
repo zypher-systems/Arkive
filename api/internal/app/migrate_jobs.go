@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/arkive/arkive/internal/db"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 const migrateSyncKeyThreshold = 25
@@ -64,7 +64,7 @@ func (a *App) GetMigrationJob(ctx context.Context, id uuid.UUID) (*MigrationJob,
 	`, id).Scan(
 		&j.ID, &j.WorkspaceID, &j.FromBackendID, &j.ToBackendID, &j.Status, &j.Copied, &j.Total, &j.Error, &j.CreatedAt, &j.UpdatedAt,
 	)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, db.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
@@ -78,8 +78,8 @@ func (a *App) RunMigrationWorker(ctx context.Context) {
 	if _, err := a.DB.Exec(ctx, `
 		UPDATE storage_migrations
 		SET status = 'queued', error = 'requeued after stuck running', updated_at = now()
-		WHERE status = 'running' AND updated_at < now() - interval '1 hour'
-	`); err != nil && a.Logger != nil {
+		WHERE status = 'running' AND updated_at < $1
+	`, time.Now().Add(-time.Hour)); err != nil && a.Logger != nil {
 		a.Logger.Warn("reset stuck migrations", "err", err)
 	}
 	ticker := time.NewTicker(2 * time.Second)
@@ -97,6 +97,15 @@ func (a *App) RunMigrationWorker(ctx context.Context) {
 }
 
 func (a *App) processNextMigration(ctx context.Context) error {
+	// Poll without a transaction first: on SQLite every transaction takes
+	// the database write lock.
+	var queued bool
+	if err := a.DB.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM storage_migrations WHERE status = 'queued')`).Scan(&queued); err != nil {
+		return err
+	}
+	if !queued {
+		return nil
+	}
 	tx, err := a.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -114,7 +123,7 @@ func (a *App) processNextMigration(ctx context.Context) error {
 	`).Scan(
 		&job.ID, &job.WorkspaceID, &job.FromBackendID, &job.ToBackendID, &job.Status, &job.Copied, &job.Total, &job.Error, &job.CreatedAt, &job.UpdatedAt,
 	)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, db.ErrNoRows) {
 		return nil
 	}
 	if err != nil {

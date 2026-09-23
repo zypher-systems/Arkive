@@ -1,313 +1,506 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { api, type Workspace, type WorkspaceMember } from '../lib/api';
+import { copyText } from '../lib/hooks';
+import { useAuth } from '../lib/auth';
+import { useConfirm } from '../lib/confirm';
+import { useWorkspaces } from '../lib/workspaces';
+import { useI18n, type TKey } from '../i18n';
+import { useToast } from '../components/Toast';
+import { Button, IconButton } from '../components/ui/Button';
+import { Avatar, Badge, EmptyState, Section } from '../components/ui/Card';
+import { Field, Input, Select } from '../components/ui/Input';
+import { Modal } from '../components/ui/Modal';
+import { Notice } from '../components/ui/Notice';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Spinner } from '../components/ui/Spinner';
 import {
   CheckIcon,
+  ChevronRightIcon,
   CopyIcon,
+  FolderOpenIcon,
   KeyIcon,
-  MailIcon,
+  LogoutIcon,
+  PlusIcon,
   RefreshIcon,
   SendIcon,
+  TeamIcon,
   UserMinusIcon,
   UserPlusIcon,
 } from '../components/icons';
-import { api, type Workspace, type WorkspaceMember } from '../lib/api';
-import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
-import { Notice } from '../components/ui/Notice';
-import { useAuth } from '../lib/auth';
-import { useConfirm } from '../lib/confirm';
 
-export function TeamsPage() {
-  const { user } = useAuth();
-  const [teams, setTeams] = useState<Workspace[]>([]);
-  const [selected, setSelected] = useState<string>('');
-  const [members, setMembers] = useState<WorkspaceMember[]>([]);
-  const [inviteToken, setInviteToken] = useState('');
+const ROLE_KEYS: Record<string, TKey> = {
+  owner: 'teams.roles.owner',
+  admin: 'teams.roles.admin',
+  member: 'teams.roles.member',
+  viewer: 'teams.roles.viewer',
+};
+
+function RoleBadge({ role }: { role?: string }) {
+  const { t } = useI18n();
+  if (!role) return null;
+  return <Badge tone={role === 'owner' ? 'accent' : role === 'admin' ? 'info' : 'neutral'}>{ROLE_KEYS[role] ? t(ROLE_KEYS[role]) : role}</Badge>;
+}
+
+function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (w: Workspace) => void }) {
+  const { t } = useI18n();
   const [name, setName] = useState('');
-  const [joinToken, setJoinToken] = useState('');
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      onCreated(await api.createTeam(name.trim()));
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('teams.createFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal
+      title={t('teams.createTitle')}
+      subtitle={t('teams.createSubtitle')}
+      icon={<TeamIcon size={17} />}
+      onClose={onClose}
+      busy={busy}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" form="create-team" variant="primary" loading={busy} disabled={!name.trim()}>
+            {t('teams.create')}
+          </Button>
+        </>
+      }
+    >
+      <form id="create-team" onSubmit={submit} className="space-y-3">
+        <Field label={t('teams.name')} error={error || undefined}>
+          {({ id }) => (
+            <Input id={id} data-autofocus required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder={t('teams.namePlaceholder')} />
+          )}
+        </Field>
+      </form>
+    </Modal>
+  );
+}
+
+function JoinDialog({ onClose, onJoined }: { onClose: () => void; onJoined: (w: Workspace) => void }) {
+  const { t } = useI18n();
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      onJoined(await api.joinTeam(token.trim()));
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('teams.joinFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal
+      title={t('teams.joinTitle')}
+      subtitle={t('teams.joinSubtitle')}
+      icon={<UserPlusIcon size={17} />}
+      onClose={onClose}
+      busy={busy}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" form="join-team" variant="primary" loading={busy} disabled={!token.trim()}>
+            {t('teams.join')}
+          </Button>
+        </>
+      }
+    >
+      <form id="join-team" onSubmit={submit}>
+        <Field label={t('teams.inviteToken')} error={error || undefined}>
+          {({ id }) => (
+            <Input id={id} data-autofocus required value={token} onChange={(e) => setToken(e.target.value)} spellCheck={false} autoComplete="off" className="font-mono" />
+          )}
+        </Field>
+      </form>
+    </Modal>
+  );
+}
+
+function TeamDetail({
+  team,
+  onChanged,
+  onLeft,
+}: {
+  team: Workspace;
+  onChanged: () => Promise<void>;
+  onLeft: () => void;
+}) {
+  const { t } = useI18n();
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const { ask, dialog } = useConfirm();
+  const [members, setMembers] = useState<WorkspaceMember[] | null>(null);
+  const [token, setToken] = useState(team.invite_token || '');
   const [copied, setCopied] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteInfo, setInviteInfo] = useState('');
-  const { ask, dialog: confirmDialog } = useConfirm();
+  const [email, setEmail] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const canManage = team.role === 'owner' || team.role === 'admin';
 
-  async function refresh() {
-    const all = await api.workspaces();
-    const t = all.filter((w) => w.type === 'team');
-    setTeams(t);
-    const next = selected && t.some((x) => x.id === selected) ? selected : t[0]?.id || '';
-    setSelected(next);
-    if (next) {
-      const m = await api.members(next);
-      setMembers(m);
-      const team = t.find((x) => x.id === next);
-      setInviteToken(team?.invite_token || '');
-    } else {
-      setMembers([]);
-      setInviteToken('');
-    }
-  }
+  const loadMembers = useCallback(async () => {
+    setMembers(await api.members(team.id));
+  }, [team.id]);
 
   useEffect(() => {
-    void refresh().catch((e) => setError(e instanceof Error ? e.message : 'Failed'));
-  }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-    void (async () => {
-      setMembers(await api.members(selected));
-      const team = teams.find((t) => t.id === selected);
-      setInviteToken(team?.invite_token || '');
-    })().catch((e) => setError(e instanceof Error ? e.message : 'Failed'));
-  }, [selected]);
-
-  async function createTeam(e: FormEvent) {
-    e.preventDefault();
+    setMembers(null);
     setError('');
-    try {
-      const ws = await api.createTeam(name);
-      setName('');
-      await refresh();
-      setSelected(ws.id);
-      setInviteToken(ws.invite_token || '');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create team');
-    }
-  }
-
-  async function joinTeam(e: FormEvent) {
-    e.preventDefault();
-    setError('');
-    try {
-      const ws = await api.joinTeam(joinToken.trim());
-      setJoinToken('');
-      await refresh();
-      setSelected(ws.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not join');
-    }
-  }
+    setToken(team.invite_token || '');
+    void loadMembers().catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [team.id, team.invite_token, loadMembers]);
 
   async function rotate() {
-    if (!selected) return;
-    const res = await api.rotateInvite(selected);
-    setInviteToken(res.invite_token);
-    await refresh();
+    try {
+      const res = await api.rotateInvite(team.id);
+      setToken(res.invite_token);
+      toast({ message: t('teams.rotated') });
+      await onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
-  async function copyInvite() {
-    if (!inviteToken) return;
-    await navigator.clipboard.writeText(inviteToken);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  async function sendInvite(e: FormEvent) {
+    e.preventDefault();
+    setSending(true);
+    setError('');
+    try {
+      await api.sendInvite(team.id, email.trim());
+      toast({ message: t('teams.inviteSent', { email: email.trim() }) });
+      setEmail('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('teams.sendFailed'));
+    } finally {
+      setSending(false);
+    }
   }
 
-  const current = teams.find((t) => t.id === selected);
-  const canManage = current?.role === 'owner' || current?.role === 'admin';
+  function remove(m: WorkspaceMember) {
+    const self = m.user_id === user?.id;
+    ask({
+      title: self ? t('teams.leaveTitle') : t('teams.removeTitle'),
+      message: self ? t('teams.leaveMessage', { team: team.name }) : t('teams.removeMessage', { name: m.display_name || m.email }),
+      confirmLabel: self ? t('teams.leave') : t('teams.remove'),
+      run: async () => {
+        try {
+          await api.removeMember(team.id, m.user_id);
+          if (self) {
+            toast({ message: t('teams.left', { team: team.name }) });
+            onLeft();
+          } else {
+            await loadMembers();
+          }
+        } catch (e) {
+          setError(e instanceof Error ? e.message : String(e));
+          throw e;
+        }
+      },
+    });
+  }
+
+  async function changeRole(m: WorkspaceMember, role: string) {
+    try {
+      await api.updateMember(team.id, m.user_id, role);
+      await loadMembers();
+      toast({ message: t('teams.roleChanged', { name: m.display_name || m.email }) });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   return (
-    <div className="animate-fade-in">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">Teams</h1>
-        <p className="mt-0.5 text-[13px] text-muted">
-          Shared workspaces with invite tokens. Send an email when SMTP is configured.
-        </p>
-      </div>
-
-      {error && <Notice kind="error" className="mb-4">{error}</Notice>}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <form
-          onSubmit={createTeam}
-          className="panel p-5"
-        >
-          <h2 className="mb-3 text-[15px] font-semibold">
-            Create team
-          </h2>
-          <input
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Team name"
-            className="input-field mb-3"
-          />
-          <Button type="submit" variant="primary" icon={<UserPlusIcon size={14} />}>
-            Create
-          </Button>
-        </form>
-
-        <form
-          onSubmit={joinTeam}
-          className="panel p-5"
-        >
-          <h2 className="mb-3 text-[15px] font-semibold">
-            Join with invite
-          </h2>
-          <input
-            required
-            value={joinToken}
-            onChange={(e) => setJoinToken(e.target.value)}
-            placeholder="Invite token"
-            className="input-field mb-3 font-mono"
-          />
-          <Button type="submit" variant="secondary" icon={<UserPlusIcon size={14} />}>
-            Join team
-          </Button>
-        </form>
-      </div>
-
-      <Card className="mt-6 p-5">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <h2 className="text-[15px] font-semibold">Your teams</h2>
-          <select
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-            className="input-field w-auto cursor-pointer !py-1.5 text-sm"
-          >
-            {teams.length === 0 && <option value="">No teams yet</option>}
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+    <div className="min-w-0 space-y-6">
+      <div className="panel flex flex-wrap items-center gap-4 px-5 py-4 sm:px-6">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
+          <TeamIcon size={22} />
+        </span>
+        <div className="min-w-[12rem] flex-1">
+          <h2 className="truncate text-lg font-semibold text-ink">{team.name}</h2>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+            <RoleBadge role={team.role} />
+            {members && <span className="whitespace-nowrap">{t('teams.memberCount', { count: members.length })}</span>}
+          </p>
         </div>
+        <Link
+          to={`/w/${team.id}`}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3.5 text-base font-medium text-ink shadow-xs transition hover:border-strong hover:bg-hover coarse:h-11"
+        >
+          <FolderOpenIcon size={15} /> {t('teams.openFiles')}
+        </Link>
+      </div>
 
-        {current && (
-          <>
-            <div className="mb-5 rounded-md border border-line bg-inset p-4">
-              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                <KeyIcon size={12} /> Invite token
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <code className="rounded border border-line bg-surface px-3 py-2 font-mono text-xs text-accent-strong">
-                  {inviteToken || '—'}
-                </code>
-                <Button
-                  size="xs"
-                  variant="secondary"
-                  icon={copied ? <CheckIcon size={12} className="text-ok" /> : <CopyIcon size={12} />}
-                  onClick={() => void copyInvite()}
-                >
-                  {copied ? 'Copied' : 'Copy'}
-                </Button>
-                {canManage && (
-                  <Button
-                    size="xs"
-                    variant="secondary"
-                    icon={<RefreshIcon size={12} />}
-                    onClick={() => void rotate().catch((e) => setError(String(e)))}
-                  >
-                    Rotate
-                  </Button>
-                )}
-              </div>
-              {canManage && (
-                <form
-                  className="mt-3 flex flex-wrap gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    setError('');
-                    setInviteInfo('');
-                    void api
-                      .sendInvite(selected, inviteEmail)
-                      .then(() => {
-                        setInviteInfo(`Invite sent to ${inviteEmail}`);
-                        setInviteEmail('');
-                      })
-                      .catch((err) => setError(err instanceof Error ? err.message : 'Send failed'));
-                  }}
-                >
-                  <input
-                    type="email"
-                    required
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="Send invite to email"
-                    className="input-field min-w-48 flex-1 !py-1.5 text-sm"
-                  />
-                  <Button type="submit" size="sm" variant="secondary" icon={<SendIcon size={12} />}>
-                    Send invite
-                  </Button>
-                </form>
-              )}
-              {inviteInfo && (
-                <p className="mt-2 flex items-center gap-1.5 text-xs text-ok">
-                  <MailIcon size={12} /> {inviteInfo}
-                </p>
-              )}
-            </div>
+      {error && <Notice kind="error">{error}</Notice>}
 
-            <ul className="divide-y divide-line">
-              {members.map((m) => (
-                <li key={m.user_id} className="group flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-hover text-[13px] font-semibold text-muted">
-                      {(m.display_name || m.email || '?').trim().charAt(0).toUpperCase()}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">{m.display_name}</div>
-                      <div className="truncate text-xs text-muted">{m.email}</div>
-                    </div>
+      <Section title={t('teams.inviteTitle')} description={canManage ? t('teams.inviteDescription') : t('teams.inviteDescriptionMember')}>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-1 basis-full items-center gap-2 rounded-lg border border-line bg-inset px-3 py-2 sm:basis-0">
+            <KeyIcon size={15} className="shrink-0 text-faint" />
+            <code className="min-w-0 flex-1 truncate font-mono text-sm text-ink">{token || '—'}</code>
+          </div>
+          <Button
+            variant="secondary"
+            size="md"
+            disabled={!token}
+            icon={copied ? <CheckIcon size={14} className="text-ok" /> : <CopyIcon size={14} />}
+            onClick={() =>
+              void copyText(token).then((ok) => {
+                if (!ok) return;
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1500);
+              })
+            }
+          >
+            {copied ? t('common.copied') : t('common.copy')}
+          </Button>
+          {canManage && (
+            <Button variant="secondary" size="md" icon={<RefreshIcon size={14} />} onClick={() => void rotate()}>
+              {t('teams.rotate')}
+            </Button>
+          )}
+        </div>
+        {canManage && (
+          <form onSubmit={sendInvite} className="mt-4 flex flex-wrap items-end gap-2">
+            <Field label={t('teams.inviteEmail')} className="min-w-[12rem] flex-1">
+              {({ id }) => (
+                <Input id={id} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+              )}
+            </Field>
+            <Button type="submit" variant="primary" loading={sending} icon={<SendIcon size={14} />}>
+              {t('teams.sendInvite')}
+            </Button>
+          </form>
+        )}
+      </Section>
+
+      <Section title={t('teams.membersTitle')} description={t('teams.membersDescription')}>
+        {members === null ? (
+          <div className="flex justify-center py-4">
+            <Spinner className="text-faint" />
+          </div>
+        ) : (
+          <ul className="-my-2 divide-y divide-line">
+            {members.map((m) => {
+              const self = m.user_id === user?.id;
+              return (
+                <li key={m.user_id} className="flex flex-wrap items-center gap-3 py-3">
+                  <Avatar name={m.display_name || m.email} size={36} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-base font-medium text-ink">
+                      {m.display_name || m.email}
+                      {self && <span className="ml-1.5 text-sm font-normal text-muted">{t('teams.you')}</span>}
+                    </p>
+                    <p className="truncate text-sm text-muted">{m.email}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {canManage && m.role !== 'owner' ? (
-                      <select
+                  <div className="flex items-center gap-1.5">
+                    {canManage && m.role !== 'owner' && !self ? (
+                      <Select
                         value={m.role}
-                        onChange={(e) =>
-                          void api
-                            .updateMember(selected, m.user_id, e.target.value)
-                            .then(refresh)
-                            .catch((err) => setError(String(err)))
-                        }
-                        className="input-field w-auto cursor-pointer !py-1 text-xs"
+                        onChange={(e) => void changeRole(m, e.target.value)}
+                        aria-label={t('teams.roleFor', { name: m.display_name || m.email })}
+                        className="!w-32"
                       >
-                        <option value="admin">admin</option>
-                        <option value="member">member</option>
-                        <option value="viewer">viewer</option>
-                      </select>
+                        <option value="admin">{t('teams.roles.admin')}</option>
+                        <option value="member">{t('teams.roles.member')}</option>
+                        <option value="viewer">{t('teams.roles.viewer')}</option>
+                      </Select>
                     ) : (
-                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${
-                        m.role === 'owner'
-                          ? 'bg-accent-soft text-accent-strong ring-accent/40'
-                          : 'bg-inset text-muted ring-line'
-                      }`}>
-                        {m.role}
-                      </span>
+                      <RoleBadge role={m.role} />
                     )}
-                    {(canManage || m.user_id === user?.id) && m.role !== 'owner' && (
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        icon={<UserMinusIcon size={12} />}
+                    {m.role !== 'owner' && (canManage || self) && (
+                      <IconButton
+                        label={self ? t('teams.leave') : t('teams.removeName', { name: m.display_name || m.email })}
+                        size="md"
                         className="hover:!bg-danger-soft hover:!text-danger"
-                        onClick={() =>
-                          ask({
-                            title: 'Remove member',
-                            message: `Remove ${m.display_name || m.email} from this team?`,
-                            confirmLabel: 'Remove',
-                            run: async () => {
-                              try {
-                                await api.removeMember(selected, m.user_id);
-                                await refresh();
-                              } catch (err) {
-                                setError(String(err));
-                                throw err;
-                              }
-                            },
-                          })
-                        }
+                        onClick={() => remove(m)}
                       >
-                        Remove
-                      </Button>
+                        {self ? <LogoutIcon size={15} /> : <UserMinusIcon size={15} />}
+                      </IconButton>
                     )}
                   </div>
                 </li>
-              ))}
-            </ul>
-          </>
+              );
+            })}
+          </ul>
         )}
-      </Card>
-      {confirmDialog}
+      </Section>
+      {dialog}
+    </div>
+  );
+}
+
+export default function TeamsPage() {
+  const { t } = useI18n();
+  const { toast } = useToast();
+  const { refresh: refreshSidebar } = useWorkspaces();
+  const [params, setParams] = useSearchParams();
+  const [teams, setTeams] = useState<Workspace[] | null>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [dialog, setDialog] = useState<'create' | 'join' | null>(null);
+  const [error, setError] = useState('');
+  const selectedId = params.get('team');
+
+  const load = useCallback(async () => {
+    const all = await api.workspaces();
+    const list = all.filter((w) => w.type === 'team');
+    setTeams(list);
+    void Promise.all(
+      list.map((w) =>
+        api
+          .members(w.id)
+          .then((m) => [w.id, m.length] as const)
+          .catch(() => [w.id, -1] as const),
+      ),
+    ).then((pairs) => setCounts(Object.fromEntries(pairs.filter(([, n]) => n >= 0))));
+  }, []);
+
+  useEffect(() => {
+    void load().catch((e) => {
+      setTeams([]);
+      setError(e instanceof Error ? e.message : String(e));
+    });
+  }, [load]);
+
+  const select = (id: string | null) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set('team', id);
+    else next.delete('team');
+    setParams(next, { replace: true });
+  };
+
+  const current = teams?.find((w) => w.id === selectedId) || teams?.[0];
+
+  const after = async (w: Workspace, msg: string) => {
+    await load();
+    void refreshSidebar();
+    select(w.id);
+    toast({ message: msg });
+  };
+
+  return (
+    <div className="scroll-slim min-h-0 flex-1 overflow-y-auto px-4 pb-24 lg:px-6 lg:pb-8">
+      <div className="max-w-5xl">
+        <PageHeader
+          title={t('teams.title')}
+          subtitle={t('teams.subtitle')}
+          actions={
+            <div className="hidden gap-2 sm:flex">
+              <Button variant="secondary" icon={<UserPlusIcon size={15} />} onClick={() => setDialog('join')}>
+                {t('teams.join')}
+              </Button>
+              <Button variant="primary" icon={<PlusIcon size={15} />} onClick={() => setDialog('create')}>
+                {t('teams.create')}
+              </Button>
+            </div>
+          }
+        />
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:hidden">
+          <Button variant="secondary" icon={<UserPlusIcon size={15} />} onClick={() => setDialog('join')}>
+            {t('teams.join')}
+          </Button>
+          <Button variant="primary" icon={<PlusIcon size={15} />} onClick={() => setDialog('create')}>
+            {t('teams.create')}
+          </Button>
+        </div>
+        {error && <Notice kind="error" className="mb-4">{error}</Notice>}
+
+        {teams === null ? (
+          <div className="flex justify-center py-16">
+            <Spinner className="text-faint" />
+          </div>
+        ) : teams.length === 0 ? (
+          <div className="panel">
+            <EmptyState
+              icon={<TeamIcon size={26} />}
+              title={t('teams.emptyTitle')}
+              hint={t('teams.emptyHint')}
+              action={
+                <>
+                  <Button variant="primary" icon={<PlusIcon size={15} />} onClick={() => setDialog('create')}>
+                    {t('teams.create')}
+                  </Button>
+                  <Button variant="secondary" icon={<UserPlusIcon size={15} />} onClick={() => setDialog('join')}>
+                    {t('teams.joinWithToken')}
+                  </Button>
+                </>
+              }
+            />
+          </div>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+            <nav aria-label={t('teams.listLabel')} className="lg:sticky lg:top-0 lg:self-start">
+              <p className="mb-2 px-1 text-2xs font-semibold tracking-wider text-faint uppercase">{t('teams.yourTeams')}</p>
+              <ul className="panel divide-y divide-line overflow-hidden">
+                {teams.map((w) => {
+                  const active = w.id === current?.id;
+                  return (
+                    <li key={w.id}>
+                      <button
+                        type="button"
+                        aria-current={active ? 'true' : undefined}
+                        onClick={() => select(w.id)}
+                        className={`relative flex w-full items-center gap-3 px-3.5 py-3 text-left transition coarse:py-3.5 ${
+                          active ? 'bg-row-selected' : 'hover:bg-hover'
+                        }`}
+                      >
+                        {active && <span aria-hidden className="absolute top-2 bottom-2 left-0 w-[3px] rounded-r-full bg-accent" />}
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-info-soft text-info">
+                          <TeamIcon size={15} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-base font-medium text-ink">{w.name}</span>
+                          <span className="block truncate text-xs text-muted">
+                            {w.role && ROLE_KEYS[w.role] ? t(ROLE_KEYS[w.role]) : w.role}
+                            {counts[w.id] !== undefined && ` · ${t('teams.memberCount', { count: counts[w.id] })}`}
+                          </span>
+                        </span>
+                        <ChevronRightIcon size={14} className="shrink-0 text-faint lg:hidden" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+            {current && (
+              <TeamDetail
+                key={current.id}
+                team={current}
+                onChanged={load}
+                onLeft={() => {
+                  select(null);
+                  void load();
+                  void refreshSidebar();
+                }}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {dialog === 'create' && (
+        <CreateDialog onClose={() => setDialog(null)} onCreated={(w) => void after(w, t('teams.created', { team: w.name }))} />
+      )}
+      {dialog === 'join' && (
+        <JoinDialog onClose={() => setDialog(null)} onJoined={(w) => void after(w, t('teams.joined', { team: w.name }))} />
+      )}
     </div>
   );
 }

@@ -7,13 +7,23 @@ import (
 	"time"
 
 	"github.com/arkive/arkive/internal/app"
+	"github.com/arkive/arkive/internal/buildinfo"
 	"github.com/arkive/arkive/internal/httpjson"
+	"github.com/arkive/arkive/internal/metrics"
 	"github.com/arkive/arkive/internal/middleware"
+	"github.com/arkive/arkive/internal/webui"
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
 func NewRouter(a *app.App) http.Handler {
+	_, root := buildRouter(a)
+	return root
+}
+
+// buildRouter returns the chi route table (for tests that walk it) and the
+// root handler that also dispatches /dav.
+func buildRouter(a *app.App) (*chi.Mux, http.Handler) {
 	authH := &AuthHandler{App: a}
 	oidcH := NewAuthOIDC(authH)
 	wsH := &WorkspaceHandler{App: a}
@@ -27,10 +37,13 @@ func NewRouter(a *app.App) http.Handler {
 	adminUsersH := &AdminUsersHandler{App: a}
 	gdriveH := &GDriveHandler{App: a}
 	settingsH := &SettingsHandler{App: a}
+	auditH := &AuditHandler{App: a}
+	platformH := &PlatformHandler{App: a, Auth: authH}
 
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
-	r.Use(chimw.RealIP)
+	// Honours X-Forwarded-For only from ARKIVE_TRUSTED_PROXIES peers.
+	r.Use(middleware.RealIP)
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Logger)
 
@@ -67,15 +80,23 @@ func NewRouter(a *app.App) http.Handler {
 		r.Get("/api/public/{token}/nodes", publicH.ListNodes)
 		r.Get("/api/public/{token}/download", publicH.Download)
 		r.Post("/api/public/{token}/download-zip", publicH.DownloadZip)
+		r.Put("/api/public/{token}/upload", publicH.Upload)
 	})
 	r.Get("/api/storage/google/enabled", gdriveH.Enabled)
 	r.Get("/api/auth/google/drive/callback", gdriveH.Callback)
 
 	authLimit := middleware.NewIPRateLimiter(20, 15*time.Minute)
+	twoFactorLimit := middleware.NewIPRateLimiter(20, 15*time.Minute)
+
+	// First-run setup + public instance aggregate.
+	r.Get("/api/setup", platformH.GetSetup)
+	r.With(middleware.RateLimit(authLimit)).Post("/api/setup", platformH.PostSetup)
+	r.Get("/api/instance", platformH.Instance)
 
 	r.Route("/api/auth", func(r chi.Router) {
 		r.With(middleware.RateLimit(authLimit)).Post("/register", authH.Register)
 		r.With(middleware.RateLimit(authLimit)).Post("/login", authH.Login)
+		r.With(middleware.RateLimit(authLimit)).Post("/login/2fa", authH.LoginTwoFactor)
 		r.With(middleware.RateLimit(authLimit)).Post("/forgot-password", authH.ForgotPassword)
 		r.With(middleware.RateLimit(authLimit)).Post("/reset-password", authH.ResetPassword)
 		r.Get("/oidc/enabled", oidcH.Enabled)
@@ -90,12 +111,34 @@ func NewRouter(a *app.App) http.Handler {
 		})
 	})
 
+	// tus 1.0.0 resumable uploads (authenticated; Tus-Resumable on every response).
+	tusH := &TusHandler{App: a}
+	r.Group(func(r chi.Router) {
+		r.Use(tusH.Middleware)
+		r.Use(middleware.RequireAuth(authH.SessionLookup()))
+		r.Options("/api/uploads", tusH.Options)
+		r.Post("/api/uploads", tusH.Create)
+		r.Head("/api/uploads/{uploadID}", tusH.Head)
+		r.Patch("/api/uploads/{uploadID}", tusH.Patch)
+		r.Delete("/api/uploads/{uploadID}", tusH.Delete)
+	})
+
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(authH.SessionLookup()))
 
 		r.Get("/api/me/app-passwords", authH.ListAppPasswords)
 		r.Post("/api/me/app-passwords", authH.CreateAppPassword)
 		r.Delete("/api/me/app-passwords/{id}", authH.RevokeAppPassword)
+
+		r.Get("/api/me/2fa", authH.TwoFactorStatus)
+		r.Group(func(r chi.Router) {
+			// Code-guessing endpoints share a per-IP budget like login.
+			r.Use(middleware.RateLimit(twoFactorLimit))
+			r.Post("/api/me/2fa/setup", authH.TwoFactorSetup)
+			r.Post("/api/me/2fa/enable", authH.TwoFactorEnable)
+			r.Post("/api/me/2fa/disable", authH.TwoFactorDisable)
+			r.Post("/api/me/2fa/recovery-codes", authH.TwoFactorRegenerateRecovery)
+		})
 
 		r.Get("/api/workspaces", wsH.List)
 		r.Post("/api/workspaces", wsH.CreateTeam)
@@ -168,6 +211,8 @@ func NewRouter(a *app.App) http.Handler {
 			r.Post("/api/admin/users/{userID}/disable", adminUsersH.Disable)
 			r.Delete("/api/admin/users/{userID}", adminUsersH.Delete)
 			r.Patch("/api/admin/users/{userID}/admin", adminUsersH.PatchAdmin)
+			r.Post("/api/admin/users/{userID}/2fa/reset", adminUsersH.ResetTwoFactor)
+			r.Get("/api/admin/audit", auditH.List)
 			r.Patch("/api/admin/users/{userID}/quota", adminUsersH.PatchQuota)
 			r.Patch("/api/admin/workspaces/{workspaceID}/quota", backendH.PatchWorkspaceQuota)
 			r.Get("/api/admin/settings/google", settingsH.GetGoogle)
@@ -180,18 +225,47 @@ func NewRouter(a *app.App) http.Handler {
 			r.Put("/api/admin/settings/trash", settingsH.PutTrashRetention)
 			r.Get("/api/admin/settings/registration", settingsH.GetRegistration)
 			r.Put("/api/admin/settings/registration", settingsH.PutRegistration)
+			r.Get("/api/admin/settings/versions", settingsH.GetVersionRetention)
+			r.Put("/api/admin/settings/versions", settingsH.PutVersionRetention)
 			r.Post("/api/admin/search/reindex", settingsH.ReindexSearch)
 		})
 	})
 
-	// WebDAV verbs (PROPFIND/MKCOL/…) are not in chi's method map — route outside chi.
-	davLimit := middleware.NewIPRateLimiter(120, time.Minute)
+	var m *metrics.Metrics
+	if a.Cfg.MetricsEnabled {
+		m = metrics.New(buildinfo.Version, metrics.Sources{
+			ActiveSessions: a.ActiveSessionCount,
+			StorageBytes:   a.StorageBytesUsed,
+		})
+		r.Get("/metrics", m.Handler(a.Cfg.MetricsToken).ServeHTTP)
+	}
+
+	// Everything else is the embedded SPA (index.html fallback for client
+	// routes). It answers 404 for unknown /api, /dav and /metrics paths.
+	spa := webui.New()
+	r.Get("/*", spa.ServeHTTP)
+	r.Head("/*", spa.ServeHTTP)
+
+	// WebDAV verbs (PROPFIND/MKCOL/...) are not in chi's method map, so route outside chi.
+	// File managers (Finder, Explorer) issue bursts of PROPFIND/GET while browsing.
+	davLimit := middleware.NewIPRateLimiter(1200, time.Minute)
 	davAuth := middleware.RateLimit(davLimit)(middleware.RequireAuthOrBasic(authH.SessionLookup(), davH.BasicLookup())(davH))
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	var root http.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// nginx used to add nosniff to every /api response.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if req.URL.Path == "/dav" {
+			// Some clients mount the bare prefix; treat it as the workspace list.
+			req.URL.Path = "/dav/"
+			req.URL.RawPath = ""
+		}
 		if strings.HasPrefix(req.URL.Path, "/dav/") {
 			davAuth.ServeHTTP(w, req)
 			return
 		}
 		r.ServeHTTP(w, req)
 	})
+	if m != nil {
+		root = m.Instrument(root)
+	}
+	return r, root
 }

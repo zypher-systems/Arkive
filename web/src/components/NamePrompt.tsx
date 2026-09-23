@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import { SpinnerIcon } from './icons';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from './ui/Button';
-import { Modal, ModalField } from './ui/Modal';
+import { Field, Input } from './ui/Input';
+import { Modal } from './ui/Modal';
+import { validateName, renameSelection, type NameProblem } from '../lib/paths';
+import { useI18n, type TKey } from '../i18n';
 
 type Props = {
   title: string;
@@ -9,65 +11,74 @@ type Props = {
   initialValue?: string;
   confirmLabel?: string;
   busy?: boolean;
+  /** Names already in the folder (for inline duplicate warnings). */
+  siblings?: string[];
+  isFolder?: boolean;
+  icon?: ReactNode;
+  error?: string;
   onConfirm: (value: string) => void;
   onClose: () => void;
 };
 
+const PROBLEM_KEYS: Record<NameProblem, TKey> = {
+  empty: 'names.empty',
+  'invalid-char': 'names.invalidChar',
+  reserved: 'names.reserved',
+  'too-long': 'names.tooLong',
+  exists: 'names.exists',
+};
+
 export function NamePrompt({
   title,
-  label = 'Name',
+  label,
   initialValue = '',
-  confirmLabel = 'Create',
+  confirmLabel,
   busy = false,
+  siblings = [],
+  isFolder = false,
+  icon,
+  error,
   onConfirm,
   onClose,
 }: Props) {
+  const { t } = useI18n();
   const [value, setValue] = useState(initialValue);
+  const [touched, setTouched] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const problem = validateName(value, siblings, initialValue || undefined);
 
   useEffect(() => {
-    const t = window.setTimeout(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }, 50);
-    return () => window.clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !busy) {
-        e.preventDefault();
-        onClose();
-      }
-    }
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [busy, onClose]);
+    const tm = window.setTimeout(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      const [a, b] = renameSelection(initialValue, isFolder);
+      el.setSelectionRange(a, b);
+    }, 30);
+    return () => window.clearTimeout(tm);
+  }, [initialValue, isFolder]);
 
   function submit() {
-    const name = value.trim();
-    if (!name || busy) return;
-    onConfirm(name);
+    setTouched(true);
+    if (problem || busy) return;
+    onConfirm(value.trim());
   }
+
+  const shown = (touched || value !== initialValue) && problem && problem !== 'empty' ? t(PROBLEM_KEYS[problem]) : error;
 
   return (
     <Modal
       title={title}
+      icon={icon}
       onClose={onClose}
       busy={busy}
       footer={
         <>
-          <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>
-            Cancel
+          <Button variant="secondary" disabled={busy} onClick={onClose}>
+            {t('common.cancel')}
           </Button>
-          <Button
-            type="submit"
-            form="name-prompt-form"
-            variant="primary"
-            disabled={busy || !value.trim()}
-            icon={busy ? <SpinnerIcon size={13} className="animate-spin" /> : undefined}
-          >
-            {busy ? 'Working…' : confirmLabel}
+          <Button type="submit" form="name-prompt-form" variant="primary" loading={busy} disabled={!!problem}>
+            {confirmLabel || t('common.create')}
           </Button>
         </>
       }
@@ -79,16 +90,21 @@ export function NamePrompt({
           submit();
         }}
       >
-        <ModalField label={label}>
-          <input
-            ref={inputRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            disabled={busy}
-            className="input-field"
-            autoComplete="off"
-          />
-        </ModalField>
+        <Field label={label || t('names.label')} error={shown}>
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              ref={inputRef}
+              value={value}
+              aria-invalid={invalid || undefined}
+              aria-describedby={describedBy}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={busy}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          )}
+        </Field>
       </form>
     </Modal>
   );

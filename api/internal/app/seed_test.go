@@ -2,33 +2,22 @@ package app
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/arkive/arkive/internal/config"
-	"github.com/arkive/arkive/internal/db"
+	"github.com/arkive/arkive/internal/db/dbtest"
 )
 
 func TestSeedDefaultBackendLocal(t *testing.T) {
-	dsn := os.Getenv("ARKIVE_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("ARKIVE_TEST_DATABASE_URL not set")
-	}
+	dsn := dbtest.FreshURL(t) // an empty database: no default backend yet
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
 	cfg.S3Endpoint = ""
 	cfg.DataDir = t.TempDir()
 	cfg.MigrationsDir = filepath.Join("..", "..", "migrations")
-	if err := db.Migrate(cfg.DatabaseURL, cfg.MigrationsDir); err != nil {
-		t.Fatal(err)
-	}
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
+	pool := dbtest.Open(t, cfg.DatabaseURL, cfg.MigrationsDir)
 
 	var defaults int
 	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM storage_backends WHERE is_default = TRUE`).Scan(&defaults); err != nil {
@@ -62,10 +51,7 @@ func TestSeedDefaultBackendLocal(t *testing.T) {
 }
 
 func TestSeedDefaultBackendS3WhenEndpointSet(t *testing.T) {
-	dsn := os.Getenv("ARKIVE_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("ARKIVE_TEST_DATABASE_URL not set")
-	}
+	dsn := dbtest.FreshURL(t) // an empty database: no default backend yet
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
@@ -74,14 +60,7 @@ func TestSeedDefaultBackendS3WhenEndpointSet(t *testing.T) {
 	cfg.S3SecretKey = "secret"
 	cfg.S3Bucket = "arkive"
 	cfg.MigrationsDir = filepath.Join("..", "..", "migrations")
-	if err := db.Migrate(cfg.DatabaseURL, cfg.MigrationsDir); err != nil {
-		t.Fatal(err)
-	}
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
+	pool := dbtest.Open(t, cfg.DatabaseURL, cfg.MigrationsDir)
 
 	var defaults int
 	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM storage_backends WHERE is_default = TRUE`).Scan(&defaults); err != nil {

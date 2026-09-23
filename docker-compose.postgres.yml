@@ -1,0 +1,43 @@
+# Arkive with PostgreSQL: the arkive container from docker-compose.yml plus a
+# postgres container. Use it for bigger installs, several replicas, or when
+# upgrading a 1.0 install (1.0 always used PostgreSQL — keep using it).
+#
+#   docker compose -f docker-compose.postgres.yml up -d
+#   docker compose -f docker-compose.postgres.yml logs arkive | grep setup_token
+#
+# Tip: put COMPOSE_FILE=docker-compose.postgres.yml in .env so plain
+# `docker compose …` commands use this file.
+#
+# Volumes (same names as 1.0): postgres_data (database), arkive_data (files and
+# .arkive-secrets at /data/arkive). Back up both together.
+# Production: add -f docker-compose.prod.yml and set POSTGRES_PASSWORD in .env.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: arkive
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-arkive}
+      POSTGRES_DB: arkive
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arkive -d arkive"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  arkive:
+    extends:
+      file: docker-compose.yml
+      service: arkive
+    environment:
+      ARKIVE_DATABASE_URL: postgres://arkive:${POSTGRES_PASSWORD:-arkive}@postgres:5432/arkive?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  arkive_data:

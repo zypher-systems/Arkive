@@ -167,6 +167,9 @@ func (h *AuthOIDC) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?error=oidc_session", http.StatusFound)
 		return
 	}
+	h.Auth.App.Audit(r.Context(), r, user.ID.String(), "auth.login", "user", user.ID.String(), map[string]any{
+		"method": "oidc",
+	})
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 

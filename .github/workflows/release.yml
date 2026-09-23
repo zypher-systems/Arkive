@@ -1,0 +1,201 @@
+name: Release
+
+# Push a tag like v1.1.0 to publish:
+#   - ghcr.io/<owner>/arkive:1.1.0, :1.1, :1 and :latest (linux/amd64 + linux/arm64)
+#   - standalone arkive binaries (web UI embedded) on a GitHub release
+# Pre-release tags (v1.2.0-rc.1) publish the exact tag only and a pre-release.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)publish, e.g. v1.1.0
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Go tests (SQLite)
+        working-directory: api
+        run: go vet ./... && go test ./...
+      - name: Web tests and build
+        working-directory: web
+        run: npm ci && npm test && npm run build
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Version
+        id: v
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/arkive
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
+            type=semver,pattern={{major}},value=${{ env.TAG }}
+          flavor: |
+            latest=auto
+          labels: |
+            org.opencontainers.image.title=Arkive
+            org.opencontainers.image.description=Self-hosted file storage and sharing in one small container
+            org.opencontainers.image.licenses=MIT
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Attest build provenance
+        # Artifact attestations need a public repository (or GitHub Enterprise Cloud).
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/arkive
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Smoke test the published image
+        run: |
+          image="ghcr.io/${{ github.repository_owner }}/arkive:${{ steps.v.outputs.version }}"
+          docker run -d --name arkive -p 3080:8080 -e ARKIVE_SETUP_TOKEN=release-smoke "$image"
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:3080/api/ready >/dev/null && break
+            sleep 2
+          done
+          curl -sf http://localhost:3080/api/instance | tee /dev/stderr | grep -q "\"version\":\"${{ steps.v.outputs.version }}\""
+          ARKIVE_SMOKE_SETUP_TOKEN=release-smoke ./scripts/smoke.sh
+          docker rm -f arkive
+
+  binaries:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build web UI and embed it
+        run: make embed-web
+      - name: Cross-compile
+        run: |
+          version="${TAG#v}"
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            out="arkive_${version}_${os}_${arch}"
+            (cd api && CGO_ENABLED=0 GOOS=$os GOARCH=$arch \
+              go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "../dist/${out}/arkive" ./cmd/arkive)
+            cp LICENSE README.md "dist/${out}/"
+            tar -C dist -czf "dist/${out}.tar.gz" "${out}"
+            rm -rf "dist/${out}"
+          done
+          (cd dist && sha256sum -- *.tar.gz > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+
+  release:
+    needs: [image, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${TAG#v}"
+          # The section for this version, without its heading.
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for [$version]" >&2
+            exit 1
+          fi
+          {
+            echo
+            echo "### Install"
+            echo
+            echo '```bash'
+            echo "docker run -d --name arkive -p 3080:8080 -v arkive_data:/data/arkive ghcr.io/${{ github.repository_owner }}/arkive:${version}"
+            echo '```'
+          } >> notes.md
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" dist/*.tar.gz dist/SHA256SUMS \
+            --title "Arkive ${TAG#v}" --notes-file notes.md --verify-tag $prerelease

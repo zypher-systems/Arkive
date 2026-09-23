@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/arkive/arkive/internal/crypto"
+	"github.com/arkive/arkive/internal/db"
 	"github.com/arkive/arkive/internal/storage"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/oauth2"
 )
 
@@ -243,5 +243,5 @@ func (a *App) BackendPublicConfig(typ string, raw []byte) (map[string]any, error
 }
 
 func IsNoRows(err error) bool {
-	return err == pgx.ErrNoRows
+	return err == db.ErrNoRows
 }

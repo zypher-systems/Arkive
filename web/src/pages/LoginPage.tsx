@@ -1,43 +1,82 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
-import { LockIcon, MailIcon, SpinnerIcon, UserIcon } from '../components/icons';
-import { ArkiveLogo } from '../components/ArkiveLogo';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { Segmented } from '../components/ui/Segmented';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { AuthLayout } from '../components/AuthLayout';
+import { ArrowLeftIcon, KeyIcon, LockIcon, MailIcon, ShieldIcon, UserIcon } from '../components/icons';
+import { Button, LinkButton } from '../components/ui/Button';
+import { Field, Input } from '../components/ui/Input';
 import { Notice } from '../components/ui/Notice';
-import { api } from '../lib/api';
+import { api, ApiError, isTwoFactorChallenge, type User } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useInstance } from '../lib/instance';
+import { useI18n } from '../i18n';
+
+type Mode = 'login' | 'register' | 'forgot' | 'twofactor';
+
+function safeNext(raw: string | null) {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/';
+  return raw;
+}
 
 export function LoginPage() {
+  const { t } = useI18n();
   const { user, setUser, loading } = useAuth();
+  const { info } = useInstance();
+  const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
+  const next = safeNext(params.get('next'));
+  const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [challenge, setChallenge] = useState('');
+  const [code, setCode] = useState('');
+  const [useRecovery, setUseRecovery] = useState(false);
   const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
+  const [info2, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
-  const [oidc, setOidc] = useState<{ enabled: boolean; provider_name: string } | null>(null);
-  const [registrationOpen, setRegistrationOpen] = useState(true);
+  const codeRef = useRef<HTMLInputElement>(null);
+
+  const registrationOpen = info?.registration_open ?? true;
+  const oidc = info?.oidc;
 
   useEffect(() => {
-    void api.oidcEnabled().then(setOidc).catch(() => setOidc({ enabled: false, provider_name: 'SSO' }));
-    void api.registrationOpen().then((r) => setRegistrationOpen(r.open)).catch(() => setRegistrationOpen(true));
     const err = params.get('error');
-    if (err === 'pending') setError('Your account is pending admin approval.');
-    else if (err === 'rejected') setError('Your account was rejected by an admin.');
-    else if (err === 'registration_closed') setError('Registration is closed on this instance.');
-    else if (err === 'oidc_email_taken') setError('That email is already registered. Sign in with your password.');
-    else if (err) setError(`SSO sign-in failed (${err})`);
+    if (err === 'pending') setError(t('auth.errors.pending'));
+    else if (err === 'rejected') setError(t('auth.errors.rejected'));
+    else if (err === 'registration_closed') setError(t('auth.errors.registrationClosed'));
+    else if (err === 'oidc_email_taken') setError(t('auth.errors.oidcEmailTaken'));
+    else if (err) setError(t('auth.errors.sso', { code: err }));
     if (params.get('reset') === 'ok') {
-      setInfo('Password updated. Sign in with your new password.');
+      setInfo(t('auth.resetDone'));
       setMode('login');
     }
-  }, [params]);
+  }, [params, t]);
 
-  if (!loading && user) return <Navigate to="/" replace />;
+  useEffect(() => {
+    if (mode === 'twofactor') window.setTimeout(() => codeRef.current?.focus(), 30);
+  }, [mode, useRecovery]);
+
+  if (!loading && user) return <Navigate to={next} replace />;
+
+  function switchMode(m: Mode) {
+    setMode(m);
+    setError('');
+    setInfo('');
+  }
+
+  function signedIn(u: User) {
+    setUser(u);
+    navigate(next, { replace: true });
+  }
+
+  function friendly(err: unknown) {
+    const msg = err instanceof Error ? err.message : t('common.failed');
+    if (msg === 'pending approval') return t('auth.errors.pending');
+    if (msg === 'account rejected') return t('auth.errors.rejected');
+    if (err instanceof ApiError && err.status === 429) return t('auth.errors.rateLimited');
+    if (err instanceof ApiError && err.status === 401 && mode === 'login') return t('auth.errors.invalid');
+    return msg;
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -47,178 +86,241 @@ export function LoginPage() {
     try {
       if (mode === 'forgot') {
         const res = await api.forgotPassword(email);
-        setInfo(res.message || 'If an account exists, a reset link will be sent when mail is configured.');
+        setInfo(res.message || t('auth.forgotSent'));
         return;
       }
       if (mode === 'login') {
-        setUser(await api.login(email, password));
+        const res = await api.login(email, password);
+        if (isTwoFactorChallenge(res)) {
+          setChallenge(res.challenge);
+          setCode('');
+          setUseRecovery(false);
+          setMode('twofactor');
+          return;
+        }
+        signedIn(res);
+        return;
+      }
+      if (mode === 'twofactor') {
+        signedIn(await api.loginTwoFactor(challenge, code.trim()));
         return;
       }
       const result = await api.register(email, password, displayName);
       if ('message' in result && result.status === 'pending') {
-        setInfo(result.message || 'Account pending admin approval');
+        // The server's message is English-only; the localized text says more.
+        setInfo(t('auth.pendingInfo'));
         setMode('login');
         return;
       }
-      setUser(result as Awaited<ReturnType<typeof api.login>>);
+      signedIn(result as User);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong';
-      if (msg === 'pending approval') {
-        setError('Your account is pending admin approval.');
-      } else if (msg === 'account rejected') {
-        setError('Your account was rejected by an admin.');
+      if (mode === 'twofactor' && err instanceof ApiError && (err.status === 401 || err.status === 410)) {
+        // Challenge expired (5 min TTL), used up by too many wrong codes
+        // (401 "invalid or expired challenge"), or just a wrong code (401
+        // "invalid code"). A dead challenge needs the password again.
+        const expired = err.status === 410 || /expired|challenge/i.test(err.message);
+        setError(expired ? t('auth.twofa.expired') : t('auth.twofa.invalid'));
+        if (expired) setMode('login');
       } else {
-        setError(msg);
+        setError(friendly(err));
       }
     } finally {
       setBusy(false);
     }
   }
 
+  const titles: Record<Mode, { title: string; subtitle: string }> = {
+    login: { title: t('auth.signInTitle'), subtitle: t('auth.signInSubtitle') },
+    register: { title: t('auth.registerTitle'), subtitle: t('auth.registerSubtitle') },
+    forgot: { title: t('auth.forgotTitle'), subtitle: t('auth.forgotSubtitle') },
+    twofactor: {
+      title: t('auth.twofa.title'),
+      subtitle: useRecovery ? t('auth.twofa.recoverySubtitle') : t('auth.twofa.subtitle'),
+    },
+  };
+
   return (
-    <div className="flex min-h-full items-center justify-center px-4 py-10">
-      <div className="animate-fade-up w-full max-w-[400px]">
-        <div className="mb-7 flex flex-col items-center text-center">
-          <ArkiveLogo size={44} className="text-primary" />
-          <h1 className="mt-4 text-[22px] font-semibold tracking-tight text-ink">Arkive</h1>
-          <p className="mt-1.5 max-w-sm text-[13px] text-muted">
-            Your private vault in the cloud — new accounts need admin approval before signing in.
-          </p>
+    <AuthLayout
+      title={titles[mode].title}
+      subtitle={titles[mode].subtitle}
+      footer={
+        mode === 'login' && registrationOpen ? (
+          <>
+            {t('auth.noAccount')}{' '}
+            <button type="button" className="font-medium text-accent-strong hover:underline" onClick={() => switchMode('register')}>
+              {t('auth.createAccount')}
+            </button>
+          </>
+        ) : mode === 'register' ? (
+          <>
+            {t('auth.haveAccount')}{' '}
+            <button type="button" className="font-medium text-accent-strong hover:underline" onClick={() => switchMode('login')}>
+              {t('auth.signIn')}
+            </button>
+          </>
+        ) : undefined
+      }
+    >
+      {mode === 'twofactor' && (
+        <div className="mb-5 flex justify-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent-strong">
+            <ShieldIcon size={22} />
+          </span>
         </div>
-
-        <form
-          onSubmit={onSubmit}
-          className="panel p-6 shadow-sm"
-        >
-          {mode !== 'forgot' && (
-            <div className="mb-5 flex justify-center">
-              <Segmented
-                value={mode}
-                onChange={(v) => {
-                  setMode(v);
-                  setError('');
-                  setInfo('');
-                }}
-                items={[
-                  { value: 'login', label: 'Sign in' },
-                  ...(registrationOpen
-                    ? [{ value: 'register' as const, label: 'Create account' }]
-                    : []),
-                ]}
-              />
-            </div>
-          )}
-
-          {mode === 'forgot' && (
-            <div className="mb-5 text-center">
-              <h2 className="text-[15px] font-semibold">Forgot password</h2>
-              <p className="mt-1 text-[13px] text-muted">
-                Enter your email and we’ll send a reset link if SMTP is configured on this instance.
-              </p>
-            </div>
-          )}
-
-          <div className="space-y-3">
-            {mode === 'register' && (
+      )}
+      <form onSubmit={onSubmit} className="space-y-4" noValidate={mode === 'twofactor'}>
+        {mode === 'register' && (
+          <Field label={t('auth.displayName')}>
+            {({ id }) => (
               <Input
+                id={id}
                 required
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Display name"
-                icon={<UserIcon size={14} />}
+                autoComplete="name"
+                icon={<UserIcon size={15} />}
               />
             )}
-            <Input
-              required
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              autoComplete="email"
-              icon={<MailIcon size={14} />}
-            />
-            {mode !== 'forgot' && (
+          </Field>
+        )}
+        {mode !== 'twofactor' && (
+          <Field label={t('auth.email')}>
+            {({ id }) => (
               <Input
+                id={id}
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete={mode === 'register' ? 'email' : 'username'}
+                icon={<MailIcon size={15} />}
+                autoFocus
+              />
+            )}
+          </Field>
+        )}
+        {(mode === 'login' || mode === 'register') && (
+          <Field
+            label={t('auth.password')}
+            aside={
+              mode === 'login' ? (
+                <button type="button" onClick={() => switchMode('forgot')} className="text-sm text-accent-strong hover:underline">
+                  {t('auth.forgotLink')}
+                </button>
+              ) : undefined
+            }
+            hint={mode === 'register' ? t('auth.passwordHint') : undefined}
+          >
+            {({ id, describedBy }) => (
+              <Input
+                id={id}
                 required
                 type="password"
                 minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                icon={<LockIcon size={14} />}
+                aria-describedby={describedBy}
+                icon={<LockIcon size={15} />}
               />
             )}
+          </Field>
+        )}
+        {mode === 'twofactor' && (
+          <Field label={useRecovery ? t('auth.twofa.recoveryLabel') : t('auth.twofa.codeLabel')}>
+            {({ id }) =>
+              useRecovery ? (
+                <Input
+                  id={id}
+                  ref={codeRef}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="xxxx-xxxx"
+                  className="font-mono tracking-wider"
+                  icon={<KeyIcon size={15} />}
+                />
+              ) : (
+                <input
+                  id={id}
+                  ref={codeRef}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  placeholder="000000"
+                  className="input-field h-14 text-center font-mono text-2xl tracking-[0.5em] placeholder:tracking-[0.5em]"
+                />
+              )
+            }
+          </Field>
+        )}
+
+        {error && <Notice kind="error">{error}</Notice>}
+        {info2 && <Notice kind="info">{info2}</Notice>}
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          full
+          loading={busy}
+          disabled={mode === 'twofactor' && (useRecovery ? code.trim().length < 6 : code.length !== 6)}
+        >
+          {mode === 'login'
+            ? t('auth.signIn')
+            : mode === 'register'
+              ? t('auth.createAccount')
+              : mode === 'forgot'
+                ? t('auth.sendReset')
+                : t('auth.twofa.verify')}
+        </Button>
+
+        {mode === 'twofactor' && (
+          <div className="flex flex-col items-center gap-2 pt-1 text-sm">
+            <button
+              type="button"
+              className="font-medium text-accent-strong hover:underline"
+              onClick={() => {
+                setUseRecovery((v) => !v);
+                setCode('');
+                setError('');
+              }}
+            >
+              {useRecovery ? t('auth.twofa.useApp') : t('auth.twofa.useRecovery')}
+            </button>
+            <button type="button" className="text-muted hover:text-ink" onClick={() => switchMode('login')}>
+              {t('auth.twofa.differentAccount')}
+            </button>
           </div>
-
-          {error && <Notice kind="error" className="mt-4">{error}</Notice>}
-          {info && <Notice kind="info" className="mt-4">{info}</Notice>}
-
-          <Button
-            type="submit"
-            variant="primary"
-            full
-            disabled={busy}
-            className="mt-5"
-            icon={busy ? <SpinnerIcon size={14} className="animate-spin" /> : undefined}
+        )}
+        {mode === 'forgot' && (
+          <button
+            type="button"
+            onClick={() => switchMode('login')}
+            className="mx-auto flex items-center gap-1.5 text-sm text-muted hover:text-ink"
           >
-            {busy
-              ? 'Working…'
-              : mode === 'login'
-                ? 'Sign in'
-                : mode === 'forgot'
-                  ? 'Send reset link'
-                  : 'Create account'}
-          </Button>
+            <ArrowLeftIcon size={14} /> {t('auth.backToSignIn')}
+          </button>
+        )}
+      </form>
 
-          {mode === 'login' && (
-            <button
-              type="button"
-              onClick={() => {
-                setMode('forgot');
-                setError('');
-                setInfo('');
-              }}
-              className="mt-4 w-full cursor-pointer text-center text-[13px] text-muted transition hover:text-accent-strong"
-            >
-              Forgot password?
-            </button>
-          )}
-          {mode === 'forgot' && (
-            <button
-              type="button"
-              onClick={() => {
-                setMode('login');
-                setError('');
-                setInfo('');
-              }}
-              className="mt-4 w-full cursor-pointer text-center text-[13px] text-muted transition hover:text-accent-strong"
-            >
-              ← Back to sign in
-            </button>
-          )}
-
-          {oidc?.enabled && mode !== 'forgot' && (
-            <>
-              <div className="my-5 flex items-center gap-3 text-xs text-faint">
-                <div className="h-px flex-1 bg-line" />
-                or
-                <div className="h-px flex-1 bg-line" />
-              </div>
-              <a
-                href="/api/auth/oidc/start"
-                className="flex w-full items-center justify-center gap-2 rounded-md border border-strong bg-surface px-5 py-2 text-sm font-medium text-ink transition hover:bg-hover"
-              >
-                Continue with {oidc.provider_name}
-              </a>
-            </>
-          )}
-        </form>
-
-        <p className="mt-6 text-center text-xs text-faint">
-          Arkive — self-hosted, private by design.
-        </p>
-      </div>
-    </div>
+      {oidc?.enabled && (mode === 'login' || mode === 'register') && (
+        <>
+          <div className="my-5 flex items-center gap-3 text-xs text-faint">
+            <div className="h-px flex-1 bg-line" />
+            {t('auth.or')}
+            <div className="h-px flex-1 bg-line" />
+          </div>
+          <LinkButton href="/api/auth/oidc/start" variant="secondary" size="lg" className="w-full">
+            {t('auth.continueWith', { provider: oidc.provider_name || 'SSO' })}
+          </LinkButton>
+        </>
+      )}
+      {mode === 'login' && !registrationOpen && <p className="mt-5 text-center text-sm text-muted">{t('auth.inviteOnly')}</p>}
+    </AuthLayout>
   );
 }

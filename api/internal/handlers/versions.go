@@ -3,6 +3,7 @@ package handlers
 import (
 	"io"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -143,9 +144,20 @@ func (h *VersionsHandler) Download(w http.ResponseWriter, r *http.Request) {
 		ct = *mime
 	}
 	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(name, `"`, ``)+`.v`+strconv.Itoa(ver)+`"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(versionFileName(name, ver), `"`, ``)+`"`)
 	if meta.Size > 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(meta.Size, 10))
 	}
 	_, _ = io.Copy(w, rc)
+}
+
+// versionFileName names a downloaded old version "report.v3.pdf": the
+// version goes before the extension so the file still opens by type.
+func versionFileName(name string, ver int) string {
+	ext := path.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	if base == "" {
+		base, ext = name, ""
+	}
+	return base + ".v" + strconv.Itoa(ver) + ext
 }

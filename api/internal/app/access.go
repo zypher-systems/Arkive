@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/arkive/arkive/internal/db"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -32,7 +32,7 @@ func (a *App) WorkspaceRole(ctx context.Context, workspaceID, userID uuid.UUID) 
 		SELECT role FROM workspace_members
 		WHERE workspace_id = $1 AND user_id = $2
 	`, workspaceID, userID).Scan(&role)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, db.ErrNoRows) {
 		return "", ErrForbidden
 	}
 	return role, err
@@ -57,7 +57,7 @@ func (a *App) NodeAccess(ctx context.Context, nodeID, userID uuid.UUID) (AccessL
 	err := a.DB.QueryRow(ctx, `
 		SELECT workspace_id, parent_id FROM nodes WHERE id = $1 AND deleted_at IS NULL
 	`, nodeID).Scan(&workspaceID, &parentID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, db.ErrNoRows) {
 		return AccessNone, uuid.Nil, ErrNotFound
 	}
 	if err != nil {
@@ -87,7 +87,7 @@ func (a *App) NodeAccess(ctx context.Context, nodeID, userID uuid.UUID) (AccessL
 		}
 		var next *uuid.UUID
 		err = a.DB.QueryRow(ctx, `SELECT parent_id FROM nodes WHERE id = $1`, *current).Scan(&next)
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, db.ErrNoRows) {
 			break
 		}
 		if err != nil {
@@ -143,6 +143,27 @@ func (a *App) RequireNodeAccess(ctx context.Context, nodeID, userID uuid.UUID, w
 		return uuid.Nil, ErrForbidden
 	}
 	return workspaceID, nil
+}
+
+// IsSelfOrDescendant reports whether nodeID is ancestorID or lies below it.
+// Moving or copying a folder into such a node would create a cycle.
+func (a *App) IsSelfOrDescendant(ctx context.Context, nodeID, ancestorID uuid.UUID) (bool, error) {
+	current := nodeID
+	for i := 0; i < 1024; i++ {
+		if current == ancestorID {
+			return true, nil
+		}
+		var parent *uuid.UUID
+		err := a.DB.QueryRow(ctx, `SELECT parent_id FROM nodes WHERE id = $1`, current).Scan(&parent)
+		if errors.Is(err, db.ErrNoRows) || (err == nil && parent == nil) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		current = *parent
+	}
+	return false, errors.New("node tree too deep")
 }
 
 // RequireParentInWorkspace ensures the user can access parentID and that it belongs to workspaceID.

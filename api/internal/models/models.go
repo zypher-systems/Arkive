@@ -13,6 +13,8 @@ type User struct {
 	IsInstanceAdmin bool      `json:"is_instance_admin"`
 	Status          string    `json:"status"`
 	CreatedAt       time.Time `json:"created_at"`
+	// TwoFactorEnabled is true when TOTP is active for password logins.
+	TwoFactorEnabled bool `json:"two_factor_enabled"`
 }
 
 type Workspace struct {
@@ -56,6 +58,7 @@ type PublicLink struct {
 	NodeID        uuid.UUID  `json:"node_id"`
 	Token         string     `json:"token"`
 	HasPass       bool       `json:"has_password"`
+	Mode          string     `json:"mode"` // view | upload
 	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
 	MaxDownloads  *int       `json:"max_downloads,omitempty"`
 	DownloadCount int        `json:"download_count"`

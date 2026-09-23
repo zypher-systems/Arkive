@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,6 +102,54 @@ func (s *NFSStore) Delete(ctx context.Context, key string) error {
 		return nil
 	}
 	return err
+}
+
+// List walks the mount path. Dot-prefixed files and directories (the tus
+// staging area .uploads, write probes, secrets files) and non-regular files
+// such as symlinks are never reported. Leftover "<key>.tmp" files from
+// interrupted Puts are reported with that suffix.
+func (s *NFSStore) List(ctx context.Context, prefix string, fn func(ObjectInfo) error) error {
+	root := filepath.Clean(s.MountPath)
+	return filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if p == root {
+				return err
+			}
+			// Unreadable subtree: skip it rather than abort the whole walk.
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if cerr := ctx.Err(); cerr != nil {
+			return cerr
+		}
+		if p == root {
+			return nil
+		}
+		if strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() || !d.Type().IsRegular() {
+			return nil
+		}
+		rel, rerr := filepath.Rel(root, p)
+		if rerr != nil {
+			return nil
+		}
+		key := filepath.ToSlash(rel)
+		if !strings.HasPrefix(key, prefix) {
+			return nil
+		}
+		info, ierr := d.Info()
+		if ierr != nil {
+			return nil
+		}
+		return fn(ObjectInfo{Key: key, Size: info.Size(), ModTime: info.ModTime()})
+	})
 }
 
 func (s *NFSStore) Ping(ctx context.Context) error {

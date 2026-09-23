@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -105,6 +106,23 @@ func (s *S3Store) Get(ctx context.Context, key string) (io.ReadCloser, *ObjectMe
 		ContentType: info.ContentType,
 		ETag:        info.ETag,
 	}, nil
+}
+
+func (s *S3Store) List(ctx context.Context, prefix string, fn func(ObjectInfo) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel() // stops the lister goroutine if fn aborts early
+	for obj := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+		if obj.Err != nil {
+			return obj.Err
+		}
+		if strings.HasSuffix(obj.Key, "/") {
+			continue
+		}
+		if err := fn(ObjectInfo{Key: obj.Key, Size: obj.Size, ModTime: obj.LastModified}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *S3Store) Delete(ctx context.Context, key string) error {

@@ -231,6 +231,11 @@ func (s *GDriveStore) Delete(ctx context.Context, key string) error {
 	return s.srv.Files.Delete(id).Context(ctx).Do()
 }
 
+// List is not supported for Google Drive: orphan GC skips these backends.
+func (s *GDriveStore) List(ctx context.Context, prefix string, fn func(ObjectInfo) error) error {
+	return ErrNotSupported
+}
+
 // FetchGoogleEmail returns the Google account email for the token.
 func FetchGoogleEmail(ctx context.Context, client *http.Client) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.googleapis.com/oauth2/v2/userinfo", nil)

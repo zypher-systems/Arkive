@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ type createLinkRequest struct {
 	Password     string     `json:"password"`
 	ExpiresAt    *time.Time `json:"expires_at"`
 	MaxDownloads *int       `json:"max_downloads"`
+	Mode         string     `json:"mode"` // view (default) | upload
 }
 
 func (h *PublicHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +52,27 @@ func (h *PublicHandler) Create(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusBadRequest, "invalid json")
 		return
 	}
+	mode := strings.TrimSpace(req.Mode)
+	if mode == "" {
+		mode = linkModeView
+	}
+	if mode != linkModeView && mode != linkModeUpload {
+		httpjson.Error(w, http.StatusBadRequest, "mode must be view or upload")
+		return
+	}
+	if mode == linkModeUpload {
+		var kind string
+		if err := h.App.DB.QueryRow(r.Context(), `SELECT kind FROM nodes WHERE id = $1 AND deleted_at IS NULL`, nodeID).Scan(&kind); err != nil {
+			httpjson.Error(w, http.StatusNotFound, "not found")
+			return
+		}
+		if kind != "folder" {
+			httpjson.Error(w, http.StatusBadRequest, "upload links are only allowed on folders")
+			return
+		}
+		// Download budgets are meaningless for a link that cannot download.
+		req.MaxDownloads = nil
+	}
 	token := randomToken(24)
 	var passHash *string
 	if strings.TrimSpace(req.Password) != "" {
@@ -67,11 +90,11 @@ func (h *PublicHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var link models.PublicLink
 	var storedHash *string
 	err = h.App.DB.QueryRow(r.Context(), `
-		INSERT INTO public_links (node_id, token, password_hash, expires_at, max_downloads, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, node_id, token, password_hash, expires_at, max_downloads, download_count, created_at
-	`, nodeID, token, passHash, req.ExpiresAt, req.MaxDownloads, user.ID).Scan(
-		&link.ID, &link.NodeID, &link.Token, &storedHash, &link.ExpiresAt, &link.MaxDownloads, &link.DownloadCount, &link.CreatedAt,
+		INSERT INTO public_links (node_id, token, password_hash, expires_at, max_downloads, created_by, mode)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, node_id, token, password_hash, expires_at, max_downloads, download_count, created_at, mode
+	`, nodeID, token, passHash, req.ExpiresAt, req.MaxDownloads, user.ID, mode).Scan(
+		&link.ID, &link.NodeID, &link.Token, &storedHash, &link.ExpiresAt, &link.MaxDownloads, &link.DownloadCount, &link.CreatedAt, &link.Mode,
 	)
 	if err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "could not create link")
@@ -85,6 +108,14 @@ func (h *PublicHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"has_password":  link.HasPass,
 		"has_expiry":    req.ExpiresAt != nil,
 		"max_downloads": req.MaxDownloads,
+		"mode":          link.Mode,
+	})
+	h.App.Audit(r.Context(), r, user.ID.String(), "link.created", "link", link.ID.String(), map[string]any{
+		"node_id":       nodeID.String(),
+		"mode":          link.Mode,
+		"has_password":  link.HasPass,
+		"expires_at":    link.ExpiresAt,
+		"max_downloads": link.MaxDownloads,
 	})
 	httpjson.Write(w, http.StatusCreated, link)
 }
@@ -102,7 +133,7 @@ func (h *PublicHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := h.App.DB.Query(r.Context(), `
-		SELECT id, node_id, token, password_hash, expires_at, max_downloads, download_count, created_at
+		SELECT id, node_id, token, password_hash, expires_at, max_downloads, download_count, created_at, mode
 		FROM public_links
 		WHERE node_id = $1
 		  AND (expires_at IS NULL OR expires_at > now())
@@ -119,7 +150,7 @@ func (h *PublicHandler) List(w http.ResponseWriter, r *http.Request) {
 		var hash *string
 		if err := rows.Scan(
 			&link.ID, &link.NodeID, &link.Token, &hash, &link.ExpiresAt,
-			&link.MaxDownloads, &link.DownloadCount, &link.CreatedAt,
+			&link.MaxDownloads, &link.DownloadCount, &link.CreatedAt, &link.Mode,
 		); err != nil {
 			httpjson.Error(w, http.StatusInternalServerError, "scan failed")
 			return
@@ -149,7 +180,15 @@ func (h *PublicHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, status, msg)
 		return
 	}
-	_, _ = h.App.DB.Exec(r.Context(), `DELETE FROM public_links WHERE id = $1`, linkID)
+	if _, err := h.App.DB.Exec(r.Context(), `DELETE FROM public_links WHERE id = $1`, linkID); err != nil {
+		httpjson.Error(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	actor := user.ID
+	h.App.LogActivity(r.Context(), &nodeID, nil, &actor, "link.deleted", map[string]any{"link_id": linkID.String()})
+	h.App.Audit(r.Context(), r, user.ID.String(), "link.deleted", "link", linkID.String(), map[string]any{
+		"node_id": nodeID.String(),
+	})
 	httpjson.Write(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -161,6 +200,8 @@ type resolvedPublic struct {
 	kind        string
 	storageKey  *string
 	mime        *string
+	size        int64
+	mode        string
 	needsPass   bool
 	unlocked    bool // password verified this request; mint unlock cookie
 	errCode     int
@@ -186,17 +227,30 @@ func (h *PublicHandler) setLinkUnlockCookie(w http.ResponseWriter, token string,
 	})
 }
 
+// checkLinkPassword verifies an X-Link-Password header. HTTP header values
+// are Latin-1, so the web UI percent-encodes the password (UTF-8); raw values
+// from older clients and scripts are still accepted.
+func checkLinkPassword(header, hash string) bool {
+	if auth.CheckPassword(header, hash) {
+		return true
+	}
+	if decoded, err := url.PathUnescape(header); err == nil && decoded != header {
+		return auth.CheckPassword(decoded, hash)
+	}
+	return false
+}
+
 func (h *PublicHandler) resolveLink(r *http.Request, token string) resolvedPublic {
 	var passHash *string
 	var expires *time.Time
 	var out resolvedPublic
 	err := h.App.DB.QueryRow(r.Context(), `
-		SELECT pl.id, pl.password_hash, pl.expires_at, n.id, n.workspace_id, n.name, n.kind, n.storage_key, n.mime
+		SELECT pl.id, pl.password_hash, pl.expires_at, pl.mode, n.id, n.workspace_id, n.name, n.kind, n.storage_key, n.mime, n.size
 		FROM public_links pl
 		JOIN nodes n ON n.id = pl.node_id
 		WHERE pl.token = $1 AND n.deleted_at IS NULL
 	`, token).Scan(
-		&out.linkID, &passHash, &expires, &out.nodeID, &out.workspaceID, &out.name, &out.kind, &out.storageKey, &out.mime,
+		&out.linkID, &passHash, &expires, &out.mode, &out.nodeID, &out.workspaceID, &out.name, &out.kind, &out.storageKey, &out.mime, &out.size,
 	)
 	if err != nil {
 		out.errCode = http.StatusNotFound
@@ -209,7 +263,7 @@ func (h *PublicHandler) resolveLink(r *http.Request, token string) resolvedPubli
 		return out
 	}
 	if passHash != nil && *passHash != "" {
-		if pass := r.Header.Get("X-Link-Password"); pass != "" && auth.CheckPassword(pass, *passHash) {
+		if pass := r.Header.Get("X-Link-Password"); pass != "" && checkLinkPassword(pass, *passHash) {
 			out.unlocked = true
 		} else if c, err := r.Cookie(linkUnlockCookieName(token)); err == nil &&
 			crypto.VerifyLinkUnlock(h.App.Cfg.SecretsKey, token, c.Value) {
@@ -318,6 +372,8 @@ func (h *PublicHandler) Meta(w http.ResponseWriter, r *http.Request) {
 		"name":    res.name,
 		"kind":    res.kind,
 		"mime":    res.mime,
+		"size":    res.size,
+		"mode":    res.mode,
 	})
 }
 
@@ -328,6 +384,9 @@ func (h *PublicHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setLinkUnlockCookie(w, token, res.unlocked)
+	if h.rejectUploadOnly(w, res) {
+		return
+	}
 	if res.kind != "folder" {
 		httpjson.Error(w, http.StatusBadRequest, "not a folder")
 		return
@@ -406,6 +465,9 @@ func (h *PublicHandler) Download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setLinkUnlockCookie(w, token, res.unlocked)
+	if h.rejectUploadOnly(w, res) {
+		return
+	}
 
 	targetID := res.nodeID
 	if q := r.URL.Query().Get("node_id"); q != "" {
@@ -491,6 +553,9 @@ func (h *PublicHandler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.setLinkUnlockCookie(w, token, res.unlocked)
+	if h.rejectUploadOnly(w, res) {
+		return
+	}
 	if res.kind != "folder" {
 		httpjson.Error(w, http.StatusBadRequest, "not a folder")
 		return
