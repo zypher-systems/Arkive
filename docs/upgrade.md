@@ -4,22 +4,53 @@ Arkive runs [goose](https://github.com/pressly/goose) migrations on every start.
 
 ## 1.0 → 1.1: one container instead of three
 
-1.1 replaces the `web` (nginx + SPA) and `api` services with a single `arkive` service: one Go binary serves the API, WebDAV, `/metrics` and the web UI. Postgres and the volumes are unchanged, so an existing install upgrades in place.
+1.1 replaces the `web` (nginx + SPA) and `api` services with a single `arkive` service: one Go binary serves the API, WebDAV, `/metrics` and the web UI.
+
+1.1 also adds SQLite, and the stock `docker-compose.yml` now runs **only** the `arkive` container with a SQLite database in the data volume. **Your 1.0 data is in PostgreSQL**, so keep PostgreSQL (you can move to SQLite later, see below):
+
+- **Existing installs MUST use `docker-compose.postgres.yml`** (the `arkive` + `postgres` layout, same `postgres_data` / `arkive_data` volumes and the same `POSTGRES_PASSWORD`), **or** set `ARKIVE_DATABASE_URL=postgres://…` yourself if you run your own compose file or database.
+- If you forget and start the single-container file, Arkive finds a new, empty SQLite database next to your existing files and **refuses to start** with a message explaining the options. Nothing is deleted: the orphan cleanup also refuses to run when the database references no files. (`ARKIVE_ALLOW_NONEMPTY_DATA_DIR=true` overrides the startup check — only for data you really want to discard.)
+
+Steps:
 
 1. Back up Postgres and the data directory ([backup.md](backup.md)).
-2. Check your `.env` (see below), then pull the new release and recreate the stack. `--remove-orphans` removes the old `api` and `web` containers:
+2. Check your `.env` (see below). Add `COMPOSE_FILE=docker-compose.postgres.yml` so that plain `docker compose …` commands keep using PostgreSQL (for production: `COMPOSE_FILE=docker-compose.postgres.yml:docker-compose.prod.yml`).
+3. Pull the new release and recreate the stack. `--remove-orphans` removes the old `api` and `web` containers:
 
    ```bash
-   docker compose up -d --build --remove-orphans
+   docker compose -f docker-compose.postgres.yml up -d --build --remove-orphans
    # or, with the production overlay:
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
+   docker compose -f docker-compose.postgres.yml -f docker-compose.prod.yml up -d --build --remove-orphans
    ```
 
-3. Check `docker compose logs arkive` for migration errors, then open the UI and hard-refresh.
+   (With `COMPOSE_FILE` set in `.env`, `docker compose up -d --build --remove-orphans` does the same.) Do **not** run `--remove-orphans` with the single-container `docker-compose.yml` on a 1.0 install: it would remove your `postgres` container (the volume survives, but Arkive would then refuse to start as described above).
+
+4. Check `docker compose logs arkive` for migration errors, then open the UI and hard-refresh.
+
+### Optional: move a 1.0 / PostgreSQL install to SQLite
+
+SQLite is enough for a person, a family or a small team (see "Choosing a database" in the README). `arkive db copy` copies every row (ids and timestamps preserved) into a new SQLite file and rebuilds the search index; the files themselves stay where they are.
+
+```bash
+# 0. Back up first (backup.md). Then stop Arkive, keep PostgreSQL running.
+docker compose -f docker-compose.postgres.yml stop arkive
+
+# 1. Copy PostgreSQL into /data/arkive/arkive.db inside the arkive_data volume.
+docker compose -f docker-compose.postgres.yml run --rm --no-deps arkive db copy \
+  --from "postgres://arkive:${POSTGRES_PASSWORD:-arkive}@postgres:5432/arkive?sslmode=disable" \
+  --to sqlite:///data/arkive/arkive.db
+
+# 2. Switch layouts: remove COMPOSE_FILE from .env, stop the old stack
+#    (volumes are kept) and start the single container.
+docker compose -f docker-compose.postgres.yml down
+docker compose up -d
+```
+
+Sign in and check a few files. The `postgres_data` volume is untouched, so going back is just `docker compose -f docker-compose.postgres.yml up -d` (changes made on SQLite in the meantime would not be there). Once you are happy, remove it with `docker volume rm <project>_postgres_data`. The copy refuses to write into a non-empty database, so re-running it after a partial attempt means deleting `arkive.db` (and `arkive.db-wal`/`-shm`) first. The same command works in the other direction (`--from sqlite:///data/arkive/arkive.db --to postgres://…`) when you outgrow SQLite.
 
 What carries over and what changes:
 
-- **Volumes.** `postgres_data` and `arkive_data` keep their names, so Compose reuses them. The new image runs as uid 65532, the same uid the 1.0 `api` image used, so file ownership inside `arkive_data` is unchanged. If you bind-mounted a host directory over `/data/arkive`, keep the mount on the `arkive` service.
+- **Volumes.** `postgres_data` and `arkive_data` keep their names (in `docker-compose.postgres.yml`), so Compose reuses them. The new image runs as uid 65532, the same uid the 1.0 `api` image used, so file ownership inside `arkive_data` is unchanged. If you bind-mounted a host directory over `/data/arkive`, keep the mount on the `arkive` service.
 - **Port.** The UI is still on host port **3080**, now served by the `arkive` container's port 8080. Your outer reverse proxy config does not change. `ARKIVE_PORT` changes the host port (for example `127.0.0.1:3080` to accept only a local proxy).
 - **Service names.** Anything that referred to `api` or `web` needs to use `arkive`: `docker compose exec`, Traefik labels, monitoring, and custom override files. The in-network alias `web.local` is now `arkive.local`.
 - **Secrets.** `ARKIVE_SESSION_SECRET` and `ARKIVE_SECRETS_KEY` are now optional. Values you set in `.env` still win; keep them. When they are unset, Arkive generates strong values once and stores them in `/data/arkive/.arkive-secrets` (mode 0600). Back that file up with the volume.
@@ -48,9 +79,9 @@ What carries over and what changes:
 
 ## Version-to-version
 
-1. Back up Postgres and the data directory together ([backup.md](backup.md)).
+1. Back up the database (SQLite or Postgres) and the data directory together ([backup.md](backup.md)).
 2. Pull or build the new image.
-3. `docker compose up -d --build --remove-orphans` (or the prod overlay).
+3. `docker compose up -d --build --remove-orphans` (add `-f docker-compose.postgres.yml` for PostgreSQL, and the prod overlay if you use it).
 4. Watch `docker compose logs arkive` for `migration` errors. A failed migration aborts startup.
 5. Hit `/api/ready` and hard-refresh the SPA.
 

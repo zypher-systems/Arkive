@@ -2,7 +2,7 @@
 
 Self-hosted file sharing and cloud storage. Multi-user, multi-tenant workspaces (personal + teams), segregated storage, and sharing — without the Nextcloud kitchen sink.
 
-Arkive is a single Go binary (API, WebDAV and the web UI) plus Postgres. Nothing needs to be installed on the host beyond Docker Compose.
+Arkive is a single Go binary (API, WebDAV and the web UI). By default it keeps everything — database (SQLite), files and generated secrets — in one data folder, so the smallest install is **one container and one volume**. PostgreSQL is supported for bigger installs. Nothing needs to be installed on the host beyond Docker.
 
 ## Quick start
 
@@ -19,18 +19,44 @@ The log line looks like this:
 
 Open [http://localhost:3080](http://localhost:3080), enter the setup token, and create the admin account. That's it: session and encryption secrets are generated on first boot and kept in the data volume (`/data/arkive/.arkive-secrets`).
 
+Without Compose, the same single container (build the image once; it is not published to a registry yet):
+
+```bash
+docker build -f docker/Dockerfile -t arkive .
+docker run -d --name arkive -p 3080:8080 -v arkive_data:/data/arkive --restart unless-stopped arkive
+docker logs arkive 2>&1 | grep setup_token
+```
+
 The setup token stops a stranger from claiming a freshly started, internet-reachable instance before you do. It is only accepted while the instance has no accounts, a new one is printed on every restart until setup is done, and you can choose your own with `ARKIVE_SETUP_TOKEN` in `.env`.
 
 Arkive is licensed under the [MIT License](LICENSE).
+
+> **Upgrading from 1.0?** 1.0 always used PostgreSQL. Do **not** switch to the new single-container `docker-compose.yml` as-is: use `docker-compose.postgres.yml` (or set `ARKIVE_DATABASE_URL`), or move your data to SQLite with `arkive db copy`. See [`docs/upgrade.md`](docs/upgrade.md). Arkive refuses to start on an empty database when the data folder already holds files, so a mix-up cannot delete anything.
+
+### Choosing a database
+
+| | SQLite (default) | PostgreSQL |
+|---|---|---|
+| Setup | nothing — `arkive.db` in the data folder | a `postgres` container (`docker-compose.postgres.yml`) or your own server |
+| Good for | one person, a family, a small team (tens of users) | larger teams, heavy concurrent writes, several Arkive replicas |
+| Replicas | one Arkive container per database file | many containers can share one database |
+| Backups | one folder (`arkive db backup` for a live snapshot) | `pg_dump` + the data folder |
+
+`ARKIVE_DATABASE_URL` picks the engine: unset (or empty) means SQLite at `$ARKIVE_DATA_DIR/arkive.db`; `sqlite:///path/to/arkive.db` chooses another file; `postgres://user:pass@host:5432/arkive?sslmode=disable` uses PostgreSQL. Both engines run the same code, migrations and test suite. SQLite writes are serialized (one writer at a time, WAL mode, readers never wait), which is plenty for uploads from a handful of people; if you outgrow it, `arkive db copy --from sqlite:///data/arkive/arkive.db --to postgres://…` moves everything over. Keep an SQLite data folder on local disk — not NFS/SMB.
+
+```bash
+docker compose -f docker-compose.postgres.yml up -d      # arkive + postgres
+```
 
 ### Production
 
 TLS terminates at a reverse proxy; Arkive stays HTTP. Examples: [`deploy/Caddyfile`](deploy/Caddyfile), [`deploy/traefik.yml`](deploy/traefik.yml), [`deploy/nginx-proxy.conf`](deploy/nginx-proxy.conf).
 
 ```bash
-# .env: POSTGRES_PASSWORD and ARKIVE_PUBLIC_URL are required.
+# .env: ARKIVE_PUBLIC_URL is required (and POSTGRES_PASSWORD with PostgreSQL).
 # Secrets are generated unless you set them; placeholders are refused.
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build            # SQLite
+docker compose -f docker-compose.postgres.yml -f docker-compose.prod.yml up -d --build   # PostgreSQL
 ```
 
 Set `ARKIVE_PUBLIC_URL=https://arkive.example.com` (`ARKIVE_COOKIE_SECURE` defaults to `true` in the overlay). Arkive reads `X-Forwarded-For` / `X-Real-IP` **only** from peers listed in `ARKIVE_TRUSTED_PROXIES` (the prod overlay trusts loopback and Docker's `172.16.0.0/12`); from anyone else they are ignored, so clients cannot spoof their IP past the rate limiter. The outer proxy should cap the request body to match `ARKIVE_MAX_UPLOAD_BYTES` (default 10 GiB).
@@ -61,8 +87,8 @@ Arkive is private by default: anyone can create an account, but new signups stay
 | Service / volume | Role |
 |------------------|------|
 | `arkive` | Single Go binary: API (chi), WebDAV, embedded React SPA, migrations on startup (port **3080** → 8080) |
-| `postgres` | Metadata (users, workspaces, nodes, ACLs) |
-| `arkive_data` | Default file blobs at `/data/arkive`, plus the generated `.arkive-secrets` |
+| `arkive_data` | `/data/arkive`: the SQLite database `arkive.db` (default), file blobs of the default local folder, and the generated `.arkive-secrets` |
+| `postgres` / `postgres_data` | Only with `docker-compose.postgres.yml`: metadata (users, workspaces, nodes, ACLs) in PostgreSQL |
 
 The image is distroless (static binary, non-root uid 65532, `arkive healthcheck` for the container health probe) and builds for amd64 and arm64.
 
@@ -77,7 +103,10 @@ arkive user promote|demote <email>
 arkive user reset-2fa <email>           disable two-factor auth (lost authenticator)
 arkive export --out DIR [--workspace ID] [--include-trash]
                                         rebuild the real folder tree from DB + blobs
-arkive gc [--dry-run]                   delete orphaned blobs and abandoned uploads (also runs daily)
+arkive gc [--dry-run] [--force]         delete orphaned blobs and abandoned uploads (also runs daily;
+                                        refuses mass deletions unless --force)
+arkive db copy --from URL --to URL      copy all data into a new, empty database (PostgreSQL <-> SQLite)
+arkive db backup --out FILE             consistent snapshot of the SQLite database (safe while running)
 arkive healthcheck                      exit 0 when /api/ready is OK
 arkive version
 ```
@@ -92,7 +121,8 @@ Set `ARKIVE_METRICS_ENABLED=true` to expose Prometheus metrics at `/metrics` (40
 
 | Variable | Default / notes |
 |----------|-----------------|
-| `ARKIVE_DATABASE_URL` | Postgres DSN |
+| `ARKIVE_DATABASE_URL` | Unset = SQLite at `<ARKIVE_DATA_DIR>/arkive.db`. `sqlite:///path.db` (or `file:/path.db`) for another SQLite file, `postgres://…` for PostgreSQL |
+| `ARKIVE_ALLOW_NONEMPTY_DATA_DIR` | `false`. Arkive refuses to start on an empty database when `ARKIVE_DATA_DIR` already holds Arkive files (protects upgrades); `true` skips that check |
 | `ARKIVE_DATA_DIR` | Default local folder (`/data/arkive`) when no S3 endpoint is set |
 | `ARKIVE_S3_*` | Optional — if `ARKIVE_S3_ENDPOINT` is set, seed a remote S3 default instead |
 | `ARKIVE_ENV` | `development` (default) or `production` — production refuses placeholder secrets |
@@ -117,7 +147,7 @@ Set `ARKIVE_METRICS_ENABLED=true` to expose Prometheus metrics at `/metrics` (40
 - Files views: List / Details / Tiles (persisted), folder glyphs, image/video/audio/PDF/text previews, Office/archive badges
 - Right-click context menus; Copy (clipboard) vs Copy to…; storage used (root + total) in Files UI
 - Soft-delete trash with restore/purge, empty trash, undo toast
-- Filename + Postgres FTS search (text contents indexed on upload; Office extract where supported)
+- Filename + full-text search (PostgreSQL tsvector or SQLite FTS5; text contents indexed on upload; Office extract where supported)
 - Internal shares (user email or team, read/write); Shared-with-me browse; Recent activity
 - Public share links with optional password + expiry (`/s/:token`)
 - File version history on overwrite (last 10) + share/link activity
@@ -178,7 +208,7 @@ Redirect URI to register with your IdP: `{ARKIVE_PUBLIC_URL}/api/auth/oidc/callb
 Instance admins can add backends in the UI:
 
 - **Local folder**: directory visible inside the `arkive` container. Compose mounts a volume at `/data/arkive`. Bind-mount a host path or NFS share over that (or another path) if you want the files on a specific disk.
-- **S3**: optional remote endpoint, keys, bucket, region, SSL, path-style — credentials encrypted in Postgres (Garage, SeaweedFS, or any S3-compatible host)
+- **S3**: optional remote endpoint, keys, bucket, region, SSL, path-style — credentials encrypted in the database (Garage, SeaweedFS, or any S3-compatible host)
 
 Workspaces resolve their `BlobStore` from `storage_backend_id` (or the default backend).
 
@@ -215,8 +245,9 @@ deploy/       Caddy / Traefik / nginx TLS examples
 docs/         Backup and upgrade runbooks
 assets/       Logo / brand source
 .github/      Public CI
-docker-compose.yml
-docker-compose.prod.yml
+docker-compose.yml           single container, SQLite (default)
+docker-compose.postgres.yml  arkive + PostgreSQL
+docker-compose.prod.yml      production overlay for either
 LICENSE
 SECURITY.md
 CHANGELOG.md
@@ -225,23 +256,21 @@ CHANGELOG.md
 ## Development
 
 ```bash
-# API on :8080 (needs Postgres; see ARKIVE_DATABASE_URL). Without a web build it serves a placeholder page.
+# API on :8080 with SQLite in ./.data (set ARKIVE_DATABASE_URL=postgres://… for PostgreSQL).
+# Without a web build it serves a placeholder page.
 cd api && ARKIVE_DATA_DIR=$PWD/.data go run ./cmd/arkive
 # UI with hot reload on :5173, proxying /api and /dav to :8080
 cd web && npm install && npm run dev
 
 make build   # web build + ./arkive with the UI embedded
-make test    # go vet + go test
-make image   # docker build -f docker/Dockerfile
+make test           # go vet + go test on SQLite (fresh database per test, zero setup)
+make test-postgres  # the same suite on PostgreSQL (TEST_POSTGRES_URL=postgres://…)
+make image          # docker build -f docker/Dockerfile
 ```
 
-CI (GitHub Actions, plus optional GitLab) runs `go vet` + `go test ./...` against Postgres, `web` unit tests + production build, the compose smoke, and a build of the single image. Images are not published from CI.
+`go test ./...` needs no database: every test gets a fresh SQLite file. With `ARKIVE_TEST_DATABASE_URL=postgres://…` the same tests run against PostgreSQL. Write SQL that works on both — the rules are in [`api/internal/db/README.md`](api/internal/db/README.md); schema changes need a migration in both `api/migrations/` and `api/migrations/sqlite/` (a test checks they match).
 
-Optional signup-approval integration test (needs a Postgres DSN; set automatically in CI):
-
-```bash
-ARKIVE_TEST_DATABASE_URL='postgres://arkive:arkive@localhost:5432/arkive?sslmode=disable' go test ./internal/handlers/ -run TestSignupApprovalFlow
-```
+CI (GitHub Actions, plus optional GitLab) runs `go vet` + `go test ./...` on SQLite (also with `-race`) and on PostgreSQL, `web` unit tests + production build, the compose smoke against both compose layouts (including a restart), and a build of the single image. Images are not published from CI.
 
 Compose smoke (stack already up). Checks the SPA, completes first-run setup, registers a pending user, approves them, uploads, downloads and lists the file over WebDAV:
 
@@ -249,7 +278,7 @@ Compose smoke (stack already up). Checks the SPA, completes first-run setup, reg
 ARKIVE_SMOKE_SETUP_TOKEN=<token from the log> ./scripts/smoke.sh
 ```
 
-Against an instance that is already set up, set `ARKIVE_SMOKE_ADMIN_EMAIL` / `ARKIVE_SMOKE_ADMIN_PASSWORD` instead. CI runs this against a fresh compose stack with `ARKIVE_SETUP_TOKEN=ci-setup-token`.
+Against an instance that is already set up, set `ARKIVE_SMOKE_ADMIN_EMAIL` / `ARKIVE_SMOKE_ADMIN_PASSWORD` instead. CI runs this against fresh stacks of both layouts with `ARKIVE_SETUP_TOKEN=ci-setup-token` (`COMPOSE_FILE=docker-compose.postgres.yml` selects the PostgreSQL one).
 
 ## Backup and ops
 
@@ -257,11 +286,11 @@ Compose named volumes hold durable state:
 
 | Volume / path | Contents |
 |---------------|----------|
-| `postgres_data` | Users, workspaces, ACLs, share links, metadata |
-| `arkive_data` | File blobs for the default local folder (`/data/arkive`) and `.arkive-secrets` |
+| `arkive_data` | `/data/arkive`: SQLite database `arkive.db` (default layout), file blobs of the default local folder, `.arkive-secrets` |
+| `postgres_data` | PostgreSQL layout only: users, workspaces, ACLs, share links, metadata |
 | Extra binds | Whatever host/NFS paths you assigned as additional local backends |
 
-Back up Postgres and the data directory together for a consistent restore — see [`docs/backup.md`](docs/backup.md). Set `ARKIVE_ENV=production`; leave the secrets unset to use the generated ones, or set strong values (placeholders are refused). Keep `.arkive-secrets` (or your env values) with your backups: changing the secrets key makes the encrypted storage/SMTP/OAuth credentials in the DB unreadable — re-enter them after rotation. Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP). Soft-deleted trash is auto-purged after the Admin **trash retention** window (default 30 days; `0` disables). Licensed under MIT.
+Back up the database (SQLite: `arkive db backup`; PostgreSQL: `pg_dump`) and the data directory together for a consistent restore — see [`docs/backup.md`](docs/backup.md). Set `ARKIVE_ENV=production`; leave the secrets unset to use the generated ones, or set strong values (placeholders are refused). Keep `.arkive-secrets` (or your env values) with your backups: changing the secrets key makes the encrypted storage/SMTP/OAuth credentials in the DB unreadable — re-enter them after rotation. Set `ARKIVE_PUBLIC_URL` to your public origin and `ARKIVE_COOKIE_SECURE=true` behind HTTPS. Login/register are rate-limited (20 attempts / 15 minutes per IP). Soft-deleted trash is auto-purged after the Admin **trash retention** window (default 30 days; `0` disables). Licensed under MIT.
 
 ## Out of scope (for now)
 

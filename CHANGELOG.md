@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Single `arkive` binary and image: the Go server now serves the API, WebDAV and the embedded web UI (go:embed) with the security headers nginx used to add. Compose shrinks to `arkive` + `postgres`; `docker compose up -d` is the whole install
+- Single `arkive` binary and image: the Go server now serves the API, WebDAV and the embedded web UI (go:embed) with the security headers nginx used to add
+- SQLite support (pure Go, no CGO) next to PostgreSQL. `ARKIVE_DATABASE_URL` picks the engine (`postgres://…` or `sqlite:///path.db`); unset means SQLite at `$ARKIVE_DATA_DIR/arkive.db`. The stock `docker-compose.yml` is now a single `arkive` container with one `arkive_data` volume; `docker-compose.postgres.yml` is the `arkive` + `postgres` layout (same volumes as 1.0)
+- `arkive db copy --from URL --to URL` moves a whole instance between PostgreSQL and SQLite (either direction); `arkive db backup --out FILE` takes an online SQLite snapshot (VACUUM INTO)
+- Full-text search on SQLite via FTS5 (PostgreSQL keeps tsvector)
+- `arkive gc --force`
 - First-run setup screen API (`GET/POST /api/setup`) guarded by a one-time setup token printed to the log (or `ARKIVE_SETUP_TOKEN`), and `GET /api/instance`
 - Secrets auto-generation: unset `ARKIVE_SESSION_SECRET` / `ARKIVE_SECRETS_KEY` are generated once into `<ARKIVE_DATA_DIR>/.arkive-secrets`
 - CLI subcommands: `serve`, `migrate`, `user list|reset-password|promote|demote`, `healthcheck`, `version`
@@ -19,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Startup refuses an empty database when the data directory already holds Arkive files (a 1.0 install started with the new single-container compose file), with instructions; override with `ARKIVE_ALLOW_NONEMPTY_DATA_DIR=true`
+- Orphan GC deletes nothing when the database references no files but storage holds blobs, and refuses a run that would delete more than 10% of a backend's blobs (min. 100) unless `arkive gc --force`
 - Team shares require the sharer to be a member of the target workspace
 - Rate-limit all public-link endpoints (password guesses included)
 - Password change invalidates other sessions
@@ -29,7 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `docker/Dockerfile.api`, `docker/Dockerfile.web` and `docker/nginx.conf` are replaced by `docker/Dockerfile`; the `api` and `web` services by `arkive` (volumes unchanged — see `docs/upgrade.md`)
-- Migrations are embedded; `ARKIVE_MIGRATIONS_DIR` is optional
+- Migrations are embedded; `ARKIVE_MIGRATIONS_DIR` is optional. SQLite has its own migration set (`api/migrations/sqlite/`); a test keeps both schemas equivalent
+- **Upgrading 1.0 installs must use `docker-compose.postgres.yml`** (or set `ARKIVE_DATABASE_URL`); see `docs/upgrade.md`
+- `ARKIVE_DATABASE_URL` no longer defaults to `postgres://arkive:arkive@localhost:5432/arkive`
+- Go tests run on SQLite with zero setup and on PostgreSQL with `ARKIVE_TEST_DATABASE_URL`; CI runs both, plus the compose smoke on both layouts
 - `ARKIVE_BOOTSTRAP_ADMIN_EMAIL` is optional and no longer defaults to `admin@arkive.local` in Compose
 - HTTP server sets `IdleTimeout` (no read/write timeouts, so long uploads keep working)
 - Default storage is a local folder (`/data/arkive`); MinIO is no longer in Compose
