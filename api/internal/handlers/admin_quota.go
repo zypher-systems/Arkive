@@ -79,6 +79,9 @@ func (h *SettingsHandler) PutQuotaDefaults(w http.ResponseWriter, r *http.Reques
 		httpjson.Error(w, http.StatusInternalServerError, "save failed")
 		return
 	}
+	h.App.Audit(r.Context(), r, actorID(r), "settings.updated", "setting", "quota", map[string]any{
+		"default_workspace_quota_bytes": body.DefaultWorkspaceQuotaBytes,
+	})
 	httpjson.Write(w, http.StatusOK, map[string]any{
 		"status":                        "ok",
 		"default_workspace_quota_bytes": body.DefaultWorkspaceQuotaBytes,
@@ -111,6 +114,9 @@ func (h *SettingsHandler) PutTrashRetention(w http.ResponseWriter, r *http.Reque
 		httpjson.Error(w, http.StatusInternalServerError, "save failed")
 		return
 	}
+	h.App.Audit(r.Context(), r, actorID(r), "settings.updated", "setting", "trash", map[string]any{
+		"trash_retention_days": days,
+	})
 	httpjson.Write(w, http.StatusOK, map[string]any{
 		"status":               "ok",
 		"trash_retention_days": days,
@@ -149,6 +155,9 @@ func (h *SettingsHandler) PutRegistration(w http.ResponseWriter, r *http.Request
 		httpjson.Error(w, http.StatusInternalServerError, "save failed")
 		return
 	}
+	h.App.Audit(r.Context(), r, actorID(r), "settings.updated", "setting", "registration", map[string]any{
+		"registration_open": *body.RegistrationOpen,
+	})
 	httpjson.Write(w, http.StatusOK, map[string]any{
 		"status":            "ok",
 		"registration_open": *body.RegistrationOpen,
