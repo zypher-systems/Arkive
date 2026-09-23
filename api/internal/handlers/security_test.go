@@ -215,19 +215,28 @@ func TestTwoFactorLoginFlow(t *testing.T) {
 	rr = env.req(http.MethodGet, "/api/auth/me", nil, env.as(other))
 	expect(t, rr, http.StatusUnauthorized, "other session revoked on enable")
 
-	rr = env.req(http.MethodGet, "/api/admin/users?status=active", nil, env.as(env.Cookie))
-	expect(t, rr, http.StatusOK, "admin users")
-	list := decode[struct {
-		Items []struct {
-			ID               uuid.UUID `json:"id"`
-			TwoFactorEnabled bool      `json:"two_factor_enabled"`
-		} `json:"items"`
-	}](t, rr)
+	// Page through the list: a shared test database can hold many users.
 	found := false
-	for _, it := range list.Items {
-		if it.ID == u.ID {
-			found = it.TwoFactorEnabled
+	for offset := 0; ; {
+		rr = env.req(http.MethodGet, fmt.Sprintf("/api/admin/users?status=active&offset=%d", offset), nil, env.as(env.Cookie))
+		expect(t, rr, http.StatusOK, "admin users")
+		list := decode[struct {
+			Items []struct {
+				ID               uuid.UUID `json:"id"`
+				TwoFactorEnabled bool      `json:"two_factor_enabled"`
+			} `json:"items"`
+			HasMore    bool `json:"has_more"`
+			NextOffset int  `json:"next_offset"`
+		}](t, rr)
+		for _, it := range list.Items {
+			if it.ID == u.ID {
+				found = it.TwoFactorEnabled
+			}
 		}
+		if found || !list.HasMore {
+			break
+		}
+		offset = list.NextOffset
 	}
 	if !found {
 		t.Fatal("admin user list should report two_factor_enabled")
