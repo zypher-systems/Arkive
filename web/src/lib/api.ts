@@ -1,3 +1,5 @@
+import { t } from '../i18n';
+
 export type User = {
   id: string;
   email: string;
@@ -5,6 +7,8 @@ export type User = {
   is_instance_admin: boolean;
   status: 'pending' | 'active' | 'rejected' | 'disabled';
   quota_bytes?: number | null;
+  /** Contract §3 — absent on servers without 2FA support. */
+  two_factor_enabled?: boolean;
   created_at: string;
 };
 
@@ -68,8 +72,12 @@ export type PublicLink = {
   max_downloads?: number | null;
   download_count: number;
   url?: string;
+  /** Contract §4 — "upload" links are file requests (folders only). */
+  mode?: LinkMode;
   created_at: string;
 };
+
+export type LinkMode = 'view' | 'upload';
 
 export type StorageBackend = {
   id: string;
@@ -119,6 +127,97 @@ export type StorageConnection = {
   created_at: string;
 };
 
+export type TwoFactorChallenge = { two_factor_required: true; challenge: string };
+
+export function isTwoFactorChallenge(v: unknown): v is TwoFactorChallenge {
+  return !!v && typeof v === 'object' && (v as TwoFactorChallenge).two_factor_required === true;
+}
+
+export type TwoFactorStatus = { enabled: boolean; recovery_codes_remaining: number };
+
+export type InstanceInfo = {
+  version?: string;
+  oidc: { enabled: boolean; provider_name: string };
+  registration_open: boolean;
+  google_drive_enabled: boolean;
+  setup_needed: boolean;
+};
+
+export type AuditEntry = {
+  id: string;
+  created_at: string;
+  actor_user_id?: string | null;
+  actor_email?: string | null;
+  action: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  ip?: string | null;
+  meta?: Record<string, unknown> | null;
+};
+
+export type PublicMeta = {
+  node_id: string;
+  name: string;
+  kind: string;
+  mime?: string;
+  size?: number;
+  mode?: LinkMode;
+};
+
+/** Error thrown for any non-2xx API response; `status` enables graceful degradation. */
+export class ApiError extends Error {
+  status: number;
+  data?: unknown;
+  constructor(message: string, status: number, data?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
+  }
+}
+
+/** True when an endpoint does not exist on this server (older backend). */
+export function isMissingEndpoint(e: unknown) {
+  return e instanceof ApiError && (e.status === 404 || e.status === 405 || e.status === 501);
+}
+
+export function errorMessage(e: unknown, fallback: string) {
+  if (e instanceof Error && e.message) return e.message;
+  return fallback;
+}
+
+const NO_REDIRECT_PREFIXES = [
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/me',
+  '/api/auth/forgot',
+  '/api/auth/reset',
+  '/api/auth/oidc',
+  '/api/auth/registration',
+  '/api/setup',
+  '/api/instance',
+];
+
+function redirectToLogin() {
+  if (typeof window === 'undefined') return;
+  const p = window.location.pathname;
+  if (p.startsWith('/login') || p.startsWith('/setup') || p.startsWith('/s/') || p.startsWith('/reset')) return;
+  window.location.assign('/login');
+}
+
+async function readError(res: Response): Promise<ApiError> {
+  let message = res.statusText || `HTTP ${res.status}`;
+  let data: unknown;
+  try {
+    data = await res.json();
+    const err = (data as { error?: string })?.error;
+    if (err) message = err;
+  } catch {
+    /* ignore */
+  }
+  return new ApiError(message, res.status, data);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: 'include',
@@ -128,31 +227,70 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  if (res.status === 401) {
-    const skip =
-      path.startsWith('/api/auth/login') ||
-      path.startsWith('/api/auth/register') ||
-      path.startsWith('/api/auth/me') ||
-      path.startsWith('/api/auth/forgot') ||
-      path.startsWith('/api/auth/reset') ||
-      path.startsWith('/api/auth/oidc') ||
-      path.startsWith('/api/auth/registration');
-    if (!skip && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-      window.location.assign('/login');
-    }
+  if (res.status === 401 && !NO_REDIRECT_PREFIXES.some((p) => path.startsWith(p))) {
+    redirectToLogin();
   }
-  if (!res.ok) {
-    let message = res.statusText;
-    try {
-      const data = (await res.json()) as { error?: string };
-      if (data.error) message = data.error;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(message);
-  }
+  if (!res.ok) throw await readError(res);
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+export type UploadProgress = (loaded: number, total: number) => void;
+
+/**
+ * Raw-body upload over XHR (fetch cannot report upload progress). Used for
+ * the authenticated PUT upload and public file-request uploads.
+ */
+export function xhrUpload<T>(
+  url: string,
+  body: Blob,
+  opts: {
+    method?: string;
+    headers?: Record<string, string>;
+    onProgress?: UploadProgress;
+    signal?: AbortSignal;
+  } = {},
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (opts.signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const xhr = new XMLHttpRequest();
+    xhr.open(opts.method || 'PUT', url);
+    xhr.withCredentials = true;
+    for (const [k, v] of Object.entries(opts.headers || {})) xhr.setRequestHeader(k, v);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) opts.onProgress?.(e.loaded, e.total);
+    };
+    const onAbort = () => xhr.abort();
+    opts.signal?.addEventListener('abort', onAbort, { once: true });
+    xhr.onload = () => {
+      opts.signal?.removeEventListener('abort', onAbort);
+      if (xhr.status === 401 && url.startsWith('/api/workspaces')) redirectToLogin();
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve((xhr.responseText ? JSON.parse(xhr.responseText) : undefined) as T);
+        } catch {
+          resolve(undefined as T);
+        }
+        return;
+      }
+      let message = xhr.statusText || t('upload.failed');
+      let data: unknown;
+      try {
+        data = JSON.parse(xhr.responseText);
+        const err = (data as { error?: string })?.error;
+        if (err) message = err;
+      } catch {
+        /* ignore */
+      }
+      reject(new ApiError(message, xhr.status, data));
+    };
+    xhr.onerror = () => reject(new ApiError(t('errors.network'), 0));
+    xhr.onabort = () => reject(new DOMException('Aborted', 'AbortError'));
+    xhr.send(body);
+  });
 }
 
 type Page<T> = { items: T[]; has_more: boolean; next_offset: number };
@@ -171,11 +309,54 @@ async function collectPages<T>(fetchPage: (offset: number) => Promise<Page<T>>):
 
 export const api = {
   me: () => request<User>('/api/auth/me'),
+  /** Returns the user, or a 2FA challenge when the account has TOTP enabled (§3). */
   login: (email: string, password: string) =>
-    request<User>('/api/auth/login', {
+    request<User | TwoFactorChallenge>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
+  loginTwoFactor: (challenge: string, code: string) =>
+    request<User>('/api/auth/login/2fa', {
+      method: 'POST',
+      body: JSON.stringify({ challenge, code }),
+    }),
+  instance: () => request<InstanceInfo>('/api/instance'),
+  setupStatus: () => request<{ needed: boolean; token_required?: boolean }>('/api/setup'),
+  setup: (body: { email: string; password: string; display_name: string; setup_token?: string }) =>
+    request<User>('/api/setup', { method: 'POST', body: JSON.stringify(body) }),
+  twoFactorStatus: () => request<TwoFactorStatus>('/api/me/2fa'),
+  twoFactorSetup: () =>
+    request<{ secret: string; otpauth_url: string }>('/api/me/2fa/setup', { method: 'POST' }),
+  twoFactorEnable: (code: string) =>
+    request<{ recovery_codes: string[] }>('/api/me/2fa/enable', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+  twoFactorDisable: (password: string, code: string) =>
+    request<{ enabled: boolean }>('/api/me/2fa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ password, code }),
+    }),
+  twoFactorRegenerate: (code: string) =>
+    request<{ recovery_codes: string[] }>('/api/me/2fa/recovery-codes', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+  adminResetTwoFactor: (userId: string) =>
+    request<{ status: string }>(`/api/admin/users/${userId}/2fa/reset`, { method: 'POST' }),
+  versionSettings: () => request<{ max_versions: number }>('/api/admin/settings/versions'),
+  putVersionSettings: (max_versions: number) =>
+    request<{ max_versions: number }>('/api/admin/settings/versions', {
+      method: 'PUT',
+      body: JSON.stringify({ max_versions }),
+    }),
+  audit: (params: { limit?: number; cursor?: string | null; action?: string; actor?: string }) => {
+    const q = new URLSearchParams({ limit: String(params.limit ?? 50) });
+    if (params.cursor) q.set('cursor', params.cursor);
+    if (params.action) q.set('action', params.action);
+    if (params.actor) q.set('actor', params.actor);
+    return request<{ items: AuditEntry[]; next_cursor: string | null }>(`/api/admin/audit?${q}`);
+  },
   forgotPassword: (email: string) =>
     request<{ status: string; message: string }>('/api/auth/forgot-password', {
       method: 'POST',
@@ -351,41 +532,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, parent_id: parentId || null }),
     }),
-  upload: async (
+  upload: (
     workspaceId: string,
     file: File,
     parentId: string | null | undefined,
-    onProgress?: (pct: number) => void,
+    opts: { onProgress?: UploadProgress; signal?: AbortSignal; name?: string } = {},
   ) => {
-    const q = new URLSearchParams({ name: file.name });
+    const name = opts.name || file.name;
+    const q = new URLSearchParams({ name });
     if (parentId) q.set('parent_id', parentId);
-    return new Promise<Node>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', `/api/workspaces/${workspaceId}/upload?${q}`);
-      xhr.withCredentials = true;
-      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-      xhr.setRequestHeader('X-File-Name', file.name);
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
-      };
-      xhr.onload = () => {
-        if (xhr.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-          window.location.assign('/login');
-          reject(new Error('unauthorized'));
-          return;
-        }
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(JSON.parse(xhr.responseText) as Node);
-        } else {
-          try {
-            reject(new Error((JSON.parse(xhr.responseText) as { error: string }).error));
-          } catch {
-            reject(new Error('upload failed'));
-          }
-        }
-      };
-      xhr.onerror = () => reject(new Error('upload failed'));
-      xhr.send(file);
+    return xhrUpload<Node>(`/api/workspaces/${workspaceId}/upload?${q}`, file, {
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      onProgress: opts.onProgress,
+      signal: opts.signal,
     });
   },
   putNodeContent: (nodeId: string, body: string, mime?: string | null) =>
@@ -420,16 +579,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ node_ids: nodeIds }),
     });
-    if (!res.ok) {
-      let message = res.statusText;
-      try {
-        const data = (await res.json()) as { error?: string };
-        if (data.error) message = data.error;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(message);
-    }
+    if (!res.ok) throw await readError(res);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -483,10 +633,7 @@ export const api = {
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
       body: file,
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Upload failed' }));
-      throw new Error(err.error || 'Upload failed');
-    }
+    if (!res.ok) throw await readError(res);
     return res.json() as Promise<LiveDriveItem>;
   },
   liveDriveMove: (file_id: string, new_parent_id: string, old_parent_id?: string) =>
@@ -551,7 +698,12 @@ export const api = {
   links: (nodeId: string) => request<PublicLink[]>(`/api/nodes/${nodeId}/links`),
   createLink: (
     nodeId: string,
-    body: { password?: string; expires_at?: string | null; max_downloads?: number | null },
+    body: {
+      password?: string;
+      expires_at?: string | null;
+      max_downloads?: number | null;
+      mode?: LinkMode;
+    },
   ) =>
     request<PublicLink>(`/api/nodes/${nodeId}/links`, {
       method: 'POST',
@@ -576,18 +728,36 @@ export const api = {
       credentials: 'include',
       headers: password ? { 'X-Link-Password': password } : {},
     });
-    const data = await res.json();
-    if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { status: res.status, data });
-    return data as { node_id: string; name: string; kind: string; mime?: string };
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(data.error || res.statusText, res.status, data);
+    return data as PublicMeta;
   },
+  /** §4 — upload into an upload-only link. Name collisions are auto-renamed server side. */
+  publicUpload: (
+    token: string,
+    file: File,
+    opts: { password?: string; onProgress?: UploadProgress; signal?: AbortSignal } = {},
+  ) =>
+    xhrUpload<{ name: string; size: number }>(
+      `/api/public/${token}/upload?${new URLSearchParams({ name: file.name })}`,
+      file,
+      {
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          ...(opts.password ? { 'X-Link-Password': opts.password } : {}),
+        },
+        onProgress: opts.onProgress,
+        signal: opts.signal,
+      },
+    ),
   publicNodes: async (token: string, parentId?: string | null, password?: string) => {
     const q = parentId ? `?parent_id=${encodeURIComponent(parentId)}` : '';
     const res = await fetch(`/api/public/${token}/nodes${q}`, {
       credentials: 'include',
       headers: password ? { 'X-Link-Password': password } : {},
     });
-    const data = await res.json();
-    if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { status: res.status, data });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(data.error || res.statusText, res.status, data);
     return data as {
       root: { id: string; name: string; kind: string };
       nodes: Node[];
@@ -603,16 +773,7 @@ export const api = {
       credentials: 'include',
       headers: password ? { 'X-Link-Password': password } : {},
     });
-    if (!res.ok) {
-      let message = res.statusText;
-      try {
-        const data = (await res.json()) as { error?: string };
-        if (data.error) message = data.error;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(message);
-    }
+    if (!res.ok) throw await readError(res);
     const blob = await res.blob();
     const cd = res.headers.get('Content-Disposition') || '';
     const match = /filename="([^"]+)"/.exec(cd);
@@ -628,16 +789,7 @@ export const api = {
       },
       body: JSON.stringify({ node_ids: nodeIds || [] }),
     });
-    if (!res.ok) {
-      let message = res.statusText;
-      try {
-        const data = (await res.json()) as { error?: string };
-        if (data.error) message = data.error;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(message);
-    }
+    if (!res.ok) throw await readError(res);
     const blob = await res.blob();
     const cd = res.headers.get('Content-Disposition') || '';
     const match = /filename="([^"]+)"/.exec(cd);
@@ -784,9 +936,4 @@ export function isPreviewable(node: Node) {
   );
 }
 
-export function formatBytes(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
-  return `${(n / 1024 ** 3).toFixed(1)} GB`;
-}
+export { formatBytes } from '../i18n/format';

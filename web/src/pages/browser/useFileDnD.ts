@@ -1,239 +1,136 @@
-import { useRef, useState, type DragEvent } from 'react';
-import type { Node } from '../../lib/api';
+import { useCallback, useRef, useState, type DragEvent } from 'react';
+import type { RowDnD } from '../../components/files/FileList';
+import { collectDrop, dragHasFiles } from '../../lib/dropFiles';
+import type { UploadEngine, UploadTarget } from '../../lib/uploads';
 
 export const DRAG_MIME = 'application/x-arkive-nodes';
 
-/** Compact translucent icon+name chip for HTML5 drag ghosts. */
-function setCompactDragGhost(e: DragEvent, node: Node, count: number) {
-  const row = e.currentTarget as HTMLElement | null;
-  if (!row) return;
+function hasNodes(e: DragEvent) {
+  return Array.from(e.dataTransfer.types).includes(DRAG_MIME);
+}
 
+/** Compact translucent chip used as the drag image. */
+function setDragGhost(e: DragEvent, label: string) {
   document.querySelectorAll('[data-arkive-drag-ghost]').forEach((n) => n.remove());
-
   const ghost = document.createElement('div');
   ghost.setAttribute('data-arkive-drag-ghost', '1');
-  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const cs = getComputedStyle(document.documentElement);
   Object.assign(ghost.style, {
     position: 'fixed',
-    top: '-9999px',
+    top: '-1000px',
     left: '0',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '8px 14px 8px 8px',
-    maxWidth: '260px',
-    borderRadius: '6px',
-    border: dark ? '1px solid #3d434f' : '1px solid #cfcfc8',
-    background: dark ? '#1c1f25' : '#ffffff',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-    color: dark ? '#e8eaed' : '#1b1d21',
-    fontSize: '13px',
-    fontWeight: '600',
-    lineHeight: '1.2',
-    opacity: '0.95',
-    pointerEvents: 'none',
-    zIndex: '99999',
-  } as Partial<CSSStyleDeclaration>);
-
-  const thumbHost = row.querySelector('[data-drag-thumb]') as HTMLElement | null;
-  if (thumbHost) {
-    const clone = thumbHost.cloneNode(true) as HTMLElement;
-    Object.assign(clone.style, {
-      flex: '0 0 36px',
-      width: '36px',
-      height: '36px',
-      overflow: 'hidden',
-      borderRadius: '6px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-    });
-    clone.querySelectorAll('img, video').forEach((media) => {
-      const el = media as HTMLElement;
-      el.style.width = '36px';
-      el.style.height = '36px';
-      el.style.objectFit = 'cover';
-    });
-    clone.querySelectorAll('svg').forEach((svg) => {
-      svg.setAttribute('width', '28');
-      svg.setAttribute('height', '28');
-      (svg as SVGElement).style.width = '28px';
-      (svg as SVGElement).style.height = '28px';
-    });
-    ghost.appendChild(clone);
-  }
-
-  const label = document.createElement('span');
-  Object.assign(label.style, {
+    padding: '8px 14px',
+    maxWidth: '280px',
+    borderRadius: '10px',
+    background: cs.getPropertyValue('--primary').trim() || '#22252a',
+    color: cs.getPropertyValue('--primary-fg').trim() || '#fff',
+    font: '600 13px/1.3 "Inter Variable", system-ui, sans-serif',
+    whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    minWidth: '0',
-  });
-  label.textContent = count > 1 ? `${node.name} (+${count - 1})` : node.name;
-  ghost.appendChild(label);
-
+    boxShadow: '0 8px 24px rgba(0,0,0,.25)',
+  } as Partial<CSSStyleDeclaration>);
+  ghost.textContent = label;
   document.body.appendChild(ghost);
-  const offsetX = 22;
-  const offsetY = Math.max(12, Math.round(ghost.offsetHeight / 2));
   try {
-    e.dataTransfer.setDragImage(ghost, offsetX, offsetY);
+    e.dataTransfer.setDragImage(ghost, 16, 16);
   } catch {
-    /* some browsers reject custom drag images */
+    /* ignore */
   }
   requestAnimationFrame(() => ghost.remove());
 }
 
-export type UseFileDnDParams = {
-  selected: Set<string>;
-  browsing: boolean;
-  parentId: string | null;
-  onUpload: (files: FileList | File[] | null, intoParent?: string | null) => void | Promise<void>;
-  moveNodesInto: (ids: string[], targetParent: string | null) => Promise<void>;
-};
-
+/**
+ * Drag & drop inside the file browser: drag selected items onto folders or
+ * breadcrumbs to move them; drop OS files/folders onto a folder row to
+ * upload straight into it.
+ */
 export function useFileDnD({
+  enabled,
   selected,
-  browsing,
-  parentId,
-  onUpload,
-  moveNodesInto,
-}: UseFileDnDParams) {
-  const [dragging, setDragging] = useState(false);
+  workspaceId,
+  engine,
+  moveInto,
+  labelFor,
+}: {
+  enabled: boolean;
+  selected: Set<string>;
+  workspaceId?: string;
+  engine: UploadEngine;
+  moveInto: (ids: string[], target: string | null) => Promise<void>;
+  labelFor: (count: number, first: string) => string;
+}) {
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-  const dragDepth = useRef(0);
-  const suppressOpenAfterDrag = useRef(false);
+  const dragging = useRef(false);
 
-  function hasOsFiles(e: DragEvent) {
-    return Array.from(e.dataTransfer.types).includes('Files');
-  }
+  const acceptDrop = useCallback(
+    async (e: DragEvent, targetId: string | null, targetLabel: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDropTargetId(null);
+      if (dragHasFiles(e.dataTransfer)) {
+        if (!workspaceId) return;
+        const target: UploadTarget = { workspaceId, parentId: targetId, label: targetLabel };
+        const files = await collectDrop(e.dataTransfer);
+        if (files.length) engine.enqueue(files, target);
+        return;
+      }
+      const raw = e.dataTransfer.getData(DRAG_MIME);
+      if (!raw) return;
+      try {
+        const ids = JSON.parse(raw) as string[];
+        if (Array.isArray(ids) && ids.length && !(targetId && ids.includes(targetId))) await moveInto(ids, targetId);
+      } catch {
+        /* ignore malformed payloads */
+      }
+    },
+    [workspaceId, engine, moveInto],
+  );
 
-  function hasInternalNodes(e: DragEvent) {
-    return Array.from(e.dataTransfer.types).includes(DRAG_MIME);
-  }
-
-  function onDragStartNode(e: DragEvent, node: Node) {
-    // Avoid setState here — selecting mid-dragstart re-renders and cancels the drag,
-    // which forced a select-then-drag-again workflow.
-    const ids = selected.has(node.id) && selected.size > 0 ? [...selected] : [node.id];
-    e.dataTransfer.setData(DRAG_MIME, JSON.stringify(ids));
-    e.dataTransfer.effectAllowed = 'move';
-    suppressOpenAfterDrag.current = true;
-    setCompactDragGhost(e, node, ids.length);
-  }
-
-  function onDragEndNode() {
-    setDropTargetId(null);
-    document.querySelectorAll('[data-arkive-drag-ghost]').forEach((n) => n.remove());
-    window.setTimeout(() => {
-      suppressOpenAfterDrag.current = false;
-    }, 0);
-  }
-
-  function onDragOverFolder(e: DragEvent, folder: Node) {
-    if (folder.kind !== 'folder') return;
-    if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = hasOsFiles(e) ? 'copy' : 'move';
-    setDropTargetId(folder.id);
-  }
-
-  function onDragLeaveFolder(folder: Node) {
-    setDropTargetId((cur) => (cur === folder.id ? null : cur));
-  }
-
-  async function onDropOnFolder(e: DragEvent, folder: Node) {
-    if (folder.kind !== 'folder') return;
-    e.preventDefault();
-    e.stopPropagation();
-    setDropTargetId(null);
-    setDragging(false);
-    dragDepth.current = 0;
-
-    if (hasOsFiles(e) && e.dataTransfer.files.length) {
-      void onUpload(e.dataTransfer.files, folder.id);
-      return;
-    }
-    const raw = e.dataTransfer.getData(DRAG_MIME);
-    if (!raw) return;
-    try {
-      const ids = JSON.parse(raw) as string[];
-      if (!Array.isArray(ids) || !ids.length) return;
-      if (ids.includes(folder.id)) return;
-      await moveNodesInto(ids, folder.id);
-    } catch {
-      /* ignore bad payload */
-    }
-  }
-
-  async function onDropOnBreadcrumb(e: DragEvent, targetParent: string | null) {
-    e.preventDefault();
-    e.stopPropagation();
-    setDropTargetId(null);
-    if (hasOsFiles(e) && e.dataTransfer.files.length) {
-      void onUpload(e.dataTransfer.files, targetParent);
-      return;
-    }
-    const raw = e.dataTransfer.getData(DRAG_MIME);
-    if (!raw) return;
-    try {
-      const ids = JSON.parse(raw) as string[];
-      if (!Array.isArray(ids) || !ids.length) return;
-      await moveNodesInto(ids, targetParent);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  function onRootDragEnter(e: DragEvent) {
-    if (!browsing) return;
-    if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
-    e.preventDefault();
-    dragDepth.current += 1;
-    if (hasOsFiles(e)) setDragging(true);
-  }
-
-  function onRootDragOver(e: DragEvent) {
-    if (!browsing) return;
-    if (!hasOsFiles(e) && !hasInternalNodes(e)) return;
-    e.preventDefault();
-  }
-
-  function onRootDragLeave() {
-    dragDepth.current = Math.max(0, dragDepth.current - 1);
-    if (dragDepth.current === 0) setDragging(false);
-  }
-
-  function onRootDrop(e: DragEvent) {
-    if (!browsing) return;
-    e.preventDefault();
-    setDragging(false);
-    dragDepth.current = 0;
-    setDropTargetId(null);
-    if (hasOsFiles(e) && e.dataTransfer.files.length) {
-      void onUpload(e.dataTransfer.files, parentId);
-    }
-  }
-
-  return {
-    dragging,
-    setDragging,
+  const row: RowDnD = {
+    draggable: enabled,
     dropTargetId,
-    setDropTargetId,
-    dragDepth,
-    suppressOpenAfterDrag,
-    hasOsFiles,
-    hasInternalNodes,
-    onDragStartNode,
-    onDragEndNode,
-    onDragOverFolder,
-    onDragLeaveFolder,
-    onDropOnFolder,
-    onDropOnBreadcrumb,
-    onRootDragEnter,
-    onRootDragOver,
-    onRootDragLeave,
-    onRootDrop,
+    onDragStart: (e, node) => {
+      const ids = selected.has(node.id) ? [...selected] : [node.id];
+      e.dataTransfer.setData(DRAG_MIME, JSON.stringify(ids));
+      e.dataTransfer.effectAllowed = 'move';
+      dragging.current = true;
+      setDragGhost(e, labelFor(ids.length, node.name));
+    },
+    onDragEnd: () => {
+      dragging.current = false;
+      setDropTargetId(null);
+    },
+    onDragOver: (e, node) => {
+      if (!enabled || node.kind !== 'folder') return;
+      if (!dragHasFiles(e.dataTransfer) && !hasNodes(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = dragHasFiles(e.dataTransfer) ? 'copy' : 'move';
+      setDropTargetId(node.id);
+    },
+    onDragLeave: (node) => setDropTargetId((cur) => (cur === node.id ? null : cur)),
+    onDrop: (e, node) => {
+      if (!enabled || node.kind !== 'folder') return;
+      void acceptDrop(e, node.id, node.name);
+    },
   };
+
+  const crumb = {
+    dropTargetId,
+    onDragOverCrumb: (e: DragEvent, id: string | null) => {
+      if (!enabled) return;
+      if (!dragHasFiles(e.dataTransfer) && !hasNodes(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setDropTargetId(id ?? '__root__');
+    },
+    onDragLeaveCrumb: (id: string | null) => setDropTargetId((cur) => (cur === (id ?? '__root__') ? null : cur)),
+    onDrop: (e: DragEvent, id: string | null, label = '') => {
+      if (!enabled) return;
+      void acceptDrop(e, id, label);
+    },
+  };
+
+  return { row, crumb };
 }

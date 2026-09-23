@@ -1,79 +1,117 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Spinner } from './Spinner';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
-type Size = 'xs' | 'sm' | 'md';
+export type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger' | 'danger-solid';
+export type ButtonSize = 'sm' | 'md' | 'lg';
 
 const base =
-  'inline-flex cursor-pointer items-center justify-center gap-2 font-medium whitespace-nowrap ' +
-  'transition-colors duration-150 select-none ' +
-  'disabled:pointer-events-none disabled:opacity-50';
+  'inline-flex shrink-0 items-center justify-center gap-2 font-medium whitespace-nowrap select-none ' +
+  'transition-[background-color,border-color,color,box-shadow,opacity] duration-150 ' +
+  'disabled:pointer-events-none disabled:opacity-50 ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
 
-const variants: Record<Variant, string> = {
-  primary: 'bg-primary text-primary-fg hover:opacity-85',
-  secondary:
-    'border border-strong bg-surface text-ink hover:border-faint hover:bg-hover',
+export const buttonVariants: Record<ButtonVariant, string> = {
+  primary: 'bg-primary text-primary-fg shadow-xs hover:bg-primary-hover',
+  accent: 'bg-accent text-accent-fg shadow-xs hover:bg-accent-strong dark:hover:bg-accent-strong',
+  secondary: 'border border-line bg-surface text-ink shadow-xs hover:border-strong hover:bg-hover',
   ghost: 'text-muted hover:bg-hover hover:text-ink',
-  danger:
-    'border border-danger/50 bg-transparent text-danger hover:border-danger hover:bg-danger-soft',
+  danger: 'border border-line bg-surface text-danger shadow-xs hover:border-danger/50 hover:bg-danger-soft',
+  'danger-solid': 'bg-danger text-white shadow-xs hover:bg-danger-strong dark:text-[#1b0b09]',
 };
 
-const sizes: Record<Size, string> = {
-  xs: 'rounded-md px-2 py-1 text-xs',
-  sm: 'rounded-md px-2.5 py-1.5 text-xs',
-  md: 'rounded-md px-3.5 py-2 text-sm',
+export const buttonSizes: Record<ButtonSize, string> = {
+  sm: 'h-8 rounded-md px-3 text-sm coarse:h-10',
+  md: 'h-9 rounded-md px-3.5 text-base coarse:h-11',
+  lg: 'h-11 rounded-lg px-5 text-base',
 };
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: Variant;
-  size?: Size;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   icon?: ReactNode;
+  iconRight?: ReactNode;
+  loading?: boolean;
   full?: boolean;
 };
 
-export function Button({
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  {
+    variant = 'secondary',
+    size = 'md',
+    icon,
+    iconRight,
+    loading,
+    full,
+    className = '',
+    children,
+    type = 'button',
+    disabled,
+    ...rest
+  },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      className={`${base} ${buttonVariants[variant]} ${buttonSizes[size]} ${full ? 'w-full' : ''} ${className}`}
+      {...rest}
+    >
+      {loading ? <Spinner size={14} /> : icon}
+      {children}
+      {iconRight}
+    </button>
+  );
+});
+
+export function LinkButton({
   variant = 'secondary',
   size = 'md',
   icon,
-  full,
   className = '',
   children,
   ...rest
-}: ButtonProps) {
+}: AnchorHTMLAttributes<HTMLAnchorElement> & { variant?: ButtonVariant; size?: ButtonSize; icon?: ReactNode }) {
   return (
-    <button
-      className={`${base} ${variants[variant]} ${sizes[size]} ${full ? 'w-full' : ''} ${className}`}
-      {...rest}
-    >
+    <a className={`${base} ${buttonVariants[variant]} ${buttonSizes[size]} ${className}`} {...rest}>
       {icon}
       {children}
-    </button>
+    </a>
   );
 }
 
 export type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  /** Accessible name (also used as tooltip). */
   label: string;
-  variant?: Variant;
-  size?: Size;
+  variant?: ButtonVariant;
+  size?: 'xs' | 'sm' | 'md' | 'lg';
+  /** Skip the native tooltip (e.g. when a visible label is adjacent). */
+  noTooltip?: boolean;
 };
 
-export function IconButton({
-  label,
-  variant = 'ghost',
-  size = 'sm',
-  className = '',
-  children,
-  ...rest
-}: IconButtonProps) {
-  const pad =
-    size === 'md' ? 'h-8 w-8 rounded-md' : size === 'xs' ? 'h-6 w-6 rounded' : 'h-7 w-7 rounded-md';
+const iconSizes = {
+  xs: 'h-6 w-6 rounded-md coarse:h-9 coarse:w-9',
+  sm: 'h-7 w-7 rounded-md coarse:h-11 coarse:w-11',
+  md: 'h-8 w-8 rounded-md coarse:h-11 coarse:w-11',
+  lg: 'h-9 w-9 rounded-lg coarse:h-11 coarse:w-11',
+};
+
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
+  { label, variant = 'ghost', size = 'md', noTooltip, className = '', children, type = 'button', ...rest },
+  ref,
+) {
   return (
     <button
-      title={label}
+      ref={ref}
+      type={type}
+      title={noTooltip ? undefined : label}
       aria-label={label}
-      className={`${base} ${variants[variant]} ${pad} !px-0 ${className}`}
+      className={`${base} ${buttonVariants[variant]} ${iconSizes[size]} !px-0 ${className}`}
       {...rest}
     >
       {children}
     </button>
   );
-}
+});

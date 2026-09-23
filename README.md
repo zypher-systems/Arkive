@@ -4,6 +4,13 @@ Self-hosted file sharing and cloud storage. Multi-user, multi-tenant workspaces 
 
 Arkive is a single Go binary (API, WebDAV and the web UI). By default it keeps everything — database (SQLite), files and generated secrets — in one data folder, so the smallest install is **one container and one volume**. PostgreSQL is supported for bigger installs. Nothing needs to be installed on the host beyond Docker.
 
+| Files (light) | Files (dark) | Phone |
+| --- | --- | --- |
+| ![Files in list view](docs/screenshots/light-04-files-list.png) | ![Photo gallery in dark mode](docs/screenshots/dark-07-files-gallery.png) | ![Files on a phone](docs/screenshots/mobile-04-files-list.png) |
+| ![Details panel with sharing](docs/screenshots/light-10-share-upload-link.png) | ![Markdown editor](docs/screenshots/dark-11-editor-markdown.png) | ![Upload queue on a phone](docs/screenshots/mobile-12-upload-queue.png) |
+
+More screens (sign-in with two-factor, first-run setup, public links and file requests, account and admin) are in [`docs/screenshots/`](docs/screenshots/). The UI can be translated — see [docs/translating.md](docs/translating.md).
+
 ## Quick start
 
 ```bash

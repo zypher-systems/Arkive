@@ -5,6 +5,7 @@ export type ConfirmRequest = {
   title: string;
   message: string;
   confirmLabel?: string;
+  tone?: 'danger' | 'default';
   run: () => void | Promise<void>;
 };
 
@@ -45,6 +46,7 @@ export function useConfirm() {
       title={request.title}
       message={request.message}
       confirmLabel={request.confirmLabel}
+      tone={request.tone}
       busy={busy}
       onConfirm={() => void onConfirm()}
       onClose={close}

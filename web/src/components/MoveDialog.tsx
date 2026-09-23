@@ -1,15 +1,13 @@
-import { useEffect, useState } from 'react';
-import {
-  ChevronRightIcon,
-  FolderIcon,
-  FolderMoveIcon,
-  HomeIcon,
-  SpinnerIcon,
-} from './icons';
+import { useCallback, useEffect, useState } from 'react';
+import { ChevronRightIcon, FolderCopyIcon, FolderMoveIcon, HomeIcon } from './icons';
 import { api, type Breadcrumb, type Node, type Workspace } from '../lib/api';
 import { Button } from './ui/Button';
-import { Modal, ModalField } from './ui/Modal';
+import { Modal } from './ui/Modal';
 import { Notice } from './ui/Notice';
+import { Select } from './ui/Input';
+import { Spinner } from './ui/Spinner';
+import { FileGlyph } from './files/FileThumb';
+import { useI18n } from '../i18n';
 
 type Props = {
   workspaceId: string;
@@ -17,153 +15,147 @@ type Props = {
   nodes: Node[];
   mode?: 'move' | 'copy';
   onClose: () => void;
-  onMoved: () => void;
+  onMoved: (dest: { workspaceId: string; parentId: string | null; mode: 'move' | 'copy' }) => void;
 };
 
-export function MoveDialog({
-  workspaceId,
-  workspaces,
-  nodes,
-  mode = 'move',
-  onClose,
-  onMoved,
-}: Props) {
-  const roots = workspaces.filter((w) => w.type !== 'mount' || true);
+/** Folder picker for Move / Copy to… (cross-root destinations always copy). */
+export function MoveDialog({ workspaceId, workspaces, nodes, mode = 'move', onClose, onMoved }: Props) {
+  const { t } = useI18n();
   const [targetWs, setTargetWs] = useState(workspaceId);
   const [parentId, setParentId] = useState<string | null>(null);
-  const [folders, setFolders] = useState<Node[]>([]);
+  const [folders, setFolders] = useState<Node[] | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<Breadcrumb[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const blocked = new Set(nodes.map((n) => n.id));
   const crossRoot = targetWs !== workspaceId;
   const effectiveMode = crossRoot ? 'copy' : mode;
+  const sameFolder = !crossRoot && nodes.every((n) => (n.parent_id || null) === parentId);
 
-  async function load(ws: string, pid: string | null) {
-    const data = await api.listNodes(ws, pid);
-    setFolders(data.nodes.filter((n) => n.kind === 'folder' && !blocked.has(n.id)));
-    setBreadcrumbs(data.breadcrumbs);
-    setParentId(pid);
-  }
+  const load = useCallback(
+    async (ws: string, pid: string | null) => {
+      setFolders(null);
+      try {
+        const data = await api.listNodes(ws, pid);
+        setFolders(data.nodes.filter((n) => n.kind === 'folder' && !blocked.has(n.id)));
+        setBreadcrumbs(data.breadcrumbs);
+        setParentId(pid);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setFolders([]);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   useEffect(() => {
-    void load(targetWs, null).catch((e) => setError(String(e)));
-  }, [targetWs]);
+    void load(targetWs, null);
+  }, [targetWs, load]);
 
   async function confirm() {
     setBusy(true);
     setError('');
     try {
-      if (effectiveMode === 'copy' || crossRoot) {
+      if (effectiveMode === 'copy') {
         await api.copyNodes(
           nodes.map((n) => n.id),
           targetWs,
           parentId,
         );
       } else {
-        for (const n of nodes) {
-          await api.move(n.id, n.name, parentId);
-        }
+        for (const n of nodes) await api.move(n.id, n.name, parentId);
       }
-      onMoved();
+      onMoved({ workspaceId: targetWs, parentId, mode: effectiveMode });
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      setError(e instanceof Error ? e.message : t('move.failed'));
     } finally {
       setBusy(false);
     }
   }
 
-  const titleVerb = effectiveMode === 'copy' ? 'Copy' : 'Move';
+  const roots = workspaces;
+  const rootLabel = (w: Workspace) => (w.type === 'personal' ? t('nav.myFiles') : w.name);
+  const currentRoot = roots.find((w) => w.id === targetWs);
+  const title =
+    effectiveMode === 'copy'
+      ? t('move.copyTitle', { count: nodes.length, name: nodes[0]?.name ?? '' })
+      : t('move.moveTitle', { count: nodes.length, name: nodes[0]?.name ?? '' });
 
   return (
     <Modal
-      title={`${titleVerb} ${nodes.length} item${nodes.length === 1 ? '' : 's'}`}
-      subtitle={
-        crossRoot
-          ? 'Cross-root destination — items will be copied.'
-          : 'Choose a destination folder.'
-      }
+      title={title}
+      subtitle={crossRoot ? t('move.crossRoot') : t('move.subtitle')}
+      icon={effectiveMode === 'copy' ? <FolderCopyIcon size={17} /> : <FolderMoveIcon size={17} />}
       onClose={onClose}
       busy={busy}
+      width="max-w-lg"
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
+            {t('common.cancel')}
           </Button>
-          <Button
-            variant="primary"
-            disabled={busy}
-            icon={
-              busy ? (
-                <SpinnerIcon size={13} className="animate-spin" />
-              ) : (
-                <FolderMoveIcon size={14} />
-              )
-            }
-            onClick={() => void confirm()}
-          >
-            {effectiveMode === 'copy' ? 'Copy here' : 'Move here'}
+          <Button variant="primary" loading={busy} disabled={sameFolder && effectiveMode === 'move'} onClick={() => void confirm()}>
+            {effectiveMode === 'copy' ? t('move.copyHere') : t('move.moveHere')}
           </Button>
         </>
       }
     >
-      <div className="space-y-4">
-        <ModalField label="Destination root">
-          <select
-            value={targetWs}
-            onChange={(e) => setTargetWs(e.target.value)}
-            className="input-field cursor-pointer"
-          >
+      <div className="space-y-3">
+        {roots.length > 1 && (
+          <Select value={targetWs} onChange={(e) => setTargetWs(e.target.value)} aria-label={t('move.destinationRoot')}>
             {roots.map((w) => (
               <option key={w.id} value={w.id}>
-                {w.type === 'personal' ? 'My files' : w.name}
+                {rootLabel(w)}
               </option>
             ))}
-          </select>
-        </ModalField>
-
-        <nav className="flex flex-wrap items-center gap-0.5 text-[13px] text-muted">
+          </Select>
+        )}
+        <nav aria-label={t('files.breadcrumbs')} className="flex flex-wrap items-center gap-0.5 text-sm text-muted">
           <button
             type="button"
             onClick={() => void load(targetWs, null)}
-            className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-1 transition hover:bg-hover hover:text-ink"
+            className="flex items-center gap-1.5 rounded-md px-1.5 py-1 transition hover:bg-hover hover:text-ink"
           >
-            <HomeIcon size={13} /> Root
+            <HomeIcon size={14} /> {currentRoot ? rootLabel(currentRoot) : t('move.root')}
           </button>
-          {breadcrumbs.map((b) => (
+          {breadcrumbs.map((b, i) => (
             <span key={b.id} className="flex items-center gap-0.5">
-              <ChevronRightIcon size={12} className="text-faint" />
+              <ChevronRightIcon size={13} className="text-faint" />
               <button
                 type="button"
                 onClick={() => void load(targetWs, b.id)}
-                className="cursor-pointer rounded px-1.5 py-1 transition hover:bg-hover hover:text-ink"
+                className={`rounded-md px-1.5 py-1 transition hover:bg-hover hover:text-ink ${i === breadcrumbs.length - 1 ? 'font-medium text-ink' : ''}`}
               >
                 {b.name}
               </button>
             </span>
           ))}
         </nav>
-
-        <ul className="scroll-slim max-h-56 divide-y divide-line overflow-auto rounded-md border border-line bg-inset">
-          {folders.map((f) => (
+        <ul className="scroll-slim h-64 overflow-auto rounded-lg border border-line">
+          {folders === null && (
+            <li className="flex h-full items-center justify-center">
+              <Spinner className="text-faint" />
+            </li>
+          )}
+          {folders?.map((f) => (
             <li key={f.id}>
               <button
                 type="button"
                 onClick={() => void load(targetWs, f.id)}
-                className="flex w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-hover"
+                className="flex w-full items-center gap-3 px-3 py-2 text-left text-base transition hover:bg-hover coarse:py-3"
               >
-                <FolderIcon size={15} className="shrink-0 text-accent" />
-                <span className="truncate">{f.name}</span>
-                <ChevronRightIcon size={13} className="ml-auto shrink-0 text-faint" />
+                <FileGlyph name={f.name} kind="folder" size={24} />
+                <span className="min-w-0 flex-1 truncate text-ink">{f.name}</span>
+                <ChevronRightIcon size={14} className="shrink-0 text-faint" />
               </button>
             </li>
           ))}
-          {folders.length === 0 && (
-            <li className="px-3 py-8 text-center text-sm text-muted">No subfolders here.</li>
+          {folders?.length === 0 && (
+            <li className="flex h-full items-center justify-center px-3 text-sm text-muted">{t('move.noSubfolders')}</li>
           )}
         </ul>
-
         {error && <Notice kind="error">{error}</Notice>}
       </div>
     </Modal>
