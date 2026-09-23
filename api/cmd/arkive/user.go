@@ -33,7 +33,7 @@ func userUsage() {
 	fmt.Fprintln(os.Stderr, "Usage: arkive user <command> [arguments]\n\nCommands:")
 	for _, name := range sortedNames(userCommands) {
 		c := userCommands[name]
-		fmt.Fprintf(os.Stderr, "  %-15s %-40s %s\n", c.name, c.usage, c.summary)
+		fmt.Fprintf(os.Stderr, "  %-15s %-44s %s\n", c.name, c.usage, c.summary)
 	}
 }
 

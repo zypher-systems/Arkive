@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -233,6 +234,8 @@ func (h *Handler) serveAsset(w http.ResponseWriter, r *http.Request, a *asset) {
 			body = a.gz
 			etag = strings.TrimSuffix(a.etag, `"`) + `-gz"`
 			hd.Set("Content-Encoding", "gzip")
+			// ServeContent omits Content-Length once Content-Encoding is set.
+			hd.Set("Content-Length", strconv.Itoa(len(body)))
 		}
 	}
 	hd.Set("ETag", etag)
