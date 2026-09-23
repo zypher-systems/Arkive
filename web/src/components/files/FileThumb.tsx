@@ -152,7 +152,7 @@ export function FileThumb({
   allowRemote = true,
   rounded = true,
 }: {
-  node: Pick<Node, 'id' | 'name' | 'kind' | 'mime'>;
+  node: Pick<Node, 'id' | 'name' | 'kind' | 'mime'> & { updated_at?: string };
   size?: number;
   fill?: boolean;
   allowRemote?: boolean;
@@ -167,7 +167,7 @@ export function FileThumb({
       <span className="relative flex h-full w-full items-center justify-center overflow-hidden bg-inset">
         {canThumb ? (
           <img
-            src={thumbUrl(node.id)}
+            src={thumbUrl(node.id, node.updated_at)}
             alt=""
             loading="lazy"
             decoding="async"
@@ -188,7 +188,7 @@ export function FileThumb({
         style={{ width: size, height: size }}
       >
         <img
-          src={thumbUrl(node.id)}
+          src={thumbUrl(node.id, node.updated_at)}
           alt=""
           loading="lazy"
           decoding="async"

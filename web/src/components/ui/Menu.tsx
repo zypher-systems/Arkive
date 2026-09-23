@@ -94,7 +94,13 @@ export function MenuList({
       }
     }
     function onScroll(e: Event) {
-      if (ref.current && e.target instanceof Node && ref.current.contains(e.target)) return;
+      const target = e.target;
+      if (ref.current && target instanceof Node && ref.current.contains(target)) return;
+      // Only scrolling that moves the trigger closes the menu. A text field
+      // scrolling its own content back when it loses focus (a long query in
+      // Admin → Users search) used to close the menu the instant it opened.
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      if (anchor && target instanceof Node && !target.contains(anchor)) return;
       onClose('dismiss');
     }
     window.addEventListener('mousedown', onDown, true);

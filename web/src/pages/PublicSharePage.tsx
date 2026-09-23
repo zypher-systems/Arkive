@@ -222,7 +222,7 @@ function FolderView({ token, meta, password }: { token: string; meta: PublicMeta
       <div className="panel overflow-hidden shadow-sm">
         <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-4 sm:px-6">
           <FileGlyph name={meta.name} kind="folder" size={40} />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-[12rem] flex-1">
             <p className="text-xs font-medium text-muted">{t('public.sharedFolder')}</p>
             <nav aria-label={t('files.breadcrumbs')} className="flex min-w-0 flex-wrap items-center gap-0.5">
               {trail.map((c, i) => (

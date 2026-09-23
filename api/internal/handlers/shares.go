@@ -179,6 +179,8 @@ func (h *ShareHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusInternalServerError, "delete failed")
 		return
 	}
+	actor := user.ID
+	h.App.LogActivity(r.Context(), &nodeID, nil, &actor, "share.deleted", map[string]any{"share_id": shareID.String()})
 	h.App.Audit(r.Context(), r, user.ID.String(), "share.deleted", "share", shareID.String(), map[string]any{
 		"node_id": nodeID.String(),
 	})

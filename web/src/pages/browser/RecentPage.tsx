@@ -18,6 +18,7 @@ const ACTIONS: Record<string, TKey> = {
   'link.deleted': 'activity.linkDeleted',
   'link.downloaded': 'activity.linkDownload',
   'link.upload': 'activity.linkUpload',
+  'link.uploaded': 'activity.linkUpload',
 };
 
 function dayKey(d: Date) {

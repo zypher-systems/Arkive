@@ -15,6 +15,9 @@ import { FileGlyph } from '../files/FileThumb';
 import { isMarkdownName } from '../files/types';
 
 const MAX_EDIT_BYTES = 2 * 1024 * 1024;
+// The server refuses whole text bodies over 2 MB (413) but serves ranges;
+// a large file opens read-only with its first bytes.
+const PEEK_BYTES = 64 * 1024;
 
 type Pane = 'edit' | 'split' | 'preview';
 
@@ -123,12 +126,13 @@ export default function TextEditor({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(contentUrl(node.id), { credentials: 'include' })
+    const big = (node.size || 0) > MAX_EDIT_BYTES;
+    fetch(contentUrl(node.id), { credentials: 'include', headers: big ? { Range: `bytes=0-${PEEK_BYTES - 1}` } : undefined })
       .then(async (res) => {
         if (!res.ok) throw new Error(t('editor.loadFailed'));
         const buf = await res.arrayBuffer();
         if (cancelled) return;
-        const over = buf.byteLength > MAX_EDIT_BYTES;
+        const over = big || buf.byteLength > MAX_EDIT_BYTES;
         setTooLarge(over);
         const text = new TextDecoder().decode(over ? buf.slice(0, MAX_EDIT_BYTES) : buf);
         setOriginal(text);

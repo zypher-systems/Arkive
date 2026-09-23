@@ -1,0 +1,17 @@
+{
+  "name": "arkive-e2e",
+  "private": true,
+  "version": "1.1.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.15.3",
+    "typescript": "5.8.3"
+  }
+}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"strconv"
 	"strings"
@@ -183,6 +184,8 @@ func (h *PublicHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusInternalServerError, "delete failed")
 		return
 	}
+	actor := user.ID
+	h.App.LogActivity(r.Context(), &nodeID, nil, &actor, "link.deleted", map[string]any{"link_id": linkID.String()})
 	h.App.Audit(r.Context(), r, user.ID.String(), "link.deleted", "link", linkID.String(), map[string]any{
 		"node_id": nodeID.String(),
 	})
@@ -197,6 +200,7 @@ type resolvedPublic struct {
 	kind        string
 	storageKey  *string
 	mime        *string
+	size        int64
 	mode        string
 	needsPass   bool
 	unlocked    bool // password verified this request; mint unlock cookie
@@ -223,17 +227,30 @@ func (h *PublicHandler) setLinkUnlockCookie(w http.ResponseWriter, token string,
 	})
 }
 
+// checkLinkPassword verifies an X-Link-Password header. HTTP header values
+// are Latin-1, so the web UI percent-encodes the password (UTF-8); raw values
+// from older clients and scripts are still accepted.
+func checkLinkPassword(header, hash string) bool {
+	if auth.CheckPassword(header, hash) {
+		return true
+	}
+	if decoded, err := url.PathUnescape(header); err == nil && decoded != header {
+		return auth.CheckPassword(decoded, hash)
+	}
+	return false
+}
+
 func (h *PublicHandler) resolveLink(r *http.Request, token string) resolvedPublic {
 	var passHash *string
 	var expires *time.Time
 	var out resolvedPublic
 	err := h.App.DB.QueryRow(r.Context(), `
-		SELECT pl.id, pl.password_hash, pl.expires_at, pl.mode, n.id, n.workspace_id, n.name, n.kind, n.storage_key, n.mime
+		SELECT pl.id, pl.password_hash, pl.expires_at, pl.mode, n.id, n.workspace_id, n.name, n.kind, n.storage_key, n.mime, n.size
 		FROM public_links pl
 		JOIN nodes n ON n.id = pl.node_id
 		WHERE pl.token = $1 AND n.deleted_at IS NULL
 	`, token).Scan(
-		&out.linkID, &passHash, &expires, &out.mode, &out.nodeID, &out.workspaceID, &out.name, &out.kind, &out.storageKey, &out.mime,
+		&out.linkID, &passHash, &expires, &out.mode, &out.nodeID, &out.workspaceID, &out.name, &out.kind, &out.storageKey, &out.mime, &out.size,
 	)
 	if err != nil {
 		out.errCode = http.StatusNotFound
@@ -246,7 +263,7 @@ func (h *PublicHandler) resolveLink(r *http.Request, token string) resolvedPubli
 		return out
 	}
 	if passHash != nil && *passHash != "" {
-		if pass := r.Header.Get("X-Link-Password"); pass != "" && auth.CheckPassword(pass, *passHash) {
+		if pass := r.Header.Get("X-Link-Password"); pass != "" && checkLinkPassword(pass, *passHash) {
 			out.unlocked = true
 		} else if c, err := r.Cookie(linkUnlockCookieName(token)); err == nil &&
 			crypto.VerifyLinkUnlock(h.App.Cfg.SecretsKey, token, c.Value) {
@@ -355,6 +372,7 @@ func (h *PublicHandler) Meta(w http.ResponseWriter, r *http.Request) {
 		"name":    res.name,
 		"kind":    res.kind,
 		"mime":    res.mime,
+		"size":    res.size,
 		"mode":    res.mode,
 	})
 }

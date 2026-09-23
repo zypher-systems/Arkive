@@ -45,6 +45,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default storage is a local folder (`/data/arkive`); MinIO is no longer in Compose
 - Admin storage type “NFS” is now “Local folder” (existing `nfs` backends still work)
 - GitHub Actions CI on pull requests only (tests + compose smoke; no image publish)
+- Playwright end-to-end suite (`e2e/`, `make e2e`) against the real stack; CI runs it on both compose layouts between the compose smokes and uploads the report and traces on failure
+
+### Fixed
+
+- Someone with a write share could move items out of the shared folder into the owner's workspace root; paste, zip download and undo of a delete inside a folder shared with you were refused
+- Moving a folder into its own subfolder was accepted (detaching the tree), and copying a folder into itself never finished
+- Copy/paste next to the original failed with a raw database error; copies now get "name (1).ext"
+- A move or rename without a name renamed the item to "."
+- Video and audio previews ignored byte ranges (no seeking; Safari would not play)
+- Public link passwords with non-ASCII characters never unlocked; the link page now shows the file size
+- Old versions downloaded as `report.pdf.v3`; now `report.v3.pdf`
+- Removing a share or public link now shows in Recent and the item's activity
+- Web: Move to… inside a folder shared with you starts at that folder (it listed the owner's root and moved files there)
+- Web: a text file over 2 MB opens read-only and truncated instead of failing to load
+- Web: after too many wrong 2FA codes the sign-in goes back to the password step instead of retrying a dead challenge
+- Web: menus opened right after typing a long search (Admin → Users actions) closed immediately
+- Web: thumbnails refresh after a file changes; files received through upload links are labelled in Recent
+- Web: on phones, page headers with several actions (Trash with a workspace picker) and a few forms squeezed their titles to one letter
+- Web: accessible names for file rows, pending-user Approve/Reject buttons and settings cards
 
 ## [1.0.0] - 2026-08-12
 

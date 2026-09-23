@@ -107,16 +107,20 @@ export function LoginPage() {
       }
       const result = await api.register(email, password, displayName);
       if ('message' in result && result.status === 'pending') {
-        setInfo(result.message || t('auth.pendingInfo'));
+        // The server's message is English-only; the localized text says more.
+        setInfo(t('auth.pendingInfo'));
         setMode('login');
         return;
       }
       signedIn(result as User);
     } catch (err) {
       if (mode === 'twofactor' && err instanceof ApiError && (err.status === 401 || err.status === 410)) {
-        // Challenge expired (5 min TTL) or wrong code.
-        setError(err.status === 410 || /expired|challenge/i.test(err.message) ? t('auth.twofa.expired') : t('auth.twofa.invalid'));
-        if (err.status === 410) setMode('login');
+        // Challenge expired (5 min TTL), used up by too many wrong codes
+        // (401 "invalid or expired challenge"), or just a wrong code (401
+        // "invalid code"). A dead challenge needs the password again.
+        const expired = err.status === 410 || /expired|challenge/i.test(err.message);
+        setError(expired ? t('auth.twofa.expired') : t('auth.twofa.invalid'));
+        if (expired) setMode('login');
       } else {
         setError(friendly(err));
       }

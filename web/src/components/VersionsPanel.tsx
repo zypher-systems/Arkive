@@ -119,6 +119,7 @@ const ACTION_KEYS: Record<string, Parameters<ReturnType<typeof useI18n>['t']>[0]
   'link.download': 'activity.linkDownload',
   'link.downloaded': 'activity.linkDownload',
   'link.upload': 'activity.linkUpload',
+  'link.uploaded': 'activity.linkUpload',
 };
 
 export function ActivitySection({ node }: { node: Node }) {

@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/arkive/arkive/internal/app"
+	"github.com/arkive/arkive/internal/db"
 	"github.com/arkive/arkive/internal/httpjson"
 	"github.com/arkive/arkive/internal/middleware"
 	"github.com/arkive/arkive/internal/models"
@@ -24,12 +27,15 @@ func (h *FileHandler) CopyNodes(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusBadRequest, "node_ids and target_workspace_id required")
 		return
 	}
-	if err := h.App.RequireWorkspaceAccess(r.Context(), req.TargetWorkspaceID, user.ID, true); err != nil {
-		status, msg := app.WriteHTTPError(err)
-		httpjson.Error(w, status, msg)
-		return
-	}
-	if req.TargetParentID != nil {
+	// The workspace root needs membership; a folder needs write access to it,
+	// which a write share grants (pasting inside a folder shared with you).
+	if req.TargetParentID == nil {
+		if err := h.App.RequireWorkspaceAccess(r.Context(), req.TargetWorkspaceID, user.ID, true); err != nil {
+			status, msg := app.WriteHTTPError(err)
+			httpjson.Error(w, status, msg)
+			return
+		}
+	} else {
 		ws, err := h.App.RequireNodeAccess(r.Context(), *req.TargetParentID, user.ID, true)
 		if err != nil {
 			status, msg := app.WriteHTTPError(err)
@@ -48,6 +54,18 @@ func (h *FileHandler) CopyNodes(w http.ResponseWriter, r *http.Request) {
 			status, msg := app.WriteHTTPError(err)
 			httpjson.Error(w, status, msg)
 			return
+		}
+		if req.TargetParentID != nil {
+			// A folder copied into itself would copy its own copy forever.
+			inside, err := h.App.IsSelfOrDescendant(r.Context(), *req.TargetParentID, id)
+			if err != nil {
+				httpjson.Error(w, http.StatusInternalServerError, "query failed")
+				return
+			}
+			if inside {
+				httpjson.Error(w, http.StatusBadRequest, "cannot copy a folder into itself")
+				return
+			}
 		}
 		sz, err := h.App.TreeSize(r.Context(), id)
 		if err != nil {
@@ -123,14 +141,27 @@ func (h *FileHandler) copyNodeTree(r *http.Request, srcID, destWS uuid.UUID, des
 		}
 	}
 
+	// Copying next to the original (or onto any taken name) picks "name (1)"
+	// and so on, like uploads through a file request; the unique name indexes
+	// make the pick race-free.
 	var n models.Node
-	err = h.App.DB.QueryRow(r.Context(), `
-		INSERT INTO nodes (id, workspace_id, parent_id, name, kind, size, mime, storage_key, checksum, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
-	`, newID, destWS, destParent, src.Name, src.Kind, src.Size, src.Mime, newKey, src.Checksum, actor).Scan(
-		&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt,
-	)
+	for i := 0; i <= maxCollisionSuffix; i++ {
+		name := collisionName(src.Name, i)
+		if src.Kind == "folder" && i > 0 {
+			name = fmt.Sprintf("%s (%d)", src.Name, i)
+		}
+		err = h.App.DB.QueryRow(r.Context(), `
+			INSERT INTO nodes (id, workspace_id, parent_id, name, kind, size, mime, storage_key, checksum, created_by)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			ON CONFLICT DO NOTHING
+			RETURNING id, workspace_id, parent_id, name, kind, size, mime, checksum, created_by, created_at, updated_at
+		`, newID, destWS, destParent, name, src.Kind, src.Size, src.Mime, newKey, src.Checksum, actor).Scan(
+			&n.ID, &n.WorkspaceID, &n.ParentID, &n.Name, &n.Kind, &n.Size, &n.Mime, &n.Checksum, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt,
+		)
+		if !errors.Is(err, db.ErrNoRows) {
+			break
+		}
+	}
 	if err != nil {
 		if newKey != nil {
 			if destStore, serr := h.App.StoreForWorkspace(r.Context(), destWS); serr == nil {

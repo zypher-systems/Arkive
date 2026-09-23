@@ -726,7 +726,7 @@ export const api = {
   publicMeta: async (token: string, password?: string) => {
     const res = await fetch(`/api/public/${token}`, {
       credentials: 'include',
-      headers: password ? { 'X-Link-Password': password } : {},
+      headers: password ? { 'X-Link-Password': encodeLinkPassword(password) } : {},
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new ApiError(data.error || res.statusText, res.status, data);
@@ -744,7 +744,7 @@ export const api = {
       {
         headers: {
           'Content-Type': file.type || 'application/octet-stream',
-          ...(opts.password ? { 'X-Link-Password': opts.password } : {}),
+          ...(opts.password ? { 'X-Link-Password': encodeLinkPassword(opts.password) } : {}),
         },
         onProgress: opts.onProgress,
         signal: opts.signal,
@@ -754,7 +754,7 @@ export const api = {
     const q = parentId ? `?parent_id=${encodeURIComponent(parentId)}` : '';
     const res = await fetch(`/api/public/${token}/nodes${q}`, {
       credentials: 'include',
-      headers: password ? { 'X-Link-Password': password } : {},
+      headers: password ? { 'X-Link-Password': encodeLinkPassword(password) } : {},
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new ApiError(data.error || res.statusText, res.status, data);
@@ -771,7 +771,7 @@ export const api = {
   publicDownload: async (token: string, nodeId?: string, password?: string) => {
     const res = await fetch(api.publicDownloadUrl(token, nodeId), {
       credentials: 'include',
-      headers: password ? { 'X-Link-Password': password } : {},
+      headers: password ? { 'X-Link-Password': encodeLinkPassword(password) } : {},
     });
     if (!res.ok) throw await readError(res);
     const blob = await res.blob();
@@ -785,7 +785,7 @@ export const api = {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        ...(password ? { 'X-Link-Password': password } : {}),
+        ...(password ? { 'X-Link-Password': encodeLinkPassword(password) } : {}),
       },
       body: JSON.stringify({ node_ids: nodeIds || [] }),
     });
@@ -897,12 +897,18 @@ export function downloadUrl(nodeId: string) {
   return `/api/nodes/${nodeId}/download`;
 }
 
+/** HTTP header values are Latin-1: send link passwords percent-encoded (UTF-8). */
+export function encodeLinkPassword(password: string) {
+  return encodeURIComponent(password);
+}
+
 export function contentUrl(nodeId: string) {
   return `/api/nodes/${nodeId}/content`;
 }
 
-export function thumbUrl(nodeId: string) {
-  return `/api/nodes/${nodeId}/thumb`;
+/** `version` (the node's updated_at) busts the day-long thumbnail cache after edits. */
+export function thumbUrl(nodeId: string, version?: string) {
+  return `/api/nodes/${nodeId}/thumb${version ? `?v=${encodeURIComponent(version)}` : ''}`;
 }
 
 export function isPreviewable(node: Node) {

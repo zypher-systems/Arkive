@@ -170,6 +170,7 @@ export function FolderPage({ shared = false }: { shared?: boolean }) {
     nodes: sorted,
     workspaces,
     reload: folder.reload,
+    sharedRoot: shared && rootId && sharedRoot ? { id: rootId, name: sharedRoot.name } : undefined,
     onFileCreated: (n) => {
       opener.open(n, { edit: true });
     },

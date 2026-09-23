@@ -278,6 +278,7 @@ export function UsersTab({ users, me, refresh }: Props) {
                     size="sm"
                     variant="secondary"
                     disabled={busyId === u.id}
+                    aria-label={t('admin.users.rejectFor', { email: u.email })}
                     icon={<UserMinusIcon size={14} />}
                     onClick={() =>
                       ask({
@@ -303,6 +304,7 @@ export function UsersTab({ users, me, refresh }: Props) {
                     size="sm"
                     variant="primary"
                     loading={busyId === u.id}
+                    aria-label={t('admin.users.approveFor', { email: u.email })}
                     icon={<UserCheckIcon size={14} />}
                     onClick={() => void run(u.id, () => api.approveUser(u.id), t('admin.users.approved', { email: u.email }))}
                   >

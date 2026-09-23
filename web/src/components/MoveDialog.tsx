@@ -14,15 +14,21 @@ type Props = {
   workspaces: Workspace[];
   nodes: Node[];
   mode?: 'move' | 'copy';
+  /**
+   * Browsing a folder shared with the user: its workspace belongs to someone
+   * else, so the picker starts (and stops) at the shared folder.
+   */
+  root?: { id: string; name: string };
   onClose: () => void;
   onMoved: (dest: { workspaceId: string; parentId: string | null; mode: 'move' | 'copy' }) => void;
 };
 
 /** Folder picker for Move / Copy to… (cross-root destinations always copy). */
-export function MoveDialog({ workspaceId, workspaces, nodes, mode = 'move', onClose, onMoved }: Props) {
+export function MoveDialog({ workspaceId, workspaces, nodes, mode = 'move', root, onClose, onMoved }: Props) {
   const { t } = useI18n();
   const [targetWs, setTargetWs] = useState(workspaceId);
-  const [parentId, setParentId] = useState<string | null>(null);
+  const topOf = (ws: string) => (root && ws === workspaceId ? root.id : null);
+  const [parentId, setParentId] = useState<string | null>(topOf(workspaceId));
   const [folders, setFolders] = useState<Node[] | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<Breadcrumb[]>([]);
   const [error, setError] = useState('');
@@ -38,7 +44,9 @@ export function MoveDialog({ workspaceId, workspaces, nodes, mode = 'move', onCl
       try {
         const data = await api.listNodes(ws, pid);
         setFolders(data.nodes.filter((n) => n.kind === 'folder' && !blocked.has(n.id)));
-        setBreadcrumbs(data.breadcrumbs);
+        // Inside a shared folder, the path starts below the shared root.
+        const top = root && ws === workspaceId ? data.breadcrumbs.findIndex((b) => b.id === root.id) : -1;
+        setBreadcrumbs(top >= 0 ? data.breadcrumbs.slice(top + 1) : data.breadcrumbs);
         setParentId(pid);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -50,7 +58,8 @@ export function MoveDialog({ workspaceId, workspaces, nodes, mode = 'move', onCl
   );
 
   useEffect(() => {
-    void load(targetWs, null);
+    void load(targetWs, topOf(targetWs));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetWs, load]);
 
   async function confirm() {
@@ -75,7 +84,10 @@ export function MoveDialog({ workspaceId, workspaces, nodes, mode = 'move', onCl
     }
   }
 
-  const roots = workspaces;
+  const roots: Workspace[] =
+    root && !workspaces.some((w) => w.id === workspaceId)
+      ? [{ id: workspaceId, name: root.name, type: 'team', created_at: '' }, ...workspaces]
+      : workspaces;
   const rootLabel = (w: Workspace) => (w.type === 'personal' ? t('nav.myFiles') : w.name);
   const currentRoot = roots.find((w) => w.id === targetWs);
   const title =
@@ -115,7 +127,7 @@ export function MoveDialog({ workspaceId, workspaces, nodes, mode = 'move', onCl
         <nav aria-label={t('files.breadcrumbs')} className="flex flex-wrap items-center gap-0.5 text-sm text-muted">
           <button
             type="button"
-            onClick={() => void load(targetWs, null)}
+            onClick={() => void load(targetWs, topOf(targetWs))}
             className="flex items-center gap-1.5 rounded-md px-1.5 py-1 transition hover:bg-hover hover:text-ink"
           >
             <HomeIcon size={14} /> {currentRoot ? rootLabel(currentRoot) : t('move.root')}
