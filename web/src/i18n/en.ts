@@ -42,6 +42,10 @@ export const en = {
     previous: 'Previous',
   },
 
+  errors: {
+    network: 'Network error — check your connection and try again.',
+  },
+
   nav: {
     files: 'Files',
     myFiles: 'My files',

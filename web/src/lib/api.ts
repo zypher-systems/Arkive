@@ -1,3 +1,5 @@
+import { t } from '../i18n';
+
 export type User = {
   id: string;
   email: string;
@@ -274,7 +276,7 @@ export function xhrUpload<T>(
         }
         return;
       }
-      let message = xhr.statusText || 'Upload failed';
+      let message = xhr.statusText || t('upload.failed');
       let data: unknown;
       try {
         data = JSON.parse(xhr.responseText);
@@ -285,7 +287,7 @@ export function xhrUpload<T>(
       }
       reject(new ApiError(message, xhr.status, data));
     };
-    xhr.onerror = () => reject(new ApiError('Network error', 0));
+    xhr.onerror = () => reject(new ApiError(t('errors.network'), 0));
     xhr.onabort = () => reject(new DOMException('Aborted', 'AbortError'));
     xhr.send(body);
   });

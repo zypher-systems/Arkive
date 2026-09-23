@@ -19,6 +19,7 @@ import {
   xhrTransport,
 } from './tus';
 import type { PickedFile } from './dropFiles';
+import { t } from '../i18n';
 
 /** Files above this go through tus (contract §1); smaller ones use a single PUT. */
 export const TUS_THRESHOLD = 8 * 1024 * 1024;
@@ -323,7 +324,8 @@ export class UploadEngine {
             endpoint: '/api/uploads',
             metadata: {
               workspace_id: item.target.workspaceId,
-              parent_id: parentId || '',
+              // Omitted for the workspace root (contract: empty = root).
+              parent_id: parentId || undefined,
               filename: item.name,
               content_type: item.file.type || 'application/octet-stream',
             },
@@ -373,8 +375,12 @@ export class UploadEngine {
     } catch (e) {
       const current = this.items.get(id);
       if (current?.status === 'canceled' || controller.signal.aborted) return;
-      const msg =
-        e instanceof Error && e.name !== 'AbortError' ? e.message || 'Upload failed' : 'Upload failed';
+      const offline = (e instanceof ApiError || e instanceof TusError) && e.status === 0;
+      const msg = offline
+        ? t('errors.network')
+        : e instanceof Error && e.name !== 'AbortError' && e.message
+          ? e.message
+          : t('upload.failed');
       this.patch(id, { status: 'error', error: msg, rate: 0, eta: null }, true);
     } finally {
       this.running.delete(id);

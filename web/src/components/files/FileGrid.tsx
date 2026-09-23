@@ -96,8 +96,11 @@ export function FileGrid({
       aria-multiselectable={selectable || undefined}
       aria-activedescendant={cursor ? `row-${cursor}` : undefined}
       tabIndex={nodes.length ? 0 : -1}
-      onFocus={() => {
-        if (!cursor && nodes[0]) selection.setCursor(nodes[0].id);
+      onFocus={(e) => {
+        // Only keyboard focus seeds the cursor; a pointer focus is followed by its own click.
+        if (!cursor && nodes[0] && e.target === e.currentTarget && e.currentTarget.matches(':focus-visible')) {
+          selection.setCursor(nodes[0].id);
+        }
       }}
       className="group/list relative outline-none"
       style={{ height: nodes.length ? virtualizer.getTotalSize() : undefined }}
@@ -172,9 +175,9 @@ export function FileGrid({
                   }}
                   className={`flex h-8 w-8 items-center justify-center rounded-md transition coarse:h-10 coarse:w-10 ${
                     mode === 'gallery'
-                      ? 'bg-black/40 text-white hover:bg-black/60'
-                      : 'text-muted hover:bg-active hover:text-ink'
-                  } opacity-0 group-hover:opacity-100 coarse:opacity-100 ${isSel ? '!opacity-100' : ''}`}
+                      ? 'bg-black/40 text-white hover:bg-black/60 coarse:hidden'
+                      : 'text-muted hover:bg-active hover:text-ink coarse:opacity-100'
+                  } opacity-0 group-hover:opacity-100 ${isSel ? '!opacity-100' : ''}`}
                 >
                   <MoreIcon size={16} />
                 </button>

@@ -10,6 +10,16 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Framework code changes rarely; keep it in its own long-cached chunk.
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-dom/client', 'react-router-dom', '@tanstack/react-virtual'],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': process.env.ARKIVE_API_PROXY || 'http://localhost:8080',

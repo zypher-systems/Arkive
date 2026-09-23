@@ -124,6 +124,17 @@ export function UploadPanel() {
     lastCount.current = items.length;
   }, [items.length]);
 
+  // A clean finish tidies itself away after a moment; failures stay until handled.
+  const cleanFinish = !running && items.length > 0 && s.failed === 0 && interrupted.length === 0;
+  useEffect(() => {
+    if (!cleanFinish) return;
+    const tm = window.setTimeout(() => {
+      engine.clearFinished();
+      setHidden(true);
+    }, 5000);
+    return () => window.clearTimeout(tm);
+  }, [cleanFinish, engine]);
+
   if (hidden || (items.length === 0 && interrupted.length === 0)) return null;
 
   const title = running

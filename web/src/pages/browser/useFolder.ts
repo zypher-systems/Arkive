@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type Breadcrumb, type Node } from '../../lib/api';
+import { t } from '../../i18n';
 
 function isAbort(e: unknown) {
   return (e instanceof DOMException || e instanceof Error) && e.name === 'AbortError';
@@ -33,7 +34,7 @@ export function useFolder(workspaceId: string | undefined, parentId: string | nu
         setStatus(null);
       } catch (e) {
         if (isAbort(e)) return;
-        setError(e instanceof Error ? e.message : 'Load failed');
+        setError(e instanceof Error && e.message ? e.message : t('files.loadFailed'));
         setStatus((e as { status?: number }).status ?? 0);
         if (!silent) setNodes([]);
       } finally {

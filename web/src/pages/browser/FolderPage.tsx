@@ -6,6 +6,7 @@ import { sortNodes, type SortSpec } from '../../lib/sort';
 import { useWorkspaces } from '../../lib/workspaces';
 import { useUploadEngine } from '../../lib/uploads';
 import { useAuth } from '../../lib/auth';
+import { useLatest } from '../../lib/hooks';
 import { useI18n } from '../../i18n';
 import { Breadcrumbs, type Crumb } from '../../components/files/Breadcrumbs';
 import { FileList, RowAction } from '../../components/files/FileList';
@@ -206,19 +207,20 @@ export function FolderPage({ shared = false }: { shared?: boolean }) {
   }, [workspaceId, listParent, folderName, canWrite, ops.newFolder, ops.newFile, setActiveFolder]);
   useEffect(() => () => setActiveFolder(null), [setActiveFolder]);
 
-  // Refresh when uploads land here.
+  // Refresh (debounced) when uploads land here.
+  const reloadRef = useLatest(folder.reload);
   useEffect(() => {
     let timer: number | null = null;
     const off = engine.onUploaded((e) => {
       if (e.workspaceId !== workspaceId || (e.parentId || null) !== listParent) return;
       if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(() => void folder.reload(true), 250);
+      timer = window.setTimeout(() => void reloadRef.current(true), 250);
     });
     return () => {
       off();
       if (timer) window.clearTimeout(timer);
     };
-  }, [engine, workspaceId, listParent, folder]);
+  }, [engine, workspaceId, listParent, reloadRef]);
 
   // ?focus=<id> (from search) selects the item and opens it.
   const focusId = params.get('focus');

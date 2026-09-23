@@ -89,7 +89,10 @@ export function RecentPage() {
                         }}
                         className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-hover disabled:cursor-default disabled:hover:bg-transparent coarse:py-3.5"
                       >
-                        <FileThumb node={{ id: ev.node_id || '', name, kind: name.includes('.') ? 'file' : 'folder', mime: null }} size={34} />
+                        <FileThumb
+                          node={{ id: ev.node_name ? ev.node_id || '' : '', name, kind: ev.node_name && !name.includes('.') ? 'folder' : 'file', mime: null }}
+                          size={34}
+                        />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-base font-medium text-ink">{name}</span>
                           <span className="block truncate text-sm text-muted">

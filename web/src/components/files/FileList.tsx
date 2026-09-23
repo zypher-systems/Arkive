@@ -199,8 +199,11 @@ export function FileList({
         tabIndex={nodes.length ? 0 : -1}
         className="group/list relative outline-none"
         style={{ height: nodes.length ? virtualizer.getTotalSize() : undefined }}
-        onFocus={() => {
-          if (!cursor && nodes[0]) selection.setCursor(nodes[0].id);
+        onFocus={(e) => {
+          // Only keyboard focus seeds the cursor; a pointer focus is followed by its own click.
+          if (!cursor && nodes[0] && e.target === e.currentTarget && e.currentTarget.matches(':focus-visible')) {
+            selection.setCursor(nodes[0].id);
+          }
         }}
       >
         {nodes.length === 0 && emptyState}
@@ -316,7 +319,7 @@ export function FileList({
                     {node.name}
                   </span>
                   {compact && <span className="block truncate text-xs text-muted">{meta}</span>}
-                  {!compact && mode === 'details' && (
+                  {!compact && mode === 'details' && !cols.some((c) => c.key === 'type') && (
                     <span className="block truncate text-xs text-muted">
                       {node.kind === 'folder' ? t('files.folder') : `${nameExtLabel(node.name)} · ${formatBytes(node.size)}`}
                     </span>
