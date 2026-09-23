@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in Arkive doesn't work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. **Security problems go through a private advisory, not an issue** — see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Arkive version
+      description: Shown in the user menu, or `docker compose exec arkive arkive version`.
+      placeholder: 1.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options: [SQLite (default), PostgreSQL]
+    validations:
+      required: true
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Storage backend
+      options: [Local folder (default), S3-compatible, WebDAV, Google Drive, Not sure]
+  - type: input
+    id: client
+    attributes:
+      label: Browser or WebDAV client
+      placeholder: Firefox 131 / rclone 1.68 / macOS Finder …
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server logs
+      description: Relevant lines from `docker compose logs arkive`. Remove anything private.
+      render: text
