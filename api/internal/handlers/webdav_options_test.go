@@ -2,9 +2,9 @@ package handlers
 
 import "testing"
 
-func TestWebDAVAdvertisesClass1(t *testing.T) {
-	if davClassHeader != "1" {
-		t.Fatalf("DAV class=%q want 1", davClassHeader)
+func TestWebDAVAdvertisesClass2(t *testing.T) {
+	if davClassHeader != "1, 2" {
+		t.Fatalf("DAV class=%q want \"1, 2\"", davClassHeader)
 	}
 }
 
