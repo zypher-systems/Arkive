@@ -17,13 +17,13 @@ Do not back up only the database. Node rows point at storage keys that must exis
 Stop writes, then copy both volumes. A simple drill:
 
 ```bash
-docker compose stop api web
+docker compose stop arkive
 docker run --rm \
   -v arkive_postgres_data:/pg \
   -v arkive_arkive_data:/data \
   -v "$PWD/backup:/out" \
   alpine tar czf /out/arkive-$(date +%Y%m%d).tar.gz -C / pg data
-docker compose start api web
+docker compose start arkive
 ```
 
 Volume names may be prefixed with the project directory (`arkive_postgres_data`). Check with `docker volume ls`.
@@ -38,12 +38,12 @@ docker compose exec -T postgres pg_dump -U arkive arkive > arkive.sql
 
 1. Stop the stack: `docker compose down`
 2. Recreate empty volumes or extract the tarball into the volume mount points
-3. Start Postgres, then API (goose migrations run on API start)
+3. Start Postgres, then `arkive` (goose migrations run on start)
 4. Confirm `/api/ready` returns `{"status":"ok"}`
 5. Sign in and download a known file
 
-If you restore Postgres onto a newer Arkive image, migrations apply automatically. Do not restore a newer database onto an older API binary.
+If you restore Postgres onto a newer Arkive image, migrations apply automatically. Do not restore a newer database onto an older binary.
 
 ## Secrets
 
-`ARKIVE_SECRETS_KEY` encrypts S3 credentials in Postgres. Restoring a DB backup with a different secrets key makes stored backend credentials unreadable — re-enter them under Admin → Storage.
+`ARKIVE_SECRETS_KEY` encrypts stored storage, SMTP and Google Drive credentials in Postgres. When it is not set in the environment, it lives in `/data/arkive/.arkive-secrets` inside the `arkive_data` volume, so the snapshot above already includes it. Restoring a DB backup with a different secrets key makes stored credentials unreadable — re-enter them under Admin → Storage / SMTP.

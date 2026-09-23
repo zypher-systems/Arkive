@@ -7,8 +7,11 @@ import (
 	"time"
 
 	"github.com/arkive/arkive/internal/app"
+	"github.com/arkive/arkive/internal/buildinfo"
 	"github.com/arkive/arkive/internal/httpjson"
+	"github.com/arkive/arkive/internal/metrics"
 	"github.com/arkive/arkive/internal/middleware"
+	"github.com/arkive/arkive/internal/webui"
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 )
@@ -28,10 +31,12 @@ func NewRouter(a *app.App) http.Handler {
 	gdriveH := &GDriveHandler{App: a}
 	settingsH := &SettingsHandler{App: a}
 	auditH := &AuditHandler{App: a}
+	platformH := &PlatformHandler{App: a, Auth: authH}
 
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
-	r.Use(chimw.RealIP)
+	// Honours X-Forwarded-For only from ARKIVE_TRUSTED_PROXIES peers.
+	r.Use(middleware.RealIP)
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Logger)
 
@@ -75,6 +80,11 @@ func NewRouter(a *app.App) http.Handler {
 
 	authLimit := middleware.NewIPRateLimiter(20, 15*time.Minute)
 	twoFactorLimit := middleware.NewIPRateLimiter(20, 15*time.Minute)
+
+	// First-run setup + public instance aggregate.
+	r.Get("/api/setup", platformH.GetSetup)
+	r.With(middleware.RateLimit(authLimit)).Post("/api/setup", platformH.PostSetup)
+	r.Get("/api/instance", platformH.Instance)
 
 	r.Route("/api/auth", func(r chi.Router) {
 		r.With(middleware.RateLimit(authLimit)).Post("/register", authH.Register)
@@ -214,11 +224,28 @@ func NewRouter(a *app.App) http.Handler {
 		})
 	})
 
-	// WebDAV verbs (PROPFIND/MKCOL/…) are not in chi's method map — route outside chi.
+	var m *metrics.Metrics
+	if a.Cfg.MetricsEnabled {
+		m = metrics.New(buildinfo.Version, metrics.Sources{
+			ActiveSessions: a.ActiveSessionCount,
+			StorageBytes:   a.StorageBytesUsed,
+		})
+		r.Get("/metrics", m.Handler(a.Cfg.MetricsToken).ServeHTTP)
+	}
+
+	// Everything else is the embedded SPA (index.html fallback for client
+	// routes). It answers 404 for unknown /api, /dav and /metrics paths.
+	spa := webui.New()
+	r.Get("/*", spa.ServeHTTP)
+	r.Head("/*", spa.ServeHTTP)
+
+	// WebDAV verbs (PROPFIND/MKCOL/...) are not in chi's method map, so route outside chi.
 	// File managers (Finder, Explorer) issue bursts of PROPFIND/GET while browsing.
 	davLimit := middleware.NewIPRateLimiter(1200, time.Minute)
 	davAuth := middleware.RateLimit(davLimit)(middleware.RequireAuthOrBasic(authH.SessionLookup(), davH.BasicLookup())(davH))
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	var root http.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// nginx used to add nosniff to every /api response.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if req.URL.Path == "/dav" {
 			// Some clients mount the bare prefix; treat it as the workspace list.
 			req.URL.Path = "/dav/"
@@ -230,4 +257,8 @@ func NewRouter(a *app.App) http.Handler {
 		}
 		r.ServeHTTP(w, req)
 	})
+	if m != nil {
+		root = m.Instrument(root)
+	}
+	return root
 }

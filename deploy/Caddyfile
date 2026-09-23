@@ -1,10 +1,12 @@
 # TLS at Caddy. Point DNS at this host, then:
 #   caddy run --config deploy/Caddyfile
 #
-# Arkive compose web listens on 127.0.0.1:3080 (map host 3080 → container 8080).
-# Set on the API:
+# The Arkive container is published on host port 3080 (container 8080).
+# Set on the arkive service:
 #   ARKIVE_PUBLIC_URL=https://arkive.example.com
 #   ARKIVE_COOKIE_SECURE=true
+#   ARKIVE_TRUSTED_PROXIES=127.0.0.1/32,172.16.0.0/12   (prod overlay default)
+# Arkive only reads X-Forwarded-For from trusted proxy addresses.
 #
 # Outer body-size limit should match ARKIVE_MAX_UPLOAD_BYTES (default 10 GiB).
 # Replace X-Forwarded-For — do not append a client-supplied value.

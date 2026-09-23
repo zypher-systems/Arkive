@@ -1,0 +1,28 @@
+# Convenience targets. Docker users only need `docker compose up -d`.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+WEBUI_DIST := api/internal/webui/dist
+
+.PHONY: build web embed-web api test image clean-web
+
+## build: web UI + single arkive binary with the UI embedded (./arkive)
+build: embed-web api
+
+web:
+	cd web && npm ci && npm run build
+
+embed-web: web
+	find $(WEBUI_DIST) -mindepth 1 ! -name .gitkeep -exec rm -rf {} +
+	cp -R web/dist/. $(WEBUI_DIST)/
+
+api:
+	cd api && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o ../arkive ./cmd/arkive
+
+test:
+	cd api && go vet ./... && go test ./...
+
+image:
+	docker build -f docker/Dockerfile --build-arg VERSION=$(VERSION) -t arkive:$(VERSION) .
+
+## clean-web: drop the embedded UI copy (back to the placeholder page)
+clean-web:
+	find $(WEBUI_DIST) -mindepth 1 ! -name .gitkeep -exec rm -rf {} +

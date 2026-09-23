@@ -24,6 +24,7 @@ type App struct {
 	smtp        smtpCache
 	bg          bgPool
 	uploadLocks sync.Map // upload id -> *sync.Mutex (tus PATCH/DELETE guard)
+	setup       setupState
 }
 
 func (a *App) SeedDefaultBackend(ctx context.Context) error {

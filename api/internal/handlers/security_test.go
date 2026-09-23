@@ -45,7 +45,7 @@ func (e *testEnv) req(method, path string, body any, o reqOpts) *httptest.Respon
 	if _, ok := body.(map[string]any); ok {
 		r.Header.Set("Content-Type", "application/json")
 	}
-	r.Header.Set("X-Forwarded-For", fmt.Sprintf("10.9.%d.%d", ipCounter.Add(1)%250, ipCounter.Load()%250+1))
+	r.RemoteAddr = fmt.Sprintf("10.9.%d.%d:1234", ipCounter.Add(1)%250, ipCounter.Load()%250+1)
 	for k, v := range o.headers {
 		r.Header.Set(k, v)
 	}
