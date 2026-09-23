@@ -133,12 +133,22 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	var hash *string
 	err := h.App.DB.QueryRow(r.Context(), `
-		SELECT id, email, display_name, is_instance_admin, status, created_at, password_hash
+		SELECT id, email, display_name, is_instance_admin, status, created_at, password_hash,
+		       totp_enabled_at IS NOT NULL
 		FROM users WHERE email = $1
 	`, email).Scan(
 		&user.ID, &user.Email, &user.DisplayName, &user.IsInstanceAdmin, &user.Status, &user.CreatedAt, &hash,
+		&user.TwoFactorEnabled,
 	)
 	if err != nil || hash == nil || !auth.CheckPassword(req.Password, *hash) {
+		actor := ""
+		if err == nil {
+			actor = user.ID.String()
+		}
+		h.App.Audit(r.Context(), r, actor, "auth.login_failed", "user", actor, map[string]any{
+			"email":  email,
+			"reason": "invalid_password",
+		})
 		httpjson.Error(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -171,10 +181,18 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if user.TwoFactorEnabled {
+		h.startTwoFactorChallenge(w, r, user.ID)
+		return
+	}
+
 	if err := h.createSession(w, r, user.ID); err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "could not create session")
 		return
 	}
+	h.App.Audit(r.Context(), r, user.ID.String(), "auth.login", "user", user.ID.String(), map[string]any{
+		"method": "password",
+	})
 	httpjson.Write(w, http.StatusOK, user)
 }
 
@@ -308,14 +326,21 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = tx.Exec(r.Context(), `DELETE FROM sessions WHERE user_id = $1`, userID)
+	_, _ = tx.Exec(r.Context(), `DELETE FROM login_challenges WHERE user_id = $1`, userID)
 	if err := tx.Commit(r.Context()); err != nil {
 		httpjson.Error(w, http.StatusInternalServerError, "could not complete reset")
 		return
 	}
+	h.App.Audit(r.Context(), r, userID.String(), "auth.password_changed", "user", userID.String(), map[string]any{
+		"via": "reset_token",
+	})
 	httpjson.Write(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if u := middleware.UserFromContext(r.Context()); u != nil {
+		h.App.Audit(r.Context(), r, u.ID.String(), "auth.logout", "user", u.ID.String(), nil)
+	}
 	if c, err := r.Cookie("arkive_session"); err == nil && c.Value != "" {
 		_, _ = h.App.DB.Exec(r.Context(), `DELETE FROM sessions WHERE token_hash = $1`, auth.HashToken(c.Value))
 	}
@@ -371,10 +396,14 @@ func (h *AuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = h.App.DB.Exec(r.Context(), `DELETE FROM sessions WHERE user_id = $1`, user.ID)
+		_, _ = h.App.DB.Exec(r.Context(), `DELETE FROM login_challenges WHERE user_id = $1`, user.ID)
 		if err := h.createSession(w, r, user.ID); err != nil {
 			httpjson.Error(w, http.StatusInternalServerError, "update failed")
 			return
 		}
+		h.App.Audit(r.Context(), r, user.ID.String(), "auth.password_changed", "user", user.ID.String(), map[string]any{
+			"via": "profile",
+		})
 	} else {
 		_, err := h.App.DB.Exec(r.Context(), `UPDATE users SET display_name = $1 WHERE id = $2`, display, user.ID)
 		if err != nil {
@@ -390,12 +419,14 @@ func (h *AuthHandler) SessionLookup() middleware.SessionLookup {
 	return func(r *http.Request, token string) (*models.User, error) {
 		var user models.User
 		err := h.App.DB.QueryRow(r.Context(), `
-			SELECT u.id, u.email, u.display_name, u.is_instance_admin, u.status, u.created_at
+			SELECT u.id, u.email, u.display_name, u.is_instance_admin, u.status, u.created_at,
+			       u.totp_enabled_at IS NOT NULL
 			FROM sessions s
 			JOIN users u ON u.id = s.user_id
 			WHERE s.token_hash = $1 AND s.expires_at > now() AND u.status = 'active'
 		`, auth.HashToken(token)).Scan(
 			&user.ID, &user.Email, &user.DisplayName, &user.IsInstanceAdmin, &user.Status, &user.CreatedAt,
+			&user.TwoFactorEnabled,
 		)
 		if err != nil {
 			return nil, err

@@ -30,9 +30,10 @@ func (h *WebDAVHandler) BasicLookup() middleware.BasicAuthLookup {
 		var user models.User
 		var hash *string
 		err := h.App.DB.QueryRow(r.Context(), `
-			SELECT id, email, display_name, is_instance_admin, status, created_at, password_hash
+			SELECT id, email, display_name, is_instance_admin, status, created_at, password_hash,
+			       totp_enabled_at IS NOT NULL
 			FROM users WHERE email = $1
-		`, email).Scan(&user.ID, &user.Email, &user.DisplayName, &user.IsInstanceAdmin, &user.Status, &user.CreatedAt, &hash)
+		`, email).Scan(&user.ID, &user.Email, &user.DisplayName, &user.IsInstanceAdmin, &user.Status, &user.CreatedAt, &hash, &user.TwoFactorEnabled)
 		if err != nil {
 			return nil, err
 		}
@@ -40,7 +41,8 @@ func (h *WebDAVHandler) BasicLookup() middleware.BasicAuthLookup {
 			return nil, pgx.ErrNoRows
 		}
 		// Prefer account password, then app password (ark_<prefix>_<secret>).
-		if hash != nil && auth.CheckPassword(password, *hash) {
+		// With 2FA enabled the account password alone is not enough: app passwords only.
+		if !user.TwoFactorEnabled && hash != nil && auth.CheckPassword(password, *hash) {
 			return &user, nil
 		}
 		prefix, ok := parseAppPasswordPrefix(password)

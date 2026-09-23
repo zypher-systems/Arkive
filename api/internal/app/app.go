@@ -92,6 +92,15 @@ func (a *App) CleanupExpiredSessions(ctx context.Context) {
 			if err != nil {
 				a.Logger.Warn("public link cleanup failed", "err", err)
 			}
+			_, err = a.DB.Exec(ctx, `DELETE FROM login_challenges WHERE expires_at < now()`)
+			if err != nil {
+				a.Logger.Warn("login challenge cleanup failed", "err", err)
+			}
+			if purged, err := a.PurgeOldAudit(ctx); err != nil {
+				a.Logger.Warn("audit retention purge failed", "err", err)
+			} else if purged > 0 {
+				a.Logger.Info("audit retention purge", "purged", purged)
+			}
 			n, err := a.PurgeExpiredTrash(ctx)
 			if err != nil {
 				a.Logger.Warn("trash retention purge failed", "err", err)
