@@ -61,8 +61,9 @@ func serve(logger *slog.Logger) error {
 	}
 	defer pool.Close()
 	logger.Info("database ready", "engine", string(pool.Dialect()), "url", db.Redact(cfg.DatabaseURL), "default", cfg.DatabaseURLDefaulted)
+	// Production refuses well-known credentials, matching the secrets policy.
 	if cfg.IsProduction() && usesDefaultPostgresPassword(cfg.DatabaseURL) {
-		logger.Warn("the PostgreSQL password is the compose default \"arkive\"; set POSTGRES_PASSWORD in .env")
+		return errors.New("refusing to start in production with the default PostgreSQL password \"arkive\": set POSTGRES_PASSWORD in .env (on an existing database, also run ALTER USER arkive PASSWORD '...' inside postgres)")
 	}
 
 	if err := app.CheckDataDir(ctx, pool, cfg); err != nil {

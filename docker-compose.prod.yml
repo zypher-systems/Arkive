@@ -13,7 +13,7 @@
 # Required in .env (no defaults):
 #   ARKIVE_PUBLIC_URL          (https://arkive.example.com)
 # PostgreSQL layout: also set POSTGRES_PASSWORD — the "arkive" default is for
-# local try-outs only (the server logs a warning in production).
+# local try-outs only (the server refuses to start with it in production).
 #
 # ARKIVE_SESSION_SECRET / ARKIVE_SECRETS_KEY are optional: when unset, strong
 # values are generated on first boot and stored in /data/arkive/.arkive-secrets
