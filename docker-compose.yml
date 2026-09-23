@@ -11,14 +11,15 @@
 #
 # Bigger install, several replicas, or upgrading a 1.0 install that used
 # PostgreSQL? Use docker-compose.postgres.yml instead (see docs/upgrade.md).
+#
+# The image comes from GitHub Container Registry. ARKIVE_VERSION picks the tag:
+# "1" (default) follows 1.x releases, "1.1" pins a minor line, "1.1.0" an exact
+# release. `docker compose pull && docker compose up -d` updates.
+# To build from this checkout instead, add -f docker-compose.build.yml.
 
 services:
   arkive:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      args:
-        VERSION: ${ARKIVE_VERSION:-dev}
+    image: ghcr.io/zypher-systems/arkive:${ARKIVE_VERSION:-1}
     restart: unless-stopped
     ports:
       - "${ARKIVE_PORT:-3080}:8080"

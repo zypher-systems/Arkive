@@ -74,7 +74,8 @@ jobs:
       matrix:
         layout: [docker-compose.yml, docker-compose.postgres.yml]
     env:
-      COMPOSE_FILE: ${{ matrix.layout }}
+      # Build the image from this commit rather than pulling it from GHCR.
+      COMPOSE_FILE: ${{ matrix.layout }}:docker-compose.build.yml
       ARKIVE_PUBLIC_URL: http://localhost:3080
       # Known token so the smoke script can complete first-run setup.
       ARKIVE_SETUP_TOKEN: ci-setup-token

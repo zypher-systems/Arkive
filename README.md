@@ -13,7 +13,18 @@ More screens (sign-in with two-factor, first-run setup, public links and file re
 
 ## Quick start
 
+One command, one container:
+
 ```bash
+docker run -d --name arkive -p 3080:8080 -v arkive_data:/data/arkive --restart unless-stopped \
+  ghcr.io/zypher-systems/arkive:1
+docker logs arkive 2>&1 | grep setup_token
+```
+
+Or with Compose (no need to clone the repository):
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/zypher-systems/arkive/main/docker-compose.yml
 docker compose up -d
 docker compose logs arkive | grep setup_token
 ```
@@ -26,13 +37,7 @@ The log line looks like this:
 
 Open [http://localhost:3080](http://localhost:3080), enter the setup token, and create the admin account. That's it: session and encryption secrets are generated on first boot and kept in the data volume (`/data/arkive/.arkive-secrets`).
 
-Without Compose, the same single container (build the image once; it is not published to a registry yet):
-
-```bash
-docker build -f docker/Dockerfile -t arkive .
-docker run -d --name arkive -p 3080:8080 -v arkive_data:/data/arkive --restart unless-stopped arkive
-docker logs arkive 2>&1 | grep setup_token
-```
+Images are multi-arch (amd64, arm64) and published to `ghcr.io/zypher-systems/arkive` with tags `1.1.0` (exact), `1.1`, `1` and `latest`. Update with `docker compose pull && docker compose up -d`. Standalone binaries (web UI included) for Linux and macOS are attached to each [GitHub release](https://github.com/zypher-systems/arkive/releases).
 
 The setup token stops a stranger from claiming a freshly started, internet-reachable instance before you do. It is only accepted while the instance has no accounts, a new one is printed on every restart until setup is done, and you can choose your own with `ARKIVE_SETUP_TOKEN` in `.env`.
 
@@ -62,8 +67,8 @@ TLS terminates at a reverse proxy; Arkive stays HTTP. Examples: [`deploy/Caddyfi
 ```bash
 # .env: ARKIVE_PUBLIC_URL is required (and POSTGRES_PASSWORD with PostgreSQL).
 # Secrets are generated unless you set them; placeholders are refused.
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build            # SQLite
-docker compose -f docker-compose.postgres.yml -f docker-compose.prod.yml up -d --build   # PostgreSQL
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d            # SQLite
+docker compose -f docker-compose.postgres.yml -f docker-compose.prod.yml up -d   # PostgreSQL
 ```
 
 Set `ARKIVE_PUBLIC_URL=https://arkive.example.com` (`ARKIVE_COOKIE_SECURE` defaults to `true` in the overlay). Arkive reads `X-Forwarded-For` / `X-Real-IP` **only** from peers listed in `ARKIVE_TRUSTED_PROXIES` (the prod overlay trusts loopback and Docker's `172.16.0.0/12`); from anyone else they are ignored, so clients cannot spoof their IP past the rate limiter. The outer proxy should cap the request body to match `ARKIVE_MAX_UPLOAD_BYTES` (default 10 GiB).
@@ -148,23 +153,35 @@ Set `ARKIVE_METRICS_ENABLED=true` to expose Prometheus metrics at `/metrics` (40
 
 ## Features
 
-- Email/password auth with httpOnly session cookies (argon2id); optional OIDC/SSO
-- Personal workspace on signup + team workspaces with invite tokens
-- Browse / upload / download / mkdir / rename / move; OS + internal drag-and-drop; multi-select + zip
-- Files views: List / Details / Tiles (persisted), folder glyphs, image/video/audio/PDF/text previews, Office/archive badges
-- Right-click context menus; Copy (clipboard) vs Copy to…; storage used (root + total) in Files UI
-- Soft-delete trash with restore/purge, empty trash, undo toast
-- Filename + full-text search (PostgreSQL tsvector or SQLite FTS5; text contents indexed on upload; Office extract where supported)
-- Internal shares (user email or team, read/write); Shared-with-me browse; Recent activity
-- Public share links with optional password + expiry (`/s/:token`)
-- File version history on overwrite (last 10) + share/link activity
-- WebDAV mount per workspace (`/dav/{workspaceID}/`) — official desktop/mobile sync path
-- Instance-admin storage backends: local folder + optional remote S3; per-workspace assignment; background migrate
-- Optional Google Drive Connected vault + live Drive browse; Icedrive/Internxt via WebDAV mounts
-- Optional storage quotas (per workspace / user) with Admin controls
-- Server-generated image thumbnails for Files tiles
-- Signup approve/reject email (optional SMTP)
-- Brand UI (graphite + industrial orange/amber)
+**Files**
+- Upload files and whole folders by picker or drag-and-drop, with an upload queue (3 at a time, progress, speed/ETA, cancel, retry)
+- Resumable uploads ([tus](https://tus.io)) for large files: an interrupted upload continues where it stopped
+- List, Details, Tiles and Gallery views; sortable columns; keyboard shortcuts (`?` shows them); Ctrl/⌘+K search
+- Previews for images (full-screen viewer with zoom), video, audio, PDF and text; a Markdown/text editor with live preview
+- Rename, move, copy, zip download, trash with restore and undo, version history with restore (retention configurable)
+- Full-text search over names and contents (PostgreSQL tsvector or SQLite FTS5; Office text extracted)
+- Personal files plus team workspaces with invites and roles; optional quotas per user and workspace
+
+**Sharing**
+- Share with a user or a team, read or write; Shared with me; Recent activity
+- Public links with optional password, expiry and download limit
+- Upload-only links ("file requests"): anyone with the link can drop files into a folder without seeing its contents
+
+**Sync and access**
+- WebDAV per workspace with locking, ETags and modification times: rclone, macOS Finder, Windows Explorer, iOS Files, DAVx⁵, GNOME/KDE ([setup guide](docs/webdav.md))
+- App passwords for WebDAV clients
+
+**Security and admin**
+- Two-factor sign-in (TOTP) with recovery codes; optional OIDC/SSO
+- Signup approval or invite-only registration; admin user management; audit log
+- First-run setup protected by a one-time token; generated secrets; rate limits; strict CSP
+- Storage backends: local folder (default), S3-compatible, WebDAV, Google Drive; per-workspace assignment with background migration
+- `arkive` CLI: user recovery, `export` (rebuild the real folder tree from the database), `gc`, `db copy` / `db backup`
+- Prometheus `/metrics` (opt-in); optional SMTP for approvals, shares and invites
+
+**Everywhere**
+- Responsive UI that works on phones; light, dark or system theme
+- Translatable UI ([how to add a language](docs/translating.md))
 
 ### WebDAV (official sync/mount path)
 
@@ -278,7 +295,9 @@ make image          # docker build -f docker/Dockerfile
 
 `go test ./...` needs no database: every test gets a fresh SQLite file. With `ARKIVE_TEST_DATABASE_URL=postgres://…` the same tests run against PostgreSQL. Write SQL that works on both — the rules are in [`api/internal/db/README.md`](api/internal/db/README.md); schema changes need a migration in both `api/migrations/` and `api/migrations/sqlite/` (a test checks they match).
 
-CI (GitHub Actions, plus optional GitLab) runs `go vet` + `go test ./...` on SQLite (also with `-race`) and on PostgreSQL, `web` unit tests + production build, and for both compose layouts the compose smoke, the Playwright end-to-end suite and the smoke again after a restart. Images are not published from CI; on failure the Playwright HTML report and traces are uploaded as artifacts.
+CI (GitHub Actions, plus optional GitLab) runs `go vet` + `go test ./...` on SQLite (also with `-race`) and on PostgreSQL, `web` unit tests + production build, and for both compose layouts the compose smoke, the Playwright end-to-end suite and the smoke again after a restart. On failure the Playwright HTML report and traces are uploaded as artifacts. CI builds the image from the commit with `docker-compose.build.yml`.
+
+**Releases:** pushing a `vX.Y.Z` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml): tests, multi-arch images to `ghcr.io/zypher-systems/arkive` (with SBOM and provenance), a smoke test of the pushed image, and a GitHub release with binaries and the matching `CHANGELOG.md` section as notes.
 
 ### Testing
 

@@ -1,0 +1,17 @@
+# Build the arkive image from this checkout instead of pulling it from GHCR.
+# Add it after the layout file (and before the prod overlay, if you use one):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#   docker compose -f docker-compose.postgres.yml -f docker-compose.build.yml up -d --build
+#
+# Or put COMPOSE_FILE=docker-compose.yml:docker-compose.build.yml in .env.
+# ARKIVE_BUILD_VERSION stamps the version shown in the UI (default "dev").
+
+services:
+  arkive:
+    image: arkive:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        VERSION: ${ARKIVE_BUILD_VERSION:-dev}

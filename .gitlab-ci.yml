@@ -85,7 +85,8 @@ test:e2e:
     - docker:27-dind
   parallel:
     matrix:
-      - COMPOSE_FILE: [docker-compose.yml, docker-compose.postgres.yml]
+      # The build overlay builds the image from this commit instead of pulling it.
+      - COMPOSE_FILE: ["docker-compose.yml:docker-compose.build.yml", "docker-compose.postgres.yml:docker-compose.build.yml"]
   variables:
     ARKIVE_SETUP_TOKEN: ci-setup-token
     # Playwright tests send per-test X-Forwarded-For (rate limits are per IP).

@@ -18,12 +18,12 @@ Steps:
 3. Pull the new release and recreate the stack. `--remove-orphans` removes the old `api` and `web` containers:
 
    ```bash
-   docker compose -f docker-compose.postgres.yml up -d --build --remove-orphans
+   docker compose -f docker-compose.postgres.yml up -d --remove-orphans
    # or, with the production overlay:
-   docker compose -f docker-compose.postgres.yml -f docker-compose.prod.yml up -d --build --remove-orphans
+   docker compose -f docker-compose.postgres.yml -f docker-compose.prod.yml up -d --remove-orphans
    ```
 
-   (With `COMPOSE_FILE` set in `.env`, `docker compose up -d --build --remove-orphans` does the same.) Do **not** run `--remove-orphans` with the single-container `docker-compose.yml` on a 1.0 install: it would remove your `postgres` container (the volume survives, but Arkive would then refuse to start as described above).
+   (With `COMPOSE_FILE` set in `.env`, `docker compose up -d --remove-orphans` does the same.) Do **not** run `--remove-orphans` with the single-container `docker-compose.yml` on a 1.0 install: it would remove your `postgres` container (the volume survives, but Arkive would then refuse to start as described above).
 
 4. Check `docker compose logs arkive` for migration errors, then open the UI and hard-refresh.
 
@@ -69,7 +69,7 @@ What carries over and what changes:
 - Recreate with:
 
   ```bash
-  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
   ```
 
 - **MinIO removed.** Fresh installs seed a local folder at `/data/arkive`. If this instance still has a “Default MinIO” (or other S3) default pointing at the old Compose MinIO, `/api/ready` will fail after the upgrade. Add a **Local folder** backend under Admin, migrate workspaces onto it, and make it default — or wipe Compose volumes for a fresh install. Keep `minio_data` until the migrate finishes if you still need those blobs.
@@ -81,7 +81,7 @@ What carries over and what changes:
 
 1. Back up the database (SQLite or Postgres) and the data directory together ([backup.md](backup.md)).
 2. Pull or build the new image.
-3. `docker compose up -d --build --remove-orphans` (add `-f docker-compose.postgres.yml` for PostgreSQL, and the prod overlay if you use it).
+3. `docker compose up -d --remove-orphans` (add `-f docker-compose.postgres.yml` for PostgreSQL, and the prod overlay if you use it).
 4. Watch `docker compose logs arkive` for `migration` errors. A failed migration aborts startup.
 5. Hit `/api/ready` and hard-refresh the SPA.
 

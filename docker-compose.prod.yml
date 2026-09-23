@@ -4,9 +4,9 @@
 #   cp .env.example .env   # set ARKIVE_PUBLIC_URL (and POSTGRES_PASSWORD for PostgreSQL)
 #
 #   SQLite (single container):
-#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #   PostgreSQL:
-#     docker compose -f docker-compose.postgres.yml -f docker-compose.prod.yml up -d --build
+#     docker compose -f docker-compose.postgres.yml -f docker-compose.prod.yml up -d
 #
 #   docker compose … logs arkive | grep setup_token   # or set ARKIVE_SETUP_TOKEN
 #

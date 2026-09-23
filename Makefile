@@ -43,7 +43,7 @@ E2E_TOKEN := e2e-setup-token
 E2E_STACK = ARKIVE_PORT=$(E2E_PORT) ARKIVE_PUBLIC_URL=http://localhost:$(E2E_PORT) \
 	ARKIVE_SETUP_TOKEN=$(E2E_TOKEN) \
 	ARKIVE_TRUSTED_PROXIES=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 \
-	docker compose -p $(E2E_PROJECT) -f $(E2E_COMPOSE)
+	docker compose -p $(E2E_PROJECT) -f $(E2E_COMPOSE) -f docker-compose.build.yml
 e2e: e2e-up
 	cd e2e && npm ci && ARKIVE_E2E_URL=http://localhost:$(E2E_PORT) ARKIVE_SETUP_TOKEN=$(E2E_TOKEN) \
 		npx playwright test; status=$$?; cd .. && $(MAKE) --no-print-directory e2e-down; exit $$status
