@@ -6,6 +6,8 @@
 //	arkive user list                       list accounts
 //	arkive user reset-password <email>     set a new password (generated, --password or --password-stdin)
 //	arkive user promote|demote <email>     grant / revoke instance admin
+//	arkive db copy --from URL --to URL     copy all data into a new database (PostgreSQL <-> SQLite)
+//	arkive db backup --out FILE            consistent SQLite snapshot (VACUUM INTO)
 //	arkive healthcheck                     probe /api/ready (for container HEALTHCHECK)
 //	arkive version                         print the version
 //
@@ -40,7 +42,8 @@ var commands = []command{
 	{name: "migrate", summary: "Apply pending database migrations and exit", run: runMigrate},
 	{name: "user", usage: "<list|reset-password|promote|demote|reset-2fa> ...", summary: "Manage user accounts", run: runUser},
 	{name: "export", usage: "--out DIR [--workspace ID] [--include-trash]", summary: "Rebuild the real folder tree from the database and blobs", run: runExport},
-	{name: "gc", usage: "[--dry-run]", summary: "Delete orphaned blobs and abandoned uploads", run: runGC},
+	{name: "gc", usage: "[--dry-run] [--force]", summary: "Delete orphaned blobs and abandoned uploads", run: runGC},
+	{name: "db", usage: "<copy|backup> ...", summary: "Copy between PostgreSQL and SQLite; back up SQLite", run: runDB},
 	{name: "healthcheck", summary: "Exit 0 when the local server reports ready (container HEALTHCHECK)", run: runHealthcheck},
 	{name: "version", summary: "Print the version", run: runVersion},
 }

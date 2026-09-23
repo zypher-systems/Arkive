@@ -37,7 +37,12 @@ type testEnv struct {
 
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
-	dsn := dbtest.URL(t)
+	return newTestEnvOn(t, dbtest.URL(t))
+}
+
+// newTestEnvOn builds the environment on a given database URL.
+func newTestEnvOn(t *testing.T, dsn string) *testEnv {
+	t.Helper()
 	ctx := context.Background()
 	cfg := config.Load()
 	cfg.DatabaseURL = dsn
