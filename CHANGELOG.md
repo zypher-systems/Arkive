@@ -24,7 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Production refuses to start with the default PostgreSQL password `arkive`
-
 - Startup refuses an empty database when the data directory already holds Arkive files (a 1.0 install started with the new single-container compose file), with instructions; override with `ARKIVE_ALLOW_NONEMPTY_DATA_DIR=true`
 - Orphan GC deletes nothing when the database references no files but storage holds blobs, and refuses a run that would delete more than 10% of a backend's blobs (min. 100) unless `arkive gc --force`
 - Team shares require the sharer to be a member of the target workspace
