@@ -33,6 +33,11 @@ func SanitizeName(name string) string {
 	name = path.Base(name)
 	name = strings.ReplaceAll(name, "..", "")
 	name = strings.Trim(name, "/\\")
+	if name == "." {
+		// path.Base("") is "."; an empty or dot name is no name at all
+		// (a rename without "name" used to rename the node to ".").
+		return ""
+	}
 	return name
 }
 

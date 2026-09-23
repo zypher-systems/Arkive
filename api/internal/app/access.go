@@ -145,6 +145,27 @@ func (a *App) RequireNodeAccess(ctx context.Context, nodeID, userID uuid.UUID, w
 	return workspaceID, nil
 }
 
+// IsSelfOrDescendant reports whether nodeID is ancestorID or lies below it.
+// Moving or copying a folder into such a node would create a cycle.
+func (a *App) IsSelfOrDescendant(ctx context.Context, nodeID, ancestorID uuid.UUID) (bool, error) {
+	current := nodeID
+	for i := 0; i < 1024; i++ {
+		if current == ancestorID {
+			return true, nil
+		}
+		var parent *uuid.UUID
+		err := a.DB.QueryRow(ctx, `SELECT parent_id FROM nodes WHERE id = $1`, current).Scan(&parent)
+		if errors.Is(err, db.ErrNoRows) || (err == nil && parent == nil) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		current = *parent
+	}
+	return false, errors.New("node tree too deep")
+}
+
 // RequireParentInWorkspace ensures the user can access parentID and that it belongs to workspaceID.
 func (a *App) RequireParentInWorkspace(ctx context.Context, parentID, workspaceID, userID uuid.UUID, write bool) error {
 	parentWS, err := a.RequireNodeAccess(ctx, parentID, userID, write)

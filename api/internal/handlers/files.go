@@ -93,6 +93,16 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 			httpjson.Error(w, http.StatusInternalServerError, "breadcrumb failed")
 			return
 		}
+		// Someone browsing a shared folder only sees the path from the
+		// highest folder they can open, not the owner's folders above it.
+		if _, err := h.App.WorkspaceRole(r.Context(), wsID, user.ID); errors.Is(err, app.ErrForbidden) {
+			for i, b := range breadcrumbs {
+				if _, err := h.App.RequireNodeAccess(r.Context(), b.ID, user.ID, false); err == nil {
+					breadcrumbs = breadcrumbs[i:]
+					break
+				}
+			}
+		}
 	}
 
 	nextOffset := 0
@@ -359,6 +369,25 @@ func (h *FileHandler) RenameOrMove(w http.ResponseWriter, r *http.Request) {
 			httpjson.Error(w, status, msg)
 			return
 		}
+		if req.Move {
+			inside, err := h.App.IsSelfOrDescendant(r.Context(), *req.ParentID, nodeID)
+			if err != nil {
+				httpjson.Error(w, http.StatusInternalServerError, "query failed")
+				return
+			}
+			if inside {
+				httpjson.Error(w, http.StatusBadRequest, "cannot move a folder into itself")
+				return
+			}
+		}
+	} else if req.Move {
+		// Moving to the workspace root needs membership: a write share on a
+		// folder must not let its grantee move items out of the shared tree.
+		if err := h.App.RequireWorkspaceAccess(r.Context(), sourceWS, user.ID, true); err != nil {
+			status, msg := app.WriteHTTPError(err)
+			httpjson.Error(w, status, msg)
+			return
+		}
 	}
 
 	var n models.Node
@@ -483,17 +512,27 @@ func (h *FileHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var workspaceID uuid.UUID
+	var parentID *uuid.UUID
 	err = h.App.DB.QueryRow(r.Context(), `
-		SELECT workspace_id FROM nodes WHERE id = $1 AND deleted_at IS NOT NULL
-	`, nodeID).Scan(&workspaceID)
+		SELECT workspace_id, parent_id FROM nodes WHERE id = $1 AND deleted_at IS NOT NULL
+	`, nodeID).Scan(&workspaceID, &parentID)
 	if err != nil {
 		httpjson.Error(w, http.StatusNotFound, "not found")
 		return
 	}
 	if err := h.App.RequireWorkspaceAccess(r.Context(), workspaceID, user.ID, true); err != nil {
-		status, msg := app.WriteHTTPError(err)
-		httpjson.Error(w, status, msg)
-		return
+		// Someone with a write share may undo their own delete inside the
+		// shared folder: write access to the (live) parent is enough.
+		if !errors.Is(err, app.ErrForbidden) || parentID == nil {
+			status, msg := app.WriteHTTPError(err)
+			httpjson.Error(w, status, msg)
+			return
+		}
+		if _, perr := h.App.RequireNodeAccess(r.Context(), *parentID, user.ID, true); perr != nil {
+			status, msg := app.WriteHTTPError(perr)
+			httpjson.Error(w, status, msg)
+			return
+		}
 	}
 	_, err = h.App.DB.Exec(r.Context(), `
 		WITH RECURSIVE tree AS (

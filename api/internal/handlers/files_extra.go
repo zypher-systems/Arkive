@@ -31,11 +31,8 @@ func (h *FileHandler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 		httpjson.Error(w, http.StatusBadRequest, "invalid workspace id")
 		return
 	}
-	if err := h.App.RequireWorkspaceAccess(r.Context(), wsID, user.ID, false); err != nil {
-		status, msg := app.WriteHTTPError(err)
-		httpjson.Error(w, status, msg)
-		return
-	}
+	// No workspace membership check: walk() checks read access per node, so
+	// people a folder is shared with can download it (or part of it) as zip.
 	var req zipRequest
 	if err := httpjson.Decode(r, &req); err != nil || len(req.NodeIDs) == 0 {
 		httpjson.Error(w, http.StatusBadRequest, "node_ids required")
@@ -220,7 +217,9 @@ func (h *FileHandler) Content(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Accept-Ranges", "bytes")
 
-	if textLike && rangeHdr != "" {
+	// Ranges: text peeks, and video/audio players (Safari refuses media
+	// without 206 answers; seeking needs them everywhere).
+	if rangeHdr != "" {
 		start, end, ok := parseBytesRange(rangeHdr, total)
 		if !ok {
 			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", total))
@@ -228,13 +227,18 @@ func (h *FileHandler) Content(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Cap a single text range response
-		if end-start+1 > 64*1024 {
+		if textLike && end-start+1 > 64*1024 {
 			end = start + 64*1024 - 1
 			if end >= total {
 				end = total - 1
 			}
 		}
-		if start > 0 {
+		if seeker, ok := rc.(io.Seeker); ok && start > 0 {
+			if _, err := seeker.Seek(start, io.SeekStart); err != nil {
+				httpjson.Error(w, http.StatusInternalServerError, "storage error")
+				return
+			}
+		} else if start > 0 {
 			if _, err := io.CopyN(io.Discard, rc, start); err != nil {
 				httpjson.Error(w, http.StatusInternalServerError, "storage error")
 				return
