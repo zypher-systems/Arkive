@@ -4,6 +4,13 @@ Self-hosted file sharing and cloud storage. Multi-user, multi-tenant workspaces 
 
 Everything runs in Docker. Nothing needs to be installed on the host beyond Docker Compose.
 
+| Files (light) | Files (dark) | Phone |
+| --- | --- | --- |
+| ![Files in list view](docs/screenshots/light-04-files-list.png) | ![Photo gallery in dark mode](docs/screenshots/dark-07-files-gallery.png) | ![Files on a phone](docs/screenshots/mobile-04-files-list.png) |
+| ![Details panel with sharing](docs/screenshots/light-10-share-upload-link.png) | ![Markdown editor](docs/screenshots/dark-11-editor-markdown.png) | ![Upload queue on a phone](docs/screenshots/mobile-12-upload-queue.png) |
+
+More screens (sign-in with two-factor, first-run setup, public links and file requests, account and admin) are in [`docs/screenshots/`](docs/screenshots/). The UI can be translated — see [docs/translating.md](docs/translating.md).
+
 ## Quick start
 
 ```bash
