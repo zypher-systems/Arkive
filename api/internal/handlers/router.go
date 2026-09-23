@@ -17,6 +17,13 @@ import (
 )
 
 func NewRouter(a *app.App) http.Handler {
+	_, root := buildRouter(a)
+	return root
+}
+
+// buildRouter returns the chi route table (for tests that walk it) and the
+// root handler that also dispatches /dav.
+func buildRouter(a *app.App) (*chi.Mux, http.Handler) {
 	authH := &AuthHandler{App: a}
 	oidcH := NewAuthOIDC(authH)
 	wsH := &WorkspaceHandler{App: a}
@@ -260,5 +267,5 @@ func NewRouter(a *app.App) http.Handler {
 	if m != nil {
 		root = m.Instrument(root)
 	}
-	return root
+	return r, root
 }
