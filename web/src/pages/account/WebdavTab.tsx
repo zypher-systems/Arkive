@@ -130,7 +130,7 @@ export function WebdavTab() {
 
       <Section title={t('account.webdav.appTitle')} description={t('account.webdav.appDescription')}>
         <form onSubmit={create} className="flex flex-wrap items-end gap-2">
-          <Field label={t('account.webdav.appName')} className="min-w-0 flex-1">
+          <Field label={t('account.webdav.appName')} className="min-w-[12rem] flex-1">
             {({ id }) => (
               <Input
                 id={id}

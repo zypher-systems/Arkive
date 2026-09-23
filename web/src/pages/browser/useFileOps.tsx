@@ -27,6 +27,7 @@ export function useFileOps({
   reload,
   onFileCreated,
   onRenamed,
+  sharedRoot,
 }: {
   workspaceId?: string;
   parentId: string | null;
@@ -35,6 +36,8 @@ export function useFileOps({
   reload: (silent?: boolean) => Promise<void> | void;
   onFileCreated?: (n: Node) => void;
   onRenamed?: (n: Node) => void;
+  /** Set when browsing a folder shared with the user (see MoveDialog). */
+  sharedRoot?: { id: string; name: string };
 }) {
   const { t } = useI18n();
   const { toast, dismiss } = useToast();
@@ -248,6 +251,7 @@ export function useFileOps({
           workspaces={workspaces.filter((w) => w.type !== 'mount' || w.id === workspaceId)}
           nodes={move.nodes}
           mode={move.mode}
+          root={sharedRoot}
           onClose={() => setMove(null)}
           onMoved={({ mode }) => {
             toast({ message: mode === 'copy' ? t('files.copied', { count: move.nodes.length }) : t('files.moved', { count: move.nodes.length }) });

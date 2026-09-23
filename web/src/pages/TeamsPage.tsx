@@ -233,7 +233,7 @@ function TeamDetail({
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
           <TeamIcon size={22} />
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[12rem] flex-1">
           <h2 className="truncate text-lg font-semibold text-ink">{team.name}</h2>
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
             <RoleBadge role={team.role} />

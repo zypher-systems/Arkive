@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from 'react';
+import { useId, type HTMLAttributes, type ReactNode } from 'react';
 
 export function Card({ className = '', children, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
@@ -26,11 +26,14 @@ export function Section({
   className?: string;
   id?: string;
 }) {
+  // Always labelled, so each card is a named region (several have a "Save").
+  const autoId = useId();
+  const titleId = id ? `${id}-title` : autoId;
   return (
-    <section id={id} className={`panel overflow-hidden ${className}`} aria-labelledby={id ? `${id}-title` : undefined}>
+    <section id={id} className={`panel overflow-hidden ${className}`} aria-labelledby={titleId}>
       <div className={`flex flex-wrap items-start justify-between gap-3 px-5 pt-5 sm:px-6 ${children === undefined ? 'pb-5' : ''}`}>
         <div className="min-w-0 flex-1">
-          <h2 id={id ? `${id}-title` : undefined} className="text-md font-semibold tracking-tight text-ink">
+          <h2 id={titleId} className="text-md font-semibold tracking-tight text-ink">
             {title}
           </h2>
           {description && <p className="mt-1 max-w-2xl text-sm text-muted">{description}</p>}

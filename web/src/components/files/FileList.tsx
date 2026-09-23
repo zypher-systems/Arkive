@@ -224,6 +224,7 @@ export function FileList({
               id={`row-${node.id}`}
               role="option"
               aria-selected={isSel}
+              aria-label={node.name}
               data-file-row
               draggable={dnd?.draggable}
               onDragStart={dnd ? (e) => dnd.onDragStart(e, node) : undefined}

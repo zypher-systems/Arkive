@@ -56,6 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Public link passwords with non-ASCII characters never unlocked; the link page now shows the file size
 - Old versions downloaded as `report.pdf.v3`; now `report.v3.pdf`
 - Removing a share or public link now shows in Recent and the item's activity
+- Web: Move to… inside a folder shared with you starts at that folder (it listed the owner's root and moved files there)
+- Web: a text file over 2 MB opens read-only and truncated instead of failing to load
+- Web: after too many wrong 2FA codes the sign-in goes back to the password step instead of retrying a dead challenge
+- Web: menus opened right after typing a long search (Admin → Users actions) closed immediately
+- Web: thumbnails refresh after a file changes; files received through upload links are labelled in Recent
+- Web: on phones, page headers with several actions (Trash with a workspace picker) and a few forms squeezed their titles to one letter
+- Web: accessible names for file rows, pending-user Approve/Reject buttons and settings cards
 
 ## [1.0.0] - 2026-08-12
 

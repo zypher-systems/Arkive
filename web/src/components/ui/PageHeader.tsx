@@ -16,7 +16,9 @@ export function PageHeader({
 }) {
   return (
     <div className={`flex min-h-16 flex-wrap items-center gap-x-4 gap-y-2 py-3 ${className}`}>
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+      {/* A 12rem basis lets the actions wrap below the title on phones instead
+          of squeezing it to "T…" (Trash with a workspace picker). */}
+      <div className="flex min-w-0 grow basis-48 items-center gap-3">
         {icon && (
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface text-muted ring-1 ring-line">
             {icon}
