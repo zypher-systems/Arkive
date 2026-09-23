@@ -1,417 +1,207 @@
-import type { ReactNode } from 'react';
-import { contentUrl, thumbUrl, type LiveDriveItem, type Node } from '../../lib/api';
-import { useEffect, useState } from 'react';
-import {
-  fileTypeLabel,
-  isAudioName,
-  isAudioNode,
-  isImageName,
-  isImageNode,
-  isPdfName,
-  isPdfNode,
-  isTextNode,
-  isVideoName,
-  isVideoNode,
-  nameExtLabel,
-  officeKind,
-  type OfficeKind,
-} from './types';
+import { useState } from 'react';
+import { thumbUrl, type LiveDriveItem, type Node } from '../../lib/api';
+import { fileCategory, nameExtLabel, type FileCategory } from './types';
 
-export function FolderIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} aria-hidden>
-      <path
-        d="M6 14c0-2.2 1.8-4 4-4h10l3 4h15c2.2 0 4 1.8 4 4v18c0 2.2-1.8 4-4 4H10c-2.2 0-4-1.8-4-4V14z"
-        fill="currentColor"
-        opacity="0.35"
-      />
-      <path
-        d="M6 18h36v16c0 2.2-1.8 4-4 4H10c-2.2 0-4-1.8-4-4V18z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function FileDocIcon({
-  className,
-  accent = 'currentColor',
-}: {
-  className?: string;
-  accent?: string;
-}) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} aria-hidden>
-      <path
-        d="M12 6h16l10 10v26c0 1.1-.9 2-2 2H12c-1.1 0-2-.9-2-2V8c0-1.1.9-2 2-2z"
-        fill={accent}
-        opacity="0.2"
-      />
-      <path
-        d="M28 6v10h10"
-        fill="none"
-        stroke={accent}
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 6h16l10 10v26c0 1.1-.9 2-2 2H12c-1.1 0-2-.9-2-2V8c0-1.1.9-2 2-2z"
-        fill="none"
-        stroke={accent}
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function VideoIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} aria-hidden>
-      <rect x="6" y="12" width="28" height="24" rx="3" fill="currentColor" opacity="0.25" />
-      <rect
-        x="6"
-        y="12"
-        width="28"
-        height="24"
-        rx="3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-      />
-      <path d="M34 20l10-5v18l-10-5V20z" fill="currentColor" />
-    </svg>
-  );
-}
-
-function AudioIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} aria-hidden>
-      <circle cx="18" cy="32" r="7" fill="currentColor" opacity="0.3" />
-      <circle cx="18" cy="32" r="7" fill="none" stroke="currentColor" strokeWidth="2.5" />
-      <path
-        d="M25 32V10l14 3v8"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="39" cy="21" r="5" fill="currentColor" opacity="0.35" />
-    </svg>
-  );
-}
-
-function ArchiveIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} aria-hidden>
-      <rect x="10" y="8" width="28" height="32" rx="2" fill="currentColor" opacity="0.2" />
-      <rect
-        x="10"
-        y="8"
-        width="28"
-        height="32"
-        rx="2"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-      />
-      <path d="M22 8v32M26 8v32" stroke="currentColor" strokeWidth="2" opacity="0.7" />
-      <rect x="20" y="20" width="8" height="6" rx="1" fill="currentColor" />
-    </svg>
-  );
-}
-
-const OFFICE_STYLE: Record<
-  OfficeKind,
-  { wrap: string; text: string; label: string }
-> = {
-  word: { wrap: 'bg-[#dbe7f5] text-[#2f5b93]', text: 'text-[#2f5b93]', label: 'DOC' },
-  excel: { wrap: 'bg-[#d9ecdd] text-[#2e7a45]', text: 'text-[#2e7a45]', label: 'XLS' },
-  powerpoint: { wrap: 'bg-[#f6e0cf] text-[#9a5a20]', text: 'text-[#9a5a20]', label: 'PPT' },
-  archive: { wrap: 'bg-hover text-muted', text: 'text-muted', label: 'ZIP' },
+/** Muted category tints (light / dark) — keeps the graphite+amber UI calm. */
+const TINTS: Record<FileCategory, string> = {
+  folder: 'text-folder',
+  image: 'bg-[#e3f0ee] text-[#2d6f66] dark:bg-[#18302d] dark:text-[#7cc7bb]',
+  video: 'bg-[#ece6f5] text-[#5b4690] dark:bg-[#26203a] dark:text-[#b7a4e6]',
+  audio: 'bg-[#f5e4ee] text-[#8a3a67] dark:bg-[#35202c] dark:text-[#e6a3c7]',
+  pdf: 'bg-[#f7e2de] text-[#a33a2c] dark:bg-[#3a1f1b] dark:text-[#f0a397]',
+  doc: 'bg-[#e1eaf6] text-[#2f5b93] dark:bg-[#1c2a3d] dark:text-[#9fbfe8]',
+  sheet: 'bg-[#dfefe4] text-[#2a7045] dark:bg-[#17301f] dark:text-[#8fd3a8]',
+  slides: 'bg-[#f7e8d8] text-[#9a5a20] dark:bg-[#382817] dark:text-[#eab37c]',
+  archive: 'bg-[#ecebe6] text-[#5f5d55] dark:bg-[#2a2a27] dark:text-[#bdbab0]',
+  code: 'bg-[#e6e8f5] text-[#434c8f] dark:bg-[#20233a] dark:text-[#aab2ea]',
+  text: 'bg-[#eeeeea] text-[#555b64] dark:bg-[#26282d] dark:text-[#b5bac2]',
+  other: 'bg-[#eeeeea] text-[#555b64] dark:bg-[#26282d] dark:text-[#b5bac2]',
 };
 
-function Themed({ children }: { children: ReactNode }) {
-  return <span className="contents dark:[&_.thumb-tint]:brightness-[0.72] dark:[&_.thumb-tint]:saturate-[0.85]">{children}</span>;
+function FolderShape({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden className="text-folder">
+      <path d="M4 11.5A3.5 3.5 0 0 1 7.5 8h8.2c.9 0 1.8.4 2.4 1.1L20.4 12H32.5A3.5 3.5 0 0 1 36 15.5V16H4v-4.5z" fill="currentColor" opacity=".55" />
+      <path d="M4 15h32v14.5a3.5 3.5 0 0 1-3.5 3.5h-25A3.5 3.5 0 0 1 4 29.5V15z" fill="currentColor" />
+      <path d="M4 15h32v1.5H4z" fill="#fff" opacity=".18" />
+    </svg>
+  );
 }
 
-function OfficeBadge({
-  kind,
-  dense,
-  label,
+function CategoryIcon({ cat, size }: { cat: FileCategory; size: number }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: '0 0 16 16',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.5,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+  switch (cat) {
+    case 'image':
+      return (
+        <svg {...common}>
+          <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+          <circle cx="5.8" cy="6.2" r="1.2" />
+          <path d="M2.5 12l3.5-3.5 2.5 2.5 2-2 3 3" />
+        </svg>
+      );
+    case 'video':
+      return (
+        <svg {...common}>
+          <rect x="1.8" y="3.5" width="9" height="9" rx="1.5" />
+          <path d="M10.8 7l3.4-2v6l-3.4-2" />
+        </svg>
+      );
+    case 'audio':
+      return (
+        <svg {...common}>
+          <path d="M6 12V3.5l7-1.5v8.5" />
+          <circle cx="4.5" cy="12" r="1.8" />
+          <circle cx="11.5" cy="10.5" r="1.8" />
+        </svg>
+      );
+    case 'archive':
+      return (
+        <svg {...common}>
+          <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+          <path d="M7 2.5v2h2v2H7v2h2" />
+        </svg>
+      );
+    case 'code':
+      return (
+        <svg {...common}>
+          <path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" />
+        </svg>
+      );
+    case 'sheet':
+      return (
+        <svg {...common}>
+          <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+          <path d="M2.5 6.2h11M2.5 9.8h11M6.5 2.5v11" />
+        </svg>
+      );
+    case 'slides':
+      return (
+        <svg {...common}>
+          <rect x="2" y="3" width="12" height="8" rx="1.2" />
+          <path d="M8 11v2.5M5.5 13.5h5" />
+        </svg>
+      );
+    default:
+      return (
+        <svg {...common}>
+          <path d="M4 1.8h5L12.2 5v9.2H4z" />
+          <path d="M9 1.8V5h3.2M6 8h4M6 10.5h4" />
+        </svg>
+      );
+  }
+}
+
+/**
+ * Icon tile for a file/folder, based only on its name/mime (no network).
+ * `size` is the tile edge in px.
+ */
+export function FileGlyph({
+  name,
+  kind = 'file',
+  mime,
+  size = 32,
+  showExt = true,
 }: {
-  kind: OfficeKind;
-  dense: boolean;
-  label?: string;
+  name: string;
+  kind?: 'file' | 'folder';
+  mime?: string | null;
+  size?: number;
+  showExt?: boolean;
 }) {
-  const s = OFFICE_STYLE[kind];
+  const cat: FileCategory = kind === 'folder' ? 'folder' : fileCategory(name, mime);
+  if (cat === 'folder') {
+    return (
+      <span className="inline-flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+        <FolderShape size={Math.round(size * 0.92)} />
+      </span>
+    );
+  }
+  const big = size >= 64;
+  const ext = nameExtLabel(name);
   return (
-    <Themed>
-      <span
-        className={`thumb-tint flex flex-col items-center justify-center gap-0.5 ${s.wrap} ${
-          dense ? 'h-9 w-9 shrink-0 overflow-hidden rounded-md' : 'h-full w-full'
-        }`}
-      >
-        {kind === 'archive' ? (
-          <ArchiveIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
+    <span
+      className={`inline-flex shrink-0 flex-col items-center justify-center gap-0.5 ${big ? 'rounded-xl' : 'rounded-md'} ${TINTS[cat]}`}
+      style={{ width: size, height: size }}
+    >
+      <CategoryIcon cat={cat} size={Math.round(size * (big ? 0.34 : 0.5))} />
+      {big && showExt && ext !== 'FILE' && (
+        <span className="max-w-[80%] truncate text-2xs font-semibold tracking-wide opacity-80">{ext}</span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Thumbnail for a node: real image thumbnail (GET /api/nodes/{id}/thumb)
+ * for images, glyph otherwise. `fill` stretches to the parent (tiles).
+ */
+export function FileThumb({
+  node,
+  size = 32,
+  fill = false,
+  allowRemote = true,
+  rounded = true,
+}: {
+  node: Pick<Node, 'id' | 'name' | 'kind' | 'mime'>;
+  size?: number;
+  fill?: boolean;
+  allowRemote?: boolean;
+  rounded?: boolean;
+}) {
+  const [failed, setFailed] = useState(false);
+  const cat = node.kind === 'folder' ? 'folder' : fileCategory(node.name, node.mime);
+  const canThumb = allowRemote && !!node.id && cat === 'image' && !failed;
+
+  if (fill) {
+    return (
+      <span className="relative flex h-full w-full items-center justify-center overflow-hidden bg-inset">
+        {canThumb ? (
+          <img
+            src={thumbUrl(node.id)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="h-full w-full object-cover"
+            onError={() => setFailed(true)}
+          />
         ) : (
-          <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
+          <FileGlyph name={node.name} kind={node.kind} mime={node.mime} size={72} />
         )}
-        <span className={`font-bold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'} ${s.text}`}>
-          {label || s.label}
-        </span>
       </span>
-    </Themed>
-  );
-}
-
-function TextPeek({ node }: { node: Node }) {
-  const [snippet, setSnippet] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!node.id) return;
-    let cancelled = false;
-    const ctrl = new AbortController();
-    void fetch(contentUrl(node.id), {
-      credentials: 'include',
-      signal: ctrl.signal,
-      headers: { Range: 'bytes=0-479' },
-    })
-      .then(async (res) => {
-        if (!res.ok && res.status !== 206) throw new Error('peek failed');
-        const raw = await res.text();
-        const text = raw.replace(/\s+/g, ' ').trim();
-        if (!cancelled) setSnippet(text || 'Empty file');
-      })
-      .catch(() => {
-        if (!cancelled) setSnippet(null);
-      });
-    return () => {
-      cancelled = true;
-      ctrl.abort();
-    };
-  }, [node.id]);
-
-  if (!snippet) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-hover text-muted">
-        <FileDocIcon className="h-12 w-12" />
-        <span className="text-[10px] font-semibold tracking-wide">{fileTypeLabel(node)}</span>
-      </div>
     );
   }
-
-  return (
-    <div className="flex h-full w-full flex-col bg-inset p-1.5">
-      <span className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-faint">
-        {fileTypeLabel(node)}
-      </span>
-      <pre className="min-h-0 flex-1 overflow-hidden whitespace-pre-wrap break-all font-mono text-[9px] leading-snug text-muted">
-        {snippet}
-      </pre>
-    </div>
-  );
-}
-
-function FolderThumb({ dense }: { dense: boolean }) {
-  return (
-    <Themed>
+  if (canThumb) {
+    return (
       <span
-        className={`thumb-tint flex items-center justify-center ${
-          dense
-            ? 'h-9 w-9 shrink-0 rounded-md bg-[#f2e6c9] text-[#8a6a1f]'
-            : 'h-full w-full bg-[#f2e6c9] text-[#8a6a1f]'
-        }`}
+        className={`inline-block shrink-0 overflow-hidden bg-inset ring-1 ring-line ring-inset ${rounded ? 'rounded-md' : ''}`}
+        style={{ width: size, height: size }}
       >
-        <FolderIcon className={dense ? 'h-6 w-6' : 'h-16 w-16'} />
-      </span>
-    </Themed>
-  );
-}
-
-type Props = {
-  node: Node;
-  size?: 'sm' | 'lg';
-  /** When false, never fetch /content (Recent without reliable content). */
-  allowContent?: boolean;
-};
-
-export function FileThumb({ node, size = 'sm', allowContent = true }: Props) {
-  const dense = size === 'sm';
-  const box = dense ? 'h-9 w-9 shrink-0 overflow-hidden rounded-md' : 'h-full w-full';
-
-  if (node.kind === 'folder') {
-    return <FolderThumb dense={dense} />;
-  }
-
-  const office = officeKind(node.name, node.mime);
-  if (office) {
-    return (
-      <OfficeBadge
-        kind={office}
-        dense={dense}
-        label={office === 'archive' ? nameExtLabel(node.name) : undefined}
-      />
-    );
-  }
-
-  if (allowContent && node.id && isImageNode(node)) {
-    return (
-      <span className={`block bg-inset ${box}`}>
         <img
           src={thumbUrl(node.id)}
           alt=""
           loading="lazy"
+          decoding="async"
+          draggable={false}
           className="h-full w-full object-cover"
-          onError={(e) => {
-            const el = e.currentTarget;
-            if (el.dataset.fallback) return;
-            el.dataset.fallback = '1';
-            el.src = contentUrl(node.id);
-          }}
+          onError={() => setFailed(true)}
         />
       </span>
     );
   }
-
-  if (allowContent && node.id && isVideoNode(node)) {
-    return (
-      <span className={`relative block bg-inset ${box}`}>
-        <video
-          src={contentUrl(node.id)}
-          muted
-          playsInline
-          preload="metadata"
-          className="h-full w-full object-cover"
-        />
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/25">
-          <span className="rounded-full bg-black/50 p-1 text-white">
-            <VideoIcon className={dense ? 'h-4 w-4' : 'h-8 w-8'} />
-          </span>
-        </span>
-      </span>
-    );
-  }
-
-  if (isPdfNode(node)) {
-    return (
-      <Themed>
-        <span
-          className={`thumb-tint flex flex-col items-center justify-center gap-0.5 bg-[#f3d9d4] text-[#93392f] ${box}`}
-        >
-          <FileDocIcon className={dense ? 'h-6 w-6' : 'h-12 w-12'} />
-          <span className={`font-bold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>PDF</span>
-        </span>
-      </Themed>
-    );
-  }
-
-  if (isAudioNode(node)) {
-    return (
-      <span className={`flex items-center justify-center bg-hover text-muted ${box}`}>
-        <AudioIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
-      </span>
-    );
-  }
-
-  if (allowContent && node.id && isTextNode(node) && !dense) {
-    return (
-      <span className={`block overflow-hidden ${box}`}>
-        <TextPeek node={node} />
-      </span>
-    );
-  }
-
-  if (isTextNode(node) || isImageNode(node) || isVideoNode(node)) {
-    return (
-      <span className={`flex items-center justify-center bg-hover text-muted ${box}`}>
-        <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className={`flex flex-col items-center justify-center gap-0.5 bg-inset text-muted ${box}`}
-    >
-      <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
-      <span className={`font-semibold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>
-        {fileTypeLabel(node)}
-      </span>
-    </span>
-  );
+  return <FileGlyph name={node.name} kind={node.kind} mime={node.mime} size={size} />;
 }
 
-/** Live Drive items — icons only, never Arkive content URLs. */
-export function LiveDriveThumb({
-  item,
-  size = 'sm',
-}: {
-  item: LiveDriveItem;
-  size?: 'sm' | 'lg';
-}) {
-  const dense = size === 'sm';
-  const box = dense ? 'h-9 w-9 shrink-0 overflow-hidden rounded-md' : 'h-full w-full';
-
-  if (item.kind === 'folder') return <FolderThumb dense={dense} />;
-
-  const office = officeKind(item.name, item.mime);
-  if (office) {
-    return (
-      <OfficeBadge
-        kind={office}
-        dense={dense}
-        label={office === 'archive' ? nameExtLabel(item.name) : undefined}
-      />
-    );
-  }
-
-  if (isPdfName(item.name, item.mime)) {
-    return (
-      <Themed>
-        <span
-          className={`thumb-tint flex flex-col items-center justify-center gap-0.5 bg-[#f3d9d4] text-[#93392f] ${box}`}
-        >
-          <FileDocIcon className={dense ? 'h-6 w-6' : 'h-12 w-12'} />
-          <span className={`font-bold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>PDF</span>
-        </span>
-      </Themed>
-    );
-  }
-
-  if (isImageName(item.name, item.mime)) {
-    return (
-      <span className={`flex items-center justify-center bg-hover text-muted ${box}`}>
-        <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
-      </span>
-    );
-  }
-
-  if (isVideoName(item.name, item.mime)) {
-    return (
-      <span className={`flex items-center justify-center bg-hover text-muted ${box}`}>
-        <VideoIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
-      </span>
-    );
-  }
-
-  if (isAudioName(item.name, item.mime)) {
-    return (
-      <span className={`flex items-center justify-center bg-hover text-muted ${box}`}>
-        <AudioIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className={`flex flex-col items-center justify-center gap-0.5 bg-inset text-muted ${box}`}
-    >
-      <FileDocIcon className={dense ? 'h-5 w-5' : 'h-12 w-12'} />
-      <span className={`font-semibold tracking-wide ${dense ? 'text-[8px]' : 'text-xs'}`}>
-        {nameExtLabel(item.name)}
-      </span>
-    </span>
-  );
+export function LiveDriveThumb({ item, size = 32 }: { item: LiveDriveItem; size?: number }) {
+  return <FileGlyph name={item.name} kind={item.kind} mime={item.mime} size={size} />;
 }
